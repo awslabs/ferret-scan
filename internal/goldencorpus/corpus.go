@@ -824,6 +824,21 @@ var Cases = []Case{
 			"policy identification for terraform module: MODULEVERSION123\n",
 	},
 	{
+		Name: "swift_word_on_banking_line",
+		Description: "All-caps English words whose 5th and 6th letters spell a country code, on " +
+			"lines that carry a generic banking word. Any 8- or 11-letter uppercase word of that " +
+			"shape passes the SWIFT/BIC structure check (CUST+OM+ER, BUSI+NE+SS, MITI+GA+TIONS, " +
+			"PLAT+FO+RM, DOCU+ME+NT), and a generic banking word (bank, account, wire, deposit, " +
+			"savings) used to waive the all-letter word gate, so each was a SWIFT_BIC at 100 HIGH " +
+			"(#801). An all-letter candidate now needs a label that names the code itself (swift, " +
+			"bic, iban). Pure decoy: every line must stay silent.",
+		Checks: []string{"BANK_ACCOUNT"},
+		Input: "The bank account team reviews CUSTOMER and BUSINESS onboarding before any wire is released.\n" +
+			"Documented MITIGATIONS apply to every bank deposit workflow.\n" +
+			"BANK ACCOUNT PLATFORM MIGRATION\n" +
+			"Wire DOCUMENT checklist for the savings desk\n",
+	},
+	{
 		Name: "keyword_separator_forms",
 		Description: "The same field labels written with the separators real files use: " +
 			"snake_case config keys, kebab-case column headers, tab-separated exports and " +

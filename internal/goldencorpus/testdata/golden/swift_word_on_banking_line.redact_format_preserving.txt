@@ -1,0 +1,6 @@
+=== REDACTED ===
+The bank account team reviews CUSTOMER and BUSINESS onboarding before any wire is released.
+Documented MITIGATIONS apply to every bank deposit workflow.
+BANK ACCOUNT PLATFORM MIGRATION
+Wire DOCUMENT checklist for the savings desk
+=== FINDINGS (sorted) ===
