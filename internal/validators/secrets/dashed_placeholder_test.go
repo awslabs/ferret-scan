@@ -23,6 +23,10 @@ func TestDashedAndBarePlaceholdersSuppressed(t *testing.T) {
 		"api_key=insert-key-here",
 		"api_key=replace-with-actual",
 		`api_key = "your-api-key"`,
+		// Test-style entries past the obvious-placeholder block take a confidence penalty
+		// rather than being dropped; the dashed and upper-case spellings now take it too.
+		"secret=example-secret-key",
+		"password=SAMPLE-PASSWORD",
 	} {
 		t.Run(line, func(t *testing.T) {
 			ms, err := NewValidator().ValidateContent(line+"\n", "settings.txt")
