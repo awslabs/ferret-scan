@@ -34,7 +34,7 @@ func TestValidateContent_NoDuplicateSpansPerLine(t *testing.T) {
 		line string
 		want string // expected finding Type
 	}{
-		// AKIA literal + api_?key assignment pattern claim the same bytes.
+		// AKIA literal + api[_-]?key assignment pattern claim the same bytes.
 		{"aws access key in assignment", `apiKey = "AKIAIOSFODNN7EXAMPLE"`, "AWS_ACCESS_KEY"},
 		// ghp_ literal + token assignment + base64 entropy: three claims.
 		{"github token in assignment", `github_token = "` + buildTestToken("ghp_", "zyxwvu9876543210TSRQPONMLKJIHGFEDCBA") + `"`, "GITHUB_TOKEN"},

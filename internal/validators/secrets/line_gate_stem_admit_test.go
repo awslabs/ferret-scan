@@ -15,9 +15,9 @@ import (
 // 20 bytes was never scanned, while `token=` reported the same values at 100. The gate now admits
 // every stem through lineHasKeywordStem, which is derived from the stem lists.
 
-// stemLiteralsOf is every literal the stems match, as each stem spells it: `api_?key` gives `apikey`
-// and `api_key`. Unlike keywordStemLiterals nothing is dropped for containing a shorter literal,
-// since a line spelling the longer one is what its own pattern anchors on.
+// stemLiteralsOf is every literal the stems match, as each stem spells it: `api[_-]?key` gives
+// `apikey`, `api-key` and `api_key`. Unlike keywordStemLiterals nothing is dropped for containing a
+// shorter literal, since a line spelling the longer one is what its own pattern anchors on.
 func stemLiteralsOf(stems []string) []string {
 	var out []string
 	for _, stem := range stems {
