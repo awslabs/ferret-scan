@@ -16,20 +16,3 @@ internal/goldencorpus/testdata/golden/** text eol=lf
 *.csv   text eol=lf
 *.xml   text eol=lf
 *.txt   text eol=lf
-
-# CHANGELOG.md: keep both sides' lines when two branches edit the same spot.
-#
-# Every PR appends its bullet to the end of the same [Unreleased] subsection, and #751 made an entry
-# mandatory for any PR that changes what a release ships, so two open PRs nearly always touch the
-# same hunk. Git cannot tell that "add bullet A" and "add bullet B" do not actually clash, and
-# reports a conflict whose only correct resolution is "keep both". The union driver does that
-# automatically: measured on #777's real conflict against main, it merged clean and produced the
-# same file a by-hand resolution did, every bullet kept, none duplicated.
-#
-# Two limits. It applies to local merges and rebases; GitHub's own conflict check and merge button
-# may not honour it, in which case the banner still appears, but resolving becomes
-# `git merge origin/main` with nothing to edit. And it never reports a conflict: if two branches
-# reword the SAME existing line, both versions are kept silently. Bullets are appended far more
-# often than edited, so that is the cheaper side — but review the diff of a merge that touched an
-# existing entry.
-CHANGELOG.md merge=union
