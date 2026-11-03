@@ -487,6 +487,9 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// Check for recovery/backup code blocks
 		recoveryLocs := reRecoveryCodeBlock.FindAllStringIndex(line, -1)
 		if len(recoveryLocs) >= 2 && v.hasRecoveryContext(line) {
+			// Offset of the explicit recovery-code label, resolved at the first
+			// prose-shaped block so a line of code-shaped blocks never pays for it.
+			labelAt, labelResolved := -1, false
 			// Multiple recovery-code-shaped blocks on the same line with context
 			for i, loc := range recoveryLocs {
 				if execguard.LineLoopCancelled(ctx, i) {
@@ -496,6 +499,44 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				// Skip UUIDs, partial UUIDs, and hex-only dash blocks
 				if reUUID.MatchString(code) || rePartialUUID.MatchString(code) || reHexDashBlock.MatchString(code) {
 					continue
+				}
+				// A hyphenated word is not a code unless a label says it is (#798).
+				//
+				// hasRecoveryContext opens on a bare topic word anywhere on the line
+				// (backup, recovery, emergency, 2fa, mfa), and kebab-case is how CLI
+				// flags, resource names and file names are written. So on main a
+				// runbook line that only had "backup" in a path reported its flags as
+				// recovery codes: `aws s3 cp --recursive "$WORK/backup/data-bucket/"
+				// "s3://$BUCKET/" --only-show-errors` gave data-bucket and
+				// only-show-errors, and "Role-Based access and Multi-Factor
+				// authentication ... emergency recovery runbook" gave both compounds.
+				// Through the CLI on a .md file, the six lines #798 lists reported 16
+				// findings at 50-65; none now.
+				//
+				// A prose-shaped block is still reported when an explicit "recovery
+				// codes" / "backup codes" label PRECEDES it and its groups are equal in
+				// length, which is how a code generator writes them ("2FA backup codes:
+				// ... abcd-efgh"). A code drawn from [a-z0-9] has no digit often enough
+				// to matter, about one in 26 at ten characters, so the label is kept as
+				// evidence rather than demanding a digit. Preceding, because a code list
+				// leads with its label. Equal groups, because hyphenated words seldom
+				// have them ("data-bucket", "only-show-errors", "cross-account") and the
+				// label's own spellings never do ("backup-codes.json" is not a code).
+				//
+				// The letter of a backslash escape is not part of the value. In source
+				// or JSON text "\nABCD-EFGH-IJKL" the block starts at the n, and without
+				// this the n alone would make an uppercase code prose-shaped.
+				shape := code
+				if loc[0] > 0 && line[loc[0]-1] == '\\' {
+					shape = code[1:]
+				}
+				if isProseShapedCode(shape) {
+					if !labelResolved {
+						labelAt, labelResolved = recoveryLabelAt(line), true
+					}
+					if labelAt < 0 || labelAt >= loc[0] || !v.hasUniformBlockLength(strings.Split(shape, "-")) {
+						continue
+					}
 				}
 				emit(loc[0], loc[1]-loc[0], "RECOVERY_CODES", true)
 			}
@@ -690,14 +731,7 @@ func (v *Validator) hasRecoveryContext(line string) bool {
 	//
 	// "recovery codes" / "backup codes" names the value itself, so only that
 	// earns the positional treatment below.
-	strongLabelAt := -1
-	for _, kw := range []string{
-		"recovery code", "recovery codes", "backup code", "backup codes",
-	} {
-		if i := keywordIndex(line, kw); i >= 0 && (strongLabelAt < 0 || i < strongLabelAt) {
-			strongLabelAt = i
-		}
-	}
+	strongLabelAt := recoveryLabelAt(line)
 
 	// Suppress if the line has strong non-recovery-code indicators — but only
 	// when such a word PRECEDES the recovery-code label.
@@ -757,6 +791,48 @@ func (v *Validator) hasRecoveryContext(line string) bool {
 		}
 	}
 	return true
+}
+
+// recoveryLabelAt returns the byte offset of the earliest explicit recovery-code
+// label on the line ("recovery code(s)", "backup code(s)"), or -1.
+//
+// One definition serves both callers: hasRecoveryContext, which uses it to decide
+// whether a non-recovery word leads the label, and the recovery-code loop, which
+// uses it to decide whether a label vouches for a prose-shaped block (#798).
+func recoveryLabelAt(line string) int {
+	at := -1
+	for _, kw := range []string{
+		"recovery code", "recovery codes", "backup code", "backup codes",
+	} {
+		if i := keywordIndex(line, kw); i >= 0 && (at < 0 || i < at) {
+			at = i
+		}
+	}
+	return at
+}
+
+// isProseShapedCode reports whether a recovery-code-shaped block is spelled like
+// hyphenated text rather than drawn from a code alphabet (#798): it holds a
+// lowercase letter and no digit.
+//
+// That covers kebab-case flags, resource and file names ("only-show-errors",
+// "data-bucket", "update-function-code") and hyphenated compounds in prose
+// ("high-risk", "Multi-Factor", "CloudFormation-managed"). An all-uppercase block
+// ("ABCD-EFGH-IJKL") or one with a digit ("4f9k2-8xq3m", "fghij-67890") is not
+// prose-shaped and keeps its existing treatment. It is the property execguard's
+// isProse uses to keep dash-normalized running text out of RECOVERY_CODES,
+// restricted to the block alphabet [A-Za-z0-9-].
+func isProseShapedCode(code string) bool {
+	hasLower := false
+	for i := 0; i < len(code); i++ {
+		switch c := code[i]; {
+		case c >= '0' && c <= '9':
+			return false
+		case c >= 'a' && c <= 'z':
+			hasLower = true
+		}
+	}
+	return hasLower
 }
 
 // keywordIndex returns the byte offset of the first whole-word occurrence of

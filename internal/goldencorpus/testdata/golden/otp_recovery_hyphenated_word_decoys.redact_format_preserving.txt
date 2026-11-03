@@ -1,0 +1,10 @@
+=== REDACTED ===
+aws s3 cp --recursive "$WORK/backup/data-bucket/" "s3://$BUCKET/" --only-show-errors
+  --template-body "file://$WORK/backup/data-bucket/templates/main-template.yaml" \
+Restore from backup: aws lambda update-function-code --function-name my-func --s3-bucket data-bucket
+aws s3 sync s3://my-bucket/backup ./local-copy --only-show-errors --dry-run
+Backup and recovery plan for high-risk, cross-account, least-privilege and multi-region workloads.
+Role-Based access and Multi-Factor authentication are part of the emergency recovery runbook.
+cp /production/bin/ferret-scan /production/bin/ferret-scan.backup
+Store recovery codes in a well-known, tamper-evident location.
+=== FINDINGS (sorted) ===
