@@ -488,6 +488,27 @@ var Cases = []Case{
 			"DB_PASSWORD=postgresql://app_user:W2tDmgHmQKqh9XSZ@db1.orders.invalid:5432/appdb\n",
 	},
 	{
+		Name: "secrets_sentence_case_prose_decoy",
+		Description: "The #787 false positive, which must stay EMPTY: a secret stem and a colon in prose, " +
+			"followed by a capitalised word. plausibleUnquotedSecret rejected the lower-case word " +
+			"(`token: creating`) but not its sentence-case spelling, and prose capitalises the word " +
+			"after a colon, so on main `Checklist`, `Milestones`, `Required`, `Rotation` and " +
+			"`Management` all reported API_KEY_OR_SECRET at HIGH 100 here (the tab-separated header " +
+			"block types the document TSV, +20). A sentence-case word under 16 characters is now " +
+			"rejected like the lower-case one. The shapes that must still report -- the same word " +
+			"quoted, with a digit, in CamelCase or as a 25-letter passphrase -- are positives and live " +
+			"in the unit tests, so this case adds no finding.",
+		Checks: []string{"SECRETS"},
+		Input: strings.Repeat("Field\tValue\tNote\n", 10) +
+			"Weekly agenda\n\n" +
+			"Onboarding session: Checklist review and owner assignment\n" +
+			"Planning session: Milestones for the next quarter\n\n" +
+			"Password: Required for all accounts\n" +
+			"Token: Rotation happens quarterly\n" +
+			"Secret: Management is centralised\n" +
+			"API key: Provisioning is self-service\n",
+	},
+	{
 		Name: "secrets_uri_userinfo_negative",
 		Description: "The #766 structural decoys, which must stay EMPTY: an `@` the URI grammar does " +
 			"not put in user info, and user info that holds no credential. An `@` in a path or query " +
