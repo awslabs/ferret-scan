@@ -2,19 +2,19 @@ results:
     - text: d7Q8N92jGKT5WdZ4
       line_number: 5
       type: API_KEY_OR_SECRET
-      confidence: 97
+      confidence: 100
       confidence_level: HIGH
       filename: docker-compose.yml
       validator: secrets
       metadata:
         confidence_adjustment: 0
         context_confidence: 0.5
-        context_doc_type: Unknown
-        context_doctype: Unknown
+        context_doc_type: Configuration
+        context_doctype: Configuration
         context_domain: Financial
         detection_method: uri_userinfo
         environment_type: unknown
-        original_confidence: 97
+        original_confidence: 100
         secret_type: API_KEY_OR_SECRET
         semantic_context:
             FinancialData: 0
@@ -24,6 +24,7 @@ results:
             TestData: 0
         source: preprocessed_content
         validation_checks:
+            config_file_boost: true
             financial_domain_boost: true
             has_entropy: true
             min_length: true

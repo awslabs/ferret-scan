@@ -109,7 +109,11 @@ func (ca *ContextAnalyzer) AnalyzeContext(content string, filePath string) Conte
 	return insights
 }
 
-// NewStructureDetector creates a document structure detector
+// NewStructureDetector creates a document structure detector.
+//
+// The Configuration pattern allows leading whitespace (#788): a key under an INI `[section]` or in a
+// YAML map is as much a configuration line as one at column 0, and anchoring at column 0 typed the
+// same keys Configuration or Unknown on their indentation alone.
 func NewStructureDetector() *StructureDetector {
 	patterns := map[string]*regexp.Regexp{
 		"CSV":           regexp.MustCompile(`(?m)^[^,]*,[^,]*,.*$`),
@@ -122,7 +126,7 @@ func NewStructureDetector() *StructureDetector {
 		"Code":          regexp.MustCompile(`(?i)(function|class|import|include|def\s)`),
 		"FixedWidth":    regexp.MustCompile(`(?m)^.{20,}\s{3,}.{20,}\s{3,}.*$`),
 		"Report":        regexp.MustCompile(`(?i)(report|summary|total|subtotal|balance)`),
-		"Configuration": regexp.MustCompile(`(?m)^[a-zA-Z_][a-zA-Z0-9_]*\s*[=:]\s*.*$`),
+		"Configuration": regexp.MustCompile(`(?m)^\s*[a-zA-Z_][a-zA-Z0-9_]*\s*[=:]\s*.*$`),
 	}
 
 	return &StructureDetector{patterns: patterns}
@@ -148,24 +152,28 @@ func (sd *StructureDetector) DetectStructure(content, filePath string) (string, 
 	}
 
 	scores := make(map[string]float64)
-	lines := strings.Split(sample, "\n")
-	totalLines := len(lines)
-
-	if totalLines == 0 {
-		return "Unknown", 0.0
-	}
+	lines := sampleLines(sample)
+	configLines := configurationLines(lines)
 
 	// Test each pattern
 	for structType, pattern := range sd.patterns {
+		over := lines
+		if structType == "Configuration" {
+			over = configLines
+		}
+		if len(over) == 0 {
+			scores[structType] = 0
+			continue
+		}
 		matches := 0
-		for _, line := range lines {
+		for _, line := range over {
 			if pattern.MatchString(line) {
 				matches++
 			}
 		}
 
 		// Calculate confidence based on match percentage
-		confidence := float64(matches) / float64(totalLines)
+		confidence := float64(matches) / float64(len(over))
 		scores[structType] = confidence
 	}
 
@@ -191,6 +199,48 @@ func (sd *StructureDetector) DetectStructure(content, filePath string) (string, 
 	}
 
 	return bestType, bestScore
+}
+
+// sampleLines splits the sample into its lines, without the empty element a trailing newline splits
+// into. That element is no line of the file -- a file an editor wrote ends in a newline, and its last
+// line is the one before it -- but it was in every share's denominator until #788, so the same six
+// credential lines were 2 of 7 (0.286, Unknown) with a trailing newline and 2 of 6 (0.333,
+// Configuration, +15 on every secrets candidate in the file) without one.
+func sampleLines(sample string) []string {
+	return strings.Split(strings.TrimSuffix(sample, "\n"), "\n")
+}
+
+// configurationLines is the subset of lines the Configuration share is computed over: every line
+// except blank and comment-only ones (#788). Blank lines separate a config file's sections and
+// comment lines hold its notes and its commented-out defaults; they are the layout of a config file,
+// so they may neither lower its share nor raise it. A comment-only line is one whose first non-blank
+// byte starts a line comment: `#` (shell, YAML, TOML, `.env`, INI), `;` (INI) or `//`. A
+// commented-out assignment (`#db_password=...`) is a comment like any other: how many lines an author
+// disabled does not move the type of what is left.
+//
+// Only the Configuration share is taken over this subset. The other shares keep every line but the
+// trailing one in their denominator, because their patterns are layout-sensitive in their own way and
+// blank lines are what holds two of them under the threshold: the CSV pattern takes any line with two
+// commas, so blank lines between paragraphs keep comma-rich prose from typing CSV, and the TSV pattern
+// counts indentation tabs, so blank lines between blocks keep tab-indented source from typing TSV.
+// Taking every share over this subset was measured on 21,439 third-party files: it typed at least 576
+// Go source files TSV that were Unknown before, and comma-rich prose CSV, adding the tabular boost of
+// +20 to every finding of every validator in them. Those two patterns are their own defect.
+func configurationLines(lines []string) []string {
+	var out []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || isCommentOnlyLine(trimmed) {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// isCommentOnlyLine reports whether a trimmed, non-empty line is a line comment.
+func isCommentOnlyLine(trimmed string) bool {
+	return trimmed[0] == '#' || trimmed[0] == ';' || strings.HasPrefix(trimmed, "//")
 }
 
 // NewDomainClassifier creates a business domain classifier

@@ -9,7 +9,7 @@ results:
       metadata:
         confidence_adjustment: 0
         context_confidence: 1
-        context_doctype: Unknown
+        context_doctype: Configuration
         context_domain: HR_Payroll
         context_impact: 45
         original_confidence: 100
@@ -41,7 +41,7 @@ results:
         card_type: VISA
         confidence_adjustment: 0
         context_confidence: 1
-        context_doctype: Unknown
+        context_doctype: Configuration
         context_domain: HR_Payroll
         context_impact: 15
         original_confidence: 100
@@ -73,7 +73,7 @@ results:
       metadata:
         confidence_adjustment: 0
         context_confidence: 1
-        context_doctype: Unknown
+        context_doctype: Configuration
         context_domain: HR_Payroll
         context_impact: 0
         full_field: 'Author: Jane Analyst'
@@ -106,7 +106,7 @@ results:
       metadata:
         confidence_adjustment: 0
         context_confidence: 1
-        context_doctype: Unknown
+        context_doctype: Configuration
         context_domain: HR_Payroll
         context_impact: 0
         full_field: 'LastModifiedBy: Ops Reviewer'

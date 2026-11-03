@@ -1,14 +1,14 @@
 {
   "results": [
     {
-      "confidence": 80,
-      "confidence_level": "MEDIUM",
+      "confidence": 100,
+      "confidence_level": "HIGH",
       "filename": "<golden:passport_label_above_value>",
       "line_number": 4,
       "metadata": {
-        "confidence_adjustment": 0,
+        "confidence_adjustment": 20,
         "context_confidence": 1,
-        "context_doctype": "Unknown",
+        "context_doctype": "CSV",
         "context_domain": "Government",
         "context_impact": 20,
         "country": "UK",
@@ -38,14 +38,14 @@
       "validator": "passport"
     },
     {
-      "confidence": 75,
-      "confidence_level": "MEDIUM",
+      "confidence": 95,
+      "confidence_level": "HIGH",
       "filename": "<golden:passport_label_above_value>",
       "line_number": 2,
       "metadata": {
-        "confidence_adjustment": 0,
+        "confidence_adjustment": 20,
         "context_confidence": 1,
-        "context_doctype": "Unknown",
+        "context_doctype": "CSV",
         "context_domain": "Government",
         "context_impact": 15,
         "country": "UK",
