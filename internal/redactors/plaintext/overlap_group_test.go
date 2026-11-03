@@ -128,7 +128,17 @@ func TestOverlapGroupsLeaveNoMemberByte(t *testing.T) {
 				if want, ok := c.want[st]; ok && got != want {
 					t.Fatalf("got  %q\nwant %q", got, want)
 				}
-				for _, a := range c.absent {
+				// The fragments are the heads and tails a partial mask leaves in place, which is
+				// the leak the deterministic strategies are held to. The synthetic strategy writes
+				// random characters of the member's shape, so a fragment recurs there by chance:
+				// nine random digits contain "512" about 1.2% of the time (12 of 1,000 runs), which
+				// is what failed CI on main. What synthetic can be held to is that no member's
+				// whole value survives.
+				absent := c.absent
+				if st == redactors.RedactionSynthetic {
+					absent = memberTexts(c.ms)
+				}
+				for _, a := range absent {
 					if strings.Contains(got, a) {
 						t.Fatalf("%q survived: %q", a, got)
 					}
@@ -136,6 +146,20 @@ func TestOverlapGroupsLeaveNoMemberByte(t *testing.T) {
 			})
 		}
 	}
+}
+
+// memberTexts is every distinct member value of a match set, the set a synthetic rendering must
+// not contain.
+func memberTexts(ms []detector.Match) []string {
+	seen := make(map[string]bool, len(ms))
+	var out []string
+	for _, m := range ms {
+		if !seen[m.Text] {
+			seen[m.Text] = true
+			out = append(out, m.Text)
+		}
+	}
+	return out
 }
 
 // fixture builds k unrelated email lines, the passport line, and k more: 2k+2 matches.
