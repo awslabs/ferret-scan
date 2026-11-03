@@ -29,11 +29,6 @@ BASE="${1:-origin/main}"
 export GOFLAGS="${GOFLAGS:--mod=mod}"
 export GOPROXY="${GOPROXY:-off}"   # the dev laptop blocks the proxy; offline by default
 
-out=$(mktemp -d "${TMPDIR:-/tmp}/pr-checklist.XXXXXX") || {
-  echo "Failed to create checklist output directory" >&2
-  exit 1
-}
-
 pass=0 fail=0 manual=0
 line() { printf '%-34s %s\n' "$1" "$2"; }
 ok()   { line "$1" "RAN — $2";          pass=$((pass+1)); }
@@ -51,6 +46,15 @@ changed=$(git diff --name-only "$BASE"...HEAD 2>/dev/null)
 if [ -z "$changed" ]; then
   echo "no changes vs $BASE — nothing to check"; exit 0
 fi
+
+# Created only once there is something to check, so the early exit above leaves
+# nothing behind. Kept after the run on purpose: the "see $out/..." pointers in
+# the summary are how a failure is read afterwards (#816).
+out=$(mktemp -d "${TMPDIR:-/tmp}/pr-checklist.XXXXXX") || {
+  echo "Failed to create checklist output directory" >&2
+  exit 1
+}
+
 prod=$(echo "$changed" | grep -E '\.go$' | grep -v '_test\.go$' || true)
 n_prod=$(echo "$prod" | grep -c . || true)
 echo "$changed" | while IFS= read -r f; do printf '  %s\n' "$f"; done
