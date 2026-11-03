@@ -164,23 +164,26 @@ fi
 
 echo
 echo "== gates on the UNION (this is the part CI never runs) =="
+# Per-run capture dir. Fixed /tmp paths let concurrent runs from different
+# worktrees overwrite each other's logs (the pr-checklist.sh bug, #816/#836).
+out=$(mktemp -d "${TMPDIR:-/tmp}/integration-branch.XXXXXX") || { echo "mktemp failed" >&2; exit 1; }
 rc=0
 (
   cd "$wt" || exit 2
   unf=$(gofmt -l ./cmd ./internal ./pkg 2>/dev/null)
   if [ -n "$unf" ]; then echo "  gofmt   FAIL: $(echo "$unf" | tr '\n' ' ')"; exit 1; fi
   echo "  gofmt   ok"
-  go build ./... >/tmp/_int_build 2>&1 || { echo "  build   FAIL (see /tmp/_int_build)"; exit 1; }
+  go build ./... >"$out"/int_build 2>&1 || { echo "  build   FAIL (see $out/int_build)"; exit 1; }
   echo "  build   ok"
-  go vet ./... >/tmp/_int_vet 2>&1   || { echo "  vet     FAIL (see /tmp/_int_vet)"; exit 1; }
+  go vet ./... >"$out"/int_vet 2>&1   || { echo "  vet     FAIL (see $out/int_vet)"; exit 1; }
   echo "  vet     ok"
 
   # -count=1: a cached PASS from a single-PR run proves nothing about the union.
-  if go test -count=1 ./cmd/... ./internal/... ./pkg/... >/tmp/_int_suite 2>&1; then
-    echo "  suite   ok ($(grep -c '^ok' /tmp/_int_suite) packages)"
+  if go test -count=1 ./cmd/... ./internal/... ./pkg/... >"$out"/int_suite 2>&1; then
+    echo "  suite   ok ($(grep -c '^ok' "$out"/int_suite) packages)"
   else
     echo "  suite   FAIL:"
-    grep -E '^(FAIL|[[:space:]]+--- FAIL|--- FAIL)' /tmp/_int_suite | head -20 | sed 's/^/            /'
+    grep -E '^(FAIL|[[:space:]]+--- FAIL|--- FAIL)' "$out"/int_suite | head -20 | sed 's/^/            /'
     echo "            ^ green individually, red together = a SEMANTIC cross-PR conflict."
     echo "            Resolve it on the branch that lands LATER, not by regenerating blind."
     exit 1
@@ -200,10 +203,10 @@ rc=0
     fi
   fi
 
-  if go test -race -count=1 ./cmd/... ./internal/... ./pkg/... >/tmp/_int_race 2>&1; then
+  if go test -race -count=1 ./cmd/... ./internal/... ./pkg/... >"$out"/int_race 2>&1; then
     echo "  race    ok"
   else
-    echo "  race    FAIL: $(grep -E 'DATA RACE|^FAIL' /tmp/_int_race | head -3 | tr '\n' ' ')"
+    echo "  race    FAIL: $(grep -E 'DATA RACE|^FAIL' "$out"/int_race | head -3 | tr '\n' ' ')"
     exit 1
   fi
 ) || rc=1
