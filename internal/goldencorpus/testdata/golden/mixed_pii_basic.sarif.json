@@ -307,10 +307,11 @@
             "metadata": {
               "clean_number": "2125550142",
               "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
               "context_confidence": 0,
               "context_doctype": "Unknown",
               "context_domain": "Unknown",
-              "context_impact": -12,
+              "context_impact": -20,
               "country": "US/CA",
               "format": "XXX-XXX-XXXX",
               "original_confidence": 15,
@@ -341,8 +342,7 @@
               "example"
             ],
             "positiveKeywords": [
-              "call",
-              "contact"
+              "call"
             ],
             "validator": "phone"
           },
