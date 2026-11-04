@@ -766,6 +766,34 @@ var Cases = []Case{
 			"session_timeout=30m\n",
 	},
 	{
+		Name: "secrets_sri_digest_and_key_path_decoys",
+		Description: "The values #881 newly lets reach scoring that are not credentials, which must stay " +
+			"EMPTY. The entropy path's class dropped `-` (a QuoteMeta range bug), so no quoted value with a " +
+			"hyphen was ever scored; with `-` admitted, a Subresource Integrity or CSP hash source -- " +
+			"`<script integrity>`, a CSP `'sha512-...'` source, a nix `narHash` -- is a quoted 28-88 byte " +
+			"high-entropy string, and only the exact-length `sha1/256/384/512-` digest skip keeps it out. " +
+			"A joined stem (`apikey`, `privkey`, `accesstoken`) now corroborates its value as `api_key` " +
+			"does, except a rooted value holding a `.`: certbot's `privkey = /etc/letsencrypt/...pem` and " +
+			"`<joined stem> = <path>` in its rooted spellings. A UUID and a kebab-case slug, quoted, stay " +
+			"under the entropy floor.\n" +
+			"  The positives -- hyphenated values, the 13 joined stems, ASIA access key IDs -- are pinned by " +
+			"the unit tests in internal/validators/secrets (entropy_class_test.go, joined_stem_test.go, " +
+			"aws_temporary_key_test.go) rather than here, since a positive case would move the " +
+			"metadata-key census.",
+		Checks: []string{"SECRETS"},
+		Input: "<script src=\"/static/app.js\" integrity=\"" + sriDigest("app.js") + "\" crossorigin=\"anonymous\"></script>\n" +
+			"Content-Security-Policy: default-src 'self'; script-src 'self' '" + sriDigest("inline-boot") + "'\n" +
+			"        \"narHash\": \"sha256-klNqU/jORiet4cb6clI/A7QQzQx6xrZ6RlyF9wzPLTY=\",\n" +
+			"[renewalparams]\n" +
+			"privkey = /etc/letsencrypt/live/mail.internal/privkey.pem\n" +
+			"apikey = /srv/app/conf/abc.pem\n" +
+			"accesstoken = ./conf/abc.pem\n" +
+			"privatekey = C:\\app\\conf\\abc.pem\n" +
+			"clientkey=~/.config/app/client.pem\n" +
+			"\"request_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n" +
+			"\"name\": \"orders-service-blue-green-deployment-v2\",\n",
+	},
+	{
 		Name:        "ip_addresses",
 		Description: "Public vs private/loopback IPv4; locks IP_ADDRESS context handling.",
 		Checks:      []string{"IP_ADDRESS"},

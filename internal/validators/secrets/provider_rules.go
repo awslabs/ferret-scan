@@ -79,9 +79,13 @@ const (
 // nothing about results, only about the order of the derived lists.
 var providerRules = []providerRule{
 	{
-		Type: "AWS_ACCESS_KEY", Prefixes: []string{"AKIA"},
+		// AKIA is a long-term key ID, ASIA a temporary (STS) one (#881). One row, so the
+		// regex, isAWSAccessKey, the line pre-check and reAKIAAnywhere share one definition.
+		// An ASIA ID is scored by applyTemporaryAccessKey: LOW unless the rest of its
+		// credential sits beside it.
+		Type: "AWS_ACCESS_KEY", Prefixes: []string{"AKIA", awsTemporaryKeyPrefix},
 		Charset: `[0-9A-Z]`, MinBody: 16, Mode: modeExact, Base: 94,
-		Describe: "AWS Access Keys: AKIA[16 characters]",
+		Describe: "AWS Access Keys: AKIA[16 characters] (long-term), ASIA[16 characters] (temporary; LOW unless a secret access key or session token is on the same or an adjacent line)",
 	},
 	{
 		Type: "GITHUB_TOKEN", Prefixes: []string{"ghp_", "gho_", "ghu_", "ghs_", "ghr_"},
@@ -121,6 +125,32 @@ var providerRules = []providerRule{
 		Type: "SLACK_TOKEN", Prefixes: []string{"xoxp-"},
 		Head: `[0-9]{11,12}-[0-9]{11,12}-[0-9]{11,12}-`, Charset: `[a-zA-Z0-9]`, MinBody: 32, Mode: modeAtLeast, Base: 94,
 	},
+}
+
+// awsTemporaryKeyPrefix is the prefix of a temporary access key ID, the kind AWS STS issues
+// together with a secret access key and a session token. AWS's IAM identifier table says such an
+// ID identifies a credential only together with those two, and audit exports (CloudTrail event
+// history) carry one on most rows with neither, which is why it is scored apart from AKIA.
+const awsTemporaryKeyPrefix = "ASIA"
+
+// awsAccessKeyRule is the AWS_ACCESS_KEY row, found by type so the table's order cannot move it.
+var awsAccessKeyRule = func() providerRule {
+	for _, r := range providerRules {
+		if r.Type == "AWS_ACCESS_KEY" {
+			return r
+		}
+	}
+	panic("secrets: providerRules has no AWS_ACCESS_KEY row")
+}()
+
+// hasAWSAccessKeyPrefix reports whether s starts with a prefix of the AWS_ACCESS_KEY row.
+func hasAWSAccessKeyPrefix(s string) bool {
+	for _, p := range awsAccessKeyRule.Prefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // compiledProviderRule is a row with its derived matchers.

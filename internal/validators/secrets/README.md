@@ -12,6 +12,18 @@ Uses Shannon entropy to identify random-looking strings that are likely to be cr
 - **Hex strings**: Entropy threshold 3.0, minimum 16 characters
 - **Statistical validation**: Analyzes character distribution patterns
 - **Context-aware entropy**: Adjusts thresholds based on document context
+- **Admitted characters**: a quoted value is a base64 candidate when every byte is a letter, a
+  digit or one of `+ / = \ _ -`. Until #881 the class was built with `regexp.QuoteMeta` alone,
+  whose `\-_` became the range `\`..`_`: `]` and `^` were admitted and `-` was not, so no quoted
+  value with a hyphen (base64url, a JWK member, `sk-ant-...`) was ever scored. `\` stays, for the
+  escaped notebook cell `api_key=\"...\"`; `.` stays out.
+- **Integrity digests are skipped**: a value that is wholly `sha1-`, `sha256-`, `sha384-` or
+  `sha512-` and standard base64 decoding to exactly that digest's length (28, 44, 64 or 88
+  characters) is a Subresource Integrity or CSP hash source -- lockfile `"integrity"`, nix
+  `"narHash"`, `<script integrity>`, `'sha256-...'` -- and is not scored. The test reads the value
+  only, never the line or the file name, so it cannot be reached by relabelling a credential, and
+  it is not configurable. It hides nothing reported before #881: with `-` out of the class no such
+  value could reach the entropy path.
 
 ### 2. Enhanced Keyword Pattern Matching
 
@@ -60,7 +72,7 @@ The validator detects various cryptographic key formats:
 
 ### **Cloud Provider API Keys (High Confidence: 94-95%)**
 
-- **AWS_ACCESS_KEY** - `AKIA[0-9A-Z]{16}` (Amazon Web Services; the vendor fixes the length, so the 20-byte window is the key)
+- **AWS_ACCESS_KEY** - `AKIA[0-9A-Z]{16}` and `ASIA[0-9A-Z]{16}` (Amazon Web Services; the vendor fixes the length, so the 20-byte window is the key). `ASIA` is a temporary (STS) key ID, reported with `aws_key_kind: temporary` and scored by what is beside it (#881): HIGH when a secret access key or session token value sits on the same or an adjacent line, at most 55 (LOW) otherwise, bare or under its own label, because a CloudTrail export carries one on every row with neither. `AIDA`, `AROA`, `ANPA` and the other IAM unique IDs name users, roles and policies, not keys, and are not reported.
 - **GOOGLE_CLOUD_API_KEY** - `AIza[0-9A-Za-z_-]{35}` (Google Cloud Platform; fixed length)
 
 ### **Development Platform Tokens (High Confidence: 92-94%)**
@@ -114,6 +126,16 @@ begins; a Stripe prefix glued to a word on its left with no digit in the body
   (`apikey`, `api_key`, `api-key`), in every pattern built from it, and a quoted JSON or dict key
   may carry the HTTP custom-header prefix `x-` (`"x-api-key": "..."`, `{'X-Api-Key': '...'}`).
   The dash spelling reports exactly what the underscore spelling reports (#764).
+- **Joined stems corroborate**: the spelling with no separator (`apikey`, `authkey`,
+  `servicekey`, `accountkey`, `dbkey`, `databasekey`, `privkey`, `privatekey`, `clientkey`,
+  `accesskey`, `secretaccesskey`, `secretkey`, `accesstoken`, any case) corroborates the values on
+  its line as the positive keywords do, so `apikey=<v>` scores as `api_key=<v>` (#881). The words
+  are derived from the stem lists, not listed by hand. Until #881 these lines matched a pattern and
+  were then held under the reporting threshold as uncorroborated, so `apikey: <v>` reported nothing
+  and `apikey = "<v>"` reported 55. A rooted value holding a `.` (`/`, `./`, `../`, `~/` or a drive
+  letter: certbot's `privkey = /etc/letsencrypt/live/<host>/privkey.pem`) does not take this lift,
+  and reports exactly as before; `.` is in no base64 or hex alphabet, so no such value is a base64
+  or hex secret.
 - **Masked values are not secrets**: an unquoted value that is only `*` (this tool's own
   redaction, #522), or a provider prefix from the grammar table followed by at least 8 `*` and
   nothing else (`gho_` and 36 `*`, the way several tools print a token in a log, #807), is no
@@ -419,14 +441,16 @@ Starting confidence level for detected patterns.
 
 A ceiling is an upper bound the validator publishes in
 `Match.Metadata["confidence_ceiling"]`. Unlike the penalties above it is not an
-addend competing with context — nothing downstream can out-vote it. Two apply here:
+addend competing with context — nothing downstream can out-vote it. Four apply here:
 
 | Value class | Ceiling | Reason |
 |---|---|---|
 | A bare 32/40/64-char hex identifier on a line naming nothing secret | 55 | GUIDs, digests, ETags and commit ids share the shape of a key. `api_key = "14f6…"` keeps its full score; `ImageUniqueID: "14f6…"` is capped. A password or token in URI user info is not asked: its position in the URI is its label (#808). |
 | An AWS credential whose own bytes contain `EXAMPLE` — `AKIAIOSFODNN7EXAMPLE`, `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` | 15 | AWS publishes these in its documentation. Measured before: 84% and 75% MEDIUM, i.e. presented as real credentials (#364). |
+| A temporary access key ID (`ASIA…`) with no secret access key or session token value on its line or an adjacent one | 55 | It authenticates nothing alone, and audit exports carry one on every row (#881). The `EXAMPLE` ceiling still wins for `ASIAIOSFODNN7EXAMPLE`. |
+| A generic value holding a `-` that no positive keyword or joined stem on its line corroborates | 55 | The value class #881 newly admits: base64url test vectors, RFC 3492 punycode samples, alphabet constants. The validator already caps these at 55; publishing it stops a CSV/TSV document's context boost lifting them to MEDIUM. A hyphen-free value is unchanged. |
 
-Both are **demotions, not suppressions**: the finding is still reported, so it is
+All four are **demotions, not suppressions**: the finding is still reported, so it is
 still redacted. `--confidence low` shows it; `--explain` reports
 `not_test_data: false` and a `likely_test` verdict.
 
