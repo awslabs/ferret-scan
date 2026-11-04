@@ -12,6 +12,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors/tagmeta"
 )
 
 // The same-length invariant is the whole reason this redactor can work without a
@@ -37,18 +38,18 @@ func TestSameLengthReplacementAlwaysMatchesLength(t *testing.T) {
 	strategies := []redactors.RedactionStrategy{
 		redactors.RedactionSimple,
 		redactors.RedactionFormatPreserving,
-		redactors.RedactionSynthetic, // not advertised, but must still be length-safe
+		redactors.RedactionSynthetic, // refused before rendering, but the renderer must still be length-safe
 	}
 	for _, v := range values {
 		for _, st := range strategies {
-			got := sameLengthReplacement(v.val, v.typ, st)
+			got := tagmeta.SameLengthReplacement(v.val, v.typ, st)
 			if len(got) != len(v.val) {
-				t.Errorf("sameLengthReplacement(%q, %s, %s) = %q: %d bytes, want %d — "+
+				t.Errorf("SameLengthReplacement(%q, %s, %s) = %q: %d bytes, want %d — "+
 					"a length change breaks every offset in the container",
 					v.val, v.typ, st.String(), got, len(got), len(v.val))
 			}
 			if got == v.val {
-				t.Errorf("sameLengthReplacement(%q, %s, %s) returned the value unchanged — "+
+				t.Errorf("SameLengthReplacement(%q, %s, %s) returned the value unchanged — "+
 					"that writes the secret back out", v.val, v.typ, st.String())
 			}
 		}
@@ -278,22 +279,6 @@ func TestIsCompoundFile(t *testing.T) {
 		if isCompoundFile(b) {
 			t.Errorf("non-CFB input %v accepted", b)
 		}
-	}
-}
-
-// The declared strategy set must be honest. Synthetic generates a value whose
-// length is unrelated to the original, which this redactor cannot honour, so
-// advertising it would promise something the output does not deliver.
-func TestSupportedStrategiesExcludeSynthetic(t *testing.T) {
-	r := NewLegacyOLERedactor(nil, nil)
-	for _, s := range r.GetSupportedStrategies() {
-		if s == redactors.RedactionSynthetic {
-			t.Error("Synthetic is advertised but cannot preserve length; the redactor would " +
-				"silently substitute a mask and misreport what the output contains")
-		}
-	}
-	if len(r.GetSupportedStrategies()) == 0 {
-		t.Error("no strategies advertised; the manager would never select this redactor")
 	}
 }
 

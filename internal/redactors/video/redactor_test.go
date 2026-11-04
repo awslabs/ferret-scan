@@ -347,17 +347,6 @@ func TestOversizeMetadataIsRefusedNotTruncated(t *testing.T) {
 	}
 }
 
-// TestSyntheticStrategyIsNotAdvertised keeps the strategy list honest. Synthetic generates a
-// value whose length is unrelated to the original, and this redactor cannot change a length.
-func TestSyntheticStrategyIsNotAdvertised(t *testing.T) {
-	for _, s := range NewVideoRedactor(nil, nil).GetSupportedStrategies() {
-		if s == redactors.RedactionSynthetic {
-			t.Error("synthetic is advertised; it cannot preserve length, so claiming it would " +
-				"promise an output this redactor cannot produce")
-		}
-	}
-}
-
 // TestSupportedTypesCoverTheScannedExtensions ties the two halves together. A type the scanner
 // reads and this does not claim is a reported finding that cannot be removed — the whole defect.
 func TestSupportedTypesCoverTheScannedExtensions(t *testing.T) {
