@@ -406,16 +406,6 @@ func TestFileWithNoMetadataRegionIsRefused(t *testing.T) {
 	}
 }
 
-// Synthetic cannot preserve length, so it must not be advertised.
-func TestSyntheticStrategyIsDeclined(t *testing.T) {
-	for _, s := range NewAudioRedactor(nil, nil).GetSupportedStrategies() {
-		if s == redactors.RedactionSynthetic {
-			t.Error("Synthetic is advertised, but it generates a value whose length is unrelated " +
-				"to the original and this redactor cannot change a length")
-		}
-	}
-}
-
 // The manager resolves redactors by extension in both spellings.
 func TestSupportedTypesCoverEveryScannedAudioFormat(t *testing.T) {
 	got := map[string]bool{}

@@ -4,8 +4,12 @@
 package redactors
 
 import (
+	"errors"
+	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
 
 // Declared redaction capability: which registered file types can actually be rewritten.
@@ -139,4 +143,67 @@ func lookupReason(declared map[string]string, t string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// Declared strategy support: which of the three strategies a redactor can honour (#863).
+//
+// GetSupportedStrategies has been on the Redactor interface since the interface existed, and until
+// this nothing outside a test ever called it. Three redactors -- audio, video and legacy OLE --
+// rewrite a value in place at its own byte length, so they leave synthetic out of their declaration
+// and their comments say the strategy "is declined" so "the caller can choose another". Nothing
+// declined it. Measured on main at b0a9163 with --checks EMAIL,PHONE,CREDIT_CARD on all twelve of
+// their extensions: --redaction-strategy synthetic wrote a same-length '*' mask at exit 0 with an
+// empty stderr, a rendering no document describes, while the audit log and
+// RedactFileResult.Strategy recorded "synthetic".
+//
+// CheckStrategy is the one place a declaration is enforced. RedactorFor applies it where this
+// package dispatches a file, and the same-length redactors apply it again at their own entry point,
+// so a strategy a redactor does not declare is refused -- disclosed, nothing written -- instead of
+// being rendered as something else.
+
+// ErrStrategyNotSupported is wrapped by the error returned when a file's redactor does not declare
+// the requested strategy. Nothing was written for that file.
+var ErrStrategyNotSupported = errors.New("redaction strategy not supported for this file type")
+
+// SupportsStrategy reports whether r declares s in GetSupportedStrategies.
+func SupportsStrategy(r Redactor, s RedactionStrategy) bool {
+	for _, d := range r.GetSupportedStrategies() {
+		if d == s {
+			return true
+		}
+	}
+	return false
+}
+
+// CheckStrategy returns nil when matches may be handed to r under s, and otherwise an error wrapping
+// ErrStrategyNotSupported that names s and the strategies r declares, so the operator can pick one.
+//
+// A dispatch with no matches is never refused. Nothing would be rendered, so no strategy is being
+// applied, and refusing would report a clean or fully suppressed file as unredacted.
+func CheckStrategy(r Redactor, s RedactionStrategy, matches []detector.Match) error {
+	if len(matches) == 0 || SupportsStrategy(r, s) {
+		return nil
+	}
+	declared := r.GetSupportedStrategies()
+	names := make([]string, 0, len(declared))
+	for _, d := range declared {
+		names = append(names, d.String())
+	}
+	return fmt.Errorf("%w: %s supports %s, not %s", ErrStrategyNotSupported,
+		r.GetName(), strings.Join(names, " and "), s)
+}
+
+// RedactorFor selects the redactor for a dispatch of matches under strategy: GetRedactorForFile's
+// choice, refused with an error wrapping ErrStrategyNotSupported when that redactor does not declare
+// strategy. A selection failure is returned exactly as GetRedactorForFile returns it, so a caller can
+// still tell "no redactor for this type" from "this type cannot take this strategy".
+func (rm *RedactionManager) RedactorFor(filePath string, strategy RedactionStrategy, matches []detector.Match) (Redactor, error) {
+	r, err := rm.GetRedactorForFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	if err := CheckStrategy(r, strategy, matches); err != nil {
+		return nil, err
+	}
+	return r, nil
 }

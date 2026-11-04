@@ -53,6 +53,12 @@ AKIAIOSFODNN7...  →  [SECRET-REDACTED]
 
 Use this when the document will be shared externally or when downstream systems don't need to parse the field.
 
+Audio, video and legacy Office files are rewritten in place at the same byte length (see the notes
+under [Document Type Support](#document-type-support)), so a placeholder does not fit there:
+`simple` writes a same-length `*` mask of the value instead, and keeps nothing of it
+(`4916338506082832 → ****************`). Up to v2.5.5 those formats wrote the
+`format_preserving` rendering under `simple`, last four digits and email domain included.
+
 ### `format_preserving` (default)
 
 Masks the sensitive portion while keeping separators, length, and structure intact. Useful when downstream systems validate format.
@@ -182,11 +188,15 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 > stream itself is never read or modified, so nothing in the recording's *content* is
 > redacted. Replacements are exactly as long as the value they replace, so no chunk,
 > frame, atom size or sample offset has to be recomputed and the file stays playable.
-> Two consequences follow. `synthetic` is **not** offered for these formats, because a
-> generated value's length is unrelated to the original; `simple` and
-> `format_preserving` are. And the redactor **refuses** rather than writing a partly
-> handled file: if a reported value cannot be located in the tag bytes, no output is
-> written and the run discloses it.
+> Two consequences follow. `synthetic` is **refused** for these formats, because a
+> generated value's length is unrelated to the original: a file with findings gets **no
+> output**, the run names it under `redaction incomplete` with the strategies it does
+> take, and `--fail-on-incomplete` makes that exit `3`. A file with nothing to redact is
+> not refused. `format_preserving` writes the same rendering as a `.docx`, and `simple` a
+> same-length `*` mask, because its placeholder does not fit. (Up to v2.5.5 `synthetic`
+> was accepted and written as a mask, and `simple` as `format_preserving`, at exit 0.)
+> And the redactor **refuses** rather than writing a partly handled file: if a reported
+> value cannot be located in the tag bytes, no output is written and the run discloses it.
 >
 > **Note on XMP in MP4/M4A/MOV**: a metadata editor typically writes the same tag into **two**
 > homes — the QuickTime/iTunes atoms under `moov/udta`, and an XMP packet. Both are redacted.
@@ -213,8 +223,12 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 > byte length, so no stream changes size and every sector offset, chain and length
 > prefix in the container stays valid — nothing has to be recomputed because nothing
 > moves. Two consequences follow. The `synthetic` strategy is **not** offered for
-> these formats, because a generated value's length is unrelated to the original;
-> `simple` and `format_preserving` are. And detection of body text is approximate
+> these formats, because a generated value's length is unrelated to the original:
+> a legacy file embedded in a `.docx`/`.xlsx`/`.pptx` is refused under `synthetic`,
+> and its container with it, while a top-level `.doc`/`.xls`/`.ppt` is still written
+> with a same-length `*` mask, which keeps nothing of the value. `format_preserving`
+> writes the same rendering as a `.docx`, and `simple` a same-length `*` mask, because
+> its placeholder does not fit. And detection of body text is approximate
 > (see the Office metadata preprocessor README), so redaction of `.doc` body text is
 > only as complete as detection was — document **properties** are exact.
 >

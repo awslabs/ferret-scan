@@ -34,9 +34,9 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/replacement"
 )
 
-// MaskByte is what a value becomes when no length-preserving replacement fits. '*' matches
-// what FormatPreserving already uses, so a masked value looks the same whichever path
-// produced it.
+// MaskByte is what a value becomes under simple, and under format_preserving when no
+// length-preserving rendering fits. '*' matches what FormatPreserving already uses, so a masked
+// value looks the same whichever path produced it.
 const MaskByte = '*'
 
 // Region is a half-open [Start, End) span of an in-memory buffer that holds metadata.
@@ -99,7 +99,8 @@ type Occurrence struct {
 // So every occurrence is located in the ORIGINAL bytes, before anything is written, and
 // overlapping spans are merged into one. A merged span is masked rather than
 // format-preserved, because it covers parts of two values of different types and no single
-// format-preserving rendering is correct for both.
+// format-preserving rendering is correct for both. A single value is rendered by
+// SameLengthReplacement under strategy.
 // It also reports, per match, how many occurrences of that match were located, so the caller
 // can record a mapping only for values it actually wrote over — never one it merely tried.
 func Plan(orig []byte, regions []Region, matches []detector.Match, strategy redactors.RedactionStrategy) (plan []Occurrence, perMatch []int) {
@@ -351,22 +352,63 @@ func Residual(buf []byte, regions []Region, matches []detector.Match) int {
 	return residual
 }
 
-// SameLengthReplacement produces a replacement with exactly len(original) bytes.
-//
-// FormatPreserving is tried first so a redacted .mp3 reads like a redacted .docx. It is
-// length-preserving by construction, but that is verified rather than assumed, and the
-// replacement must also DIFFER from the input: a masking scheme can return its argument
-// unchanged at some input size, and writing that back is a redaction that redacts nothing.
-// legacyole records that this was not hypothetical — preserveEmail returned "a@b.co"
-// unchanged for a single-character local part.
+// SameLengthReplacement produces a replacement with exactly len(original) bytes. It is
+// SameLengthRendering's text.
 func SameLengthReplacement(original, dataType string, strategy redactors.RedactionStrategy) string {
-	if strategy == redactors.RedactionFormatPreserving || strategy == redactors.RedactionSimple {
-		fp := replacement.FormatPreserving(original, dataType)
-		if len(fp) == len(original) && fp != original {
+	return SameLengthRendering(original, dataType, strategy).Text
+}
+
+// SameLengthRendering is the one rendering every same-length redactor writes -- audio, video
+// (both through Plan) and legacy OLE -- together with the original bytes it keeps.
+//
+// format_preserving renders as it does in a .docx, so a redacted .mp3 reads like a redacted
+// .docx. It is length-preserving by construction, but that is verified rather than assumed, and
+// the replacement must also DIFFER from the input: a masking scheme can return its argument
+// unchanged at some input size, and writing that back is a redaction that redacts nothing.
+// preserveEmail once returned "a@b.co" unchanged for a single-character local part.
+//
+// simple writes a full same-length mask, for every type (#863). simple's placeholder
+// ("[SSN-REDACTED]") does not fit in the value's bytes, and simple is documented as keeping
+// nothing of the value. This used to render simple as format_preserving, so on all twelve
+// in-class extensions the two strategies wrote byte-identical files and simple kept a card's last
+// four digits, an email's first character and domain and a phone's last four, at exit 0. A mask
+// is the only same-length rendering that keeps nothing.
+//
+// Any other strategy also gets the mask, as the fail-safe it always was. The redactors that call
+// this refuse a strategy they do not declare before rendering anything (CheckStrategy), so
+// synthetic no longer arrives here with a value to render.
+func SameLengthRendering(original, dataType string, strategy redactors.RedactionStrategy) replacement.Rendering {
+	if strategy == redactors.RedactionFormatPreserving {
+		fp := replacement.Render(original, dataType, redactors.RedactionFormatPreserving)
+		if len(fp.Text) == len(original) && fp.Text != original {
 			return fp
 		}
 	}
-	return strings.Repeat(string(MaskByte), len(original))
+	return replacement.Rendering{Text: strings.Repeat(string(MaskByte), len(original))}
+}
+
+// SameLengthGroupRendering is SameLengthRendering for an overlap group: one write over g.Text, the
+// union of its members' bytes. format_preserving takes replacement.RenderGroup's rendering when it
+// fits the union's length and differs from it; everything else, simple included, is masked whole.
+func SameLengthGroupRendering(g redactors.OverlapGroup, matches []detector.Match, strategy redactors.RedactionStrategy) replacement.Rendering {
+	if strategy == redactors.RedactionFormatPreserving {
+		fp := replacement.RenderGroup(g, matches, redactors.RedactionFormatPreserving)
+		if len(fp.Text) == len(g.Text) && fp.Text != g.Text {
+			return fp
+		}
+	}
+	return replacement.Rendering{Text: strings.Repeat(string(MaskByte), len(g.Text))}
+}
+
+// CheckStrategy is redactors.CheckStrategy with the reason a same-length redactor declines a
+// strategy, for the refusal an operator reads. Each same-length redactor calls it before reading
+// its input, so an undeclared strategy writes nothing whichever dispatcher handed the file over.
+func CheckStrategy(r redactors.Redactor, strategy redactors.RedactionStrategy, matches []detector.Match) error {
+	if err := redactors.CheckStrategy(r, strategy, matches); err != nil {
+		return fmt.Errorf("%w; values in this format are overwritten in place at their own byte length, "+
+			"which a %s replacement does not keep", err, strategy)
+	}
+	return nil
 }
 
 // UTF16BE encodes a string as UTF-16 big-endian, with surrogate pairs for anything outside

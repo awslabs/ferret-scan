@@ -72,7 +72,9 @@ type EmbeddedRedactionRequest struct {
 	Matches []detector.Match
 
 	// Strategy is the redaction strategy to apply, unchanged from the parent so a
-	// nested value is masked the same way as a top-level one.
+	// nested value is masked the same way as a top-level one. A part whose redactor
+	// does not declare it is refused (ErrStrategyNotSupported), never rendered
+	// under another strategy.
 	Strategy RedactionStrategy
 }
 
@@ -230,8 +232,17 @@ func (rm *RedactionManager) RedactEmbedded(req EmbeddedRedactionRequest) (*Embed
 	// Dispatch by type. GetRedactorForFile also diverts a container extension whose
 	// bytes are not that container to the text redactor, which is wanted here too:
 	// an entry named .docx that is actually plain text is still redactable.
-	redactor, err := rm.GetRedactorForFile(inPath)
+	//
+	// RedactorFor rather than GetRedactorForFile, so the child's declared strategies
+	// are enforced here as at the top level (#863): an .mp3 inside a .docx asked for
+	// synthetic is refused, and the container with it, instead of being masked under
+	// a strategy name it does not honour. That refusal is not "no redactor": the type
+	// has one, so it keeps its own sentinel and wording.
+	redactor, err := rm.RedactorFor(inPath, req.Strategy, req.Matches)
 	if err != nil {
+		if errors.Is(err, ErrStrategyNotSupported) {
+			return nil, fmt.Errorf("redacting embedded part %s: %w", filepath.Base(req.PartName), err)
+		}
 		return nil, fmt.Errorf("%w: %s", ErrNoEmbeddedRedactor, filepath.Ext(req.PartName))
 	}
 

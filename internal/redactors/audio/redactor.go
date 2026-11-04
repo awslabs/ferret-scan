@@ -24,9 +24,14 @@
 //
 // # The strategy constraint that creates
 //
+// format_preserving writes the same rendering a .docx gets. simple writes a same-length '*' mask
+// of every value: its placeholder does not fit, and a mask is the only same-length rendering that
+// keeps nothing of the value (tagmeta.SameLengthRendering).
+//
 // Synthetic is declined: it generates a plausible value whose length is unrelated to the
-// original. Claiming support and silently masking instead would misreport what the output
-// contains.
+// original. RedactDocument refuses it before reading the file (tagmeta.CheckStrategy), so the run
+// discloses the file as not redacted. It used to be accepted and written as a mask, which
+// misreported what the output contains (#863).
 package audio
 
 import (
@@ -101,7 +106,8 @@ func (r *AudioRedactor) GetSupportedTypes() []string {
 	}
 }
 
-// GetSupportedStrategies reports which strategies this redactor can honour.
+// GetSupportedStrategies reports which strategies this redactor can honour, and RedactDocument
+// refuses any other.
 //
 // Synthetic is excluded deliberately — see the package comment: it cannot preserve length,
 // and this redactor cannot change one.
@@ -127,6 +133,12 @@ func (r *AudioRedactor) RedactDocument(originalPath string, outputPath string, m
 	})
 
 	start := time.Now()
+
+	// Refuse an undeclared strategy before anything is read or written, whichever dispatcher
+	// called. See the package comment.
+	if err := tagmeta.CheckStrategy(r, strategy, matches); err != nil {
+		return nil, err
+	}
 
 	raw, err := os.ReadFile(originalPath) // #nosec G304 -- path vetted by the router
 	if err != nil {

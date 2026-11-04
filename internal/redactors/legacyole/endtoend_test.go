@@ -22,7 +22,7 @@ import (
 // End-to-end redaction: a REAL OLE compound file goes in, and the assertions are
 // on the bytes of the file that comes out.
 //
-// The unit tests next door cover overwriteAll, sameLengthReplacement and the
+// The unit tests next door cover overwriteAll, tagmeta.SameLengthReplacement and the
 // content-range gate in isolation. None of them proves the sink: whether the value
 // is actually gone from the OUTPUT FILE, and whether that file is still a
 // container any reader will open. Both matter more than the pieces, because the
@@ -471,7 +471,7 @@ func TestRedaction_ReachesMiniStreamContent(t *testing.T) {
 }
 
 // The replacement written into the file must be a mask, not the original value.
-// sameLengthReplacement falls back to '*' repetition when a length-preserving
+// tagmeta.SameLengthReplacement falls back to '*' repetition when a length-preserving
 // replacement would return the input unchanged, and that fallback is what keeps a
 // degenerate case from writing the secret straight back out.
 func TestRedaction_WritesAMaskNotTheOriginal(t *testing.T) {

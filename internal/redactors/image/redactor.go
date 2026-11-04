@@ -193,11 +193,18 @@ func (imr *ImageMetadataRedactor) GetSupportedTypes() []string {
 	return types
 }
 
-// GetSupportedStrategies returns the redaction strategies this redactor supports
+// GetSupportedStrategies returns the redaction strategies this redactor supports: all three.
+//
+// The only method here is removal -- the metadata is dropped and the pixels re-encoded -- so the
+// output is the same under every strategy and keeps nothing of a value under any of them. This
+// used to declare simple alone. Nothing read the declaration then; since #863 the dispatcher
+// refuses an undeclared strategy (redactors.CheckStrategy), and the old list would have refused an
+// embedded image under the default, format_preserving, although the file is redacted the same way.
 func (imr *ImageMetadataRedactor) GetSupportedStrategies() []redactors.RedactionStrategy {
-	// Image metadata redaction only supports simple strategy (metadata removal)
 	return []redactors.RedactionStrategy{
 		redactors.RedactionSimple,
+		redactors.RedactionFormatPreserving,
+		redactors.RedactionSynthetic,
 	}
 }
 

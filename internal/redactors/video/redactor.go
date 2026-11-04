@@ -23,8 +23,10 @@
 // replaces. Changing a length would mean rewriting every enclosing atom size AND every sample
 // offset in stco, because moving bytes moves the video; getting that wrong yields a file a
 // player refuses. A corrupt file that looks redacted is worse than an honest refusal, which is
-// why synthetic — whose output length is unrelated to the input's — is declined rather than
-// silently masked.
+// why synthetic — whose output length is unrelated to the input's — is declined: RedactDocument
+// refuses it before opening the file (tagmeta.CheckStrategy). It used to be accepted and written
+// as a mask (#863). simple writes a same-length '*' mask of every value, and format_preserving
+// the rendering a .docx gets (tagmeta.SameLengthRendering).
 //
 // # Coordinates are not text
 //
@@ -118,7 +120,8 @@ func (r *VideoRedactor) GetSupportedTypes() []string {
 	}
 }
 
-// GetSupportedStrategies reports which strategies this redactor can honour.
+// GetSupportedStrategies reports which strategies this redactor can honour, and RedactDocument
+// refuses any other.
 //
 // Synthetic is excluded deliberately — see the package comment: it cannot preserve length, and
 // this redactor cannot change one.
@@ -153,6 +156,12 @@ func (r *VideoRedactor) RedactDocument(originalPath string, outputPath string, m
 
 	start := time.Now()
 	name := filepath.Base(originalPath)
+
+	// Refuse an undeclared strategy before anything is opened or written, whichever dispatcher
+	// called. See the package comment.
+	if err := tagmeta.CheckStrategy(r, strategy, matches); err != nil {
+		return nil, err
+	}
 
 	src, err := os.Open(filepath.Clean(originalPath)) // #nosec G304 -- path vetted by the router
 	if err != nil {

@@ -31,11 +31,17 @@
 //
 // # The strategy constraint this creates
 //
-// Same-length is a hard requirement, and the "simple" strategy cannot meet it:
-// "[SSN-REDACTED]" is 14 bytes against an 11-byte SSN. Rather than silently
-// truncate a token (which would leave part of a value behind) or refuse the file,
-// this redactor uses the length-preserving replacement the repo already has, and
-// falls back to a same-length mask when even that would not fit.
+// Same-length is a hard requirement, and the "simple" placeholder cannot meet it:
+// "[SSN-REDACTED]" is 14 bytes against an 11-byte SSN. Truncating the token is not
+// an option either, so simple writes a same-length '*' mask of the value: the only
+// same-length rendering that keeps nothing of it, which is what simple promises.
+// format_preserving writes the rendering a .docx gets, falling back to the mask
+// when even that would not fit. Both come from tagmeta.SameLengthRendering, the
+// one renderer every same-length redactor shares.
+//
+// simple used to be rendered as format_preserving here, so the two strategies
+// wrote byte-identical files and simple kept a card's last four digits, an
+// email's first character and domain and a phone's last four (#863).
 package legacyole
 
 import (
@@ -52,6 +58,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/replacement"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors/tagmeta"
 )
 
 // maskByte is what a value becomes when no length-preserving replacement fits.
@@ -91,6 +98,14 @@ func (r *LegacyOLERedactor) GetSupportedTypes() []string {
 // length. Claiming support and then silently masking instead would misreport what
 // the output contains, so the strategy is declined and the caller can choose
 // another rather than be surprised.
+//
+// Until #863 the declaration was all there was: nothing read it. The embedded
+// dispatcher now enforces it (RedactionManager.RedactorFor), so a .doc inside a
+// .docx asked for synthetic is refused with its container. A top-level file is
+// still written under synthetic with a same-length mask: RedactDocument does not
+// yet refuse it as audio and video do (tagmeta.CheckStrategy), because the golden
+// corpus's overlap-group sink test requires synthetic to succeed on .doc/.xls/.ppt.
+// Adding that call here is the remaining step once the test accepts the refusal.
 func (r *LegacyOLERedactor) GetSupportedStrategies() []redactors.RedactionStrategy {
 	return []redactors.RedactionStrategy{
 		redactors.RedactionSimple,
@@ -260,42 +275,6 @@ func (r *LegacyOLERedactor) logEvent(op string, success bool, meta map[string]in
 	})
 }
 
-// sameLengthReplacement produces a replacement with exactly len(original) bytes.
-//
-// FormatPreserving is tried first because it is what the rest of the tool
-// produces for this strategy, so a redacted .doc reads like a redacted .docx.
-// It is length-preserving by construction, but that is verified rather than
-// assumed: if it ever returns a different length, falling back to a mask is
-// correct and silently writing the wrong number of bytes is not.
-func sameLengthReplacement(original, dataType string, strategy redactors.RedactionStrategy) string {
-	return sameLengthRendering(original, dataType, strategy).Text
-}
-
-// sameLengthRendering is sameLengthReplacement with the bytes the replacement keeps, so two
-// renderings of one value can be compared for strictness.
-func sameLengthRendering(original, dataType string, strategy redactors.RedactionStrategy) replacement.Rendering {
-	if strategy == redactors.RedactionFormatPreserving || strategy == redactors.RedactionSimple {
-		fp := replacement.Render(original, dataType, redactors.RedactionFormatPreserving)
-		// Two conditions, and the second one is the important one.
-		//
-		// Length must match, because the whole in-place technique depends on it.
-		// But the replacement must also DIFFER from the input: a masking scheme
-		// can return its argument unchanged at some input size, and writing that
-		// back is a redaction that redacts nothing. That is not hypothetical --
-		// preserveEmail did exactly this for a single-character local part, so
-		// "a@b.co" came back as "a@b.co" and this redactor would have faithfully
-		// written the address into the "redacted" output.
-		//
-		// Checking here rather than trusting the strategy keeps this redactor
-		// correct even if another type acquires the same degenerate case later.
-		// The fallback mask is always safe.
-		if len(fp.Text) == len(original) && fp.Text != original {
-			return fp
-		}
-	}
-	return replacement.Rendering{Text: strings.Repeat(string(maskByte), len(original))}
-}
-
 // legacyWriteUnit is one value this redactor overwrites: a single match, or an overlap group's union.
 type legacyWriteUnit struct {
 	match       detector.Match // the representative; for a group, its Text is the union
@@ -306,13 +285,12 @@ type legacyWriteUnit struct {
 // legacyWriteUnits groups the matches as every writer does, renders each group at the same byte
 // length, and orders the overwrites longest value first.
 //
-// The rendering is replacement.RenderGroup's rule under this redactor's existing strategy mapping
-// (simple and format_preserving both render format_preserving, because a placeholder is not
-// length-preserving; anything else masks). Under that rule a group of DIFFERENT types crossing each
-// other is masked whole, as tagmeta masks every merged span; a contained group keeps its widest
-// member's rendering, as in .txt and .docx; an identical group keeps a digit only if every member
-// would. A rendering that does not fit the union's length falls back to a mask, as a single
-// value's always has.
+// The rendering is tagmeta's same-length rule: under format_preserving, replacement.RenderGroup's
+// rendering of the union; under simple (whose placeholder is not length-preserving), a mask, as for
+// a single value. Under format_preserving a group of DIFFERENT types crossing each other is masked
+// whole, as tagmeta masks every merged span; a contained group keeps its widest member's rendering,
+// as in .txt and .docx; an identical group keeps a digit only if every member would. A rendering
+// that does not fit the union's length falls back to a mask, as a single value's always has.
 //
 // Replacement here is by value -- every occurrence of a text in every stream -- so, as in the Office
 // redactor, a value a group touches takes the stricter of the renderings that carry it.
@@ -328,14 +306,9 @@ func legacyWriteUnits(matches []detector.Match, strategy redactors.RedactionStra
 		u := legacyWriteUnit{match: g.Unit(matches), group: g}
 		var r replacement.Rendering
 		if g.IsGroup() {
-			r = replacement.Rendering{Text: strings.Repeat(string(maskByte), len(g.Text))}
-			if strategy == redactors.RedactionFormatPreserving || strategy == redactors.RedactionSimple {
-				if fp := replacement.RenderGroup(g, matches, redactors.RedactionFormatPreserving); len(fp.Text) == len(g.Text) && fp.Text != g.Text {
-					r = fp
-				}
-			}
+			r = tagmeta.SameLengthGroupRendering(g, matches, strategy)
 		} else {
-			r = sameLengthRendering(u.match.Text, u.match.Type, strategy)
+			r = tagmeta.SameLengthRendering(u.match.Text, u.match.Type, strategy)
 		}
 		u.replacement = r.Text
 		units = append(units, u)
