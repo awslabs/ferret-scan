@@ -2871,8 +2871,10 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, ful
 		// Code files may have hardcoded secrets (bad practice)
 		ctxDelta += 8.0
 		checks["code_file_boost"] = true
-	case "JSON", "YAML":
-		// Structured config files
+	case "JSON":
+		// Structured config files: a .json path, or lines that are JSON values (JSON lines). There is
+		// no YAML case: DetectStructure has no YAML type, and a YAML file's `key: value` lines type it
+		// Configuration above (#849).
 		ctxDelta += 12.0
 		checks["structured_config_boost"] = true
 	}

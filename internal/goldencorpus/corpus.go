@@ -1237,6 +1237,36 @@ var Cases = []Case{
 			"order id: 4532015112830366 catalog\n",
 	},
 	{
+		Name: "context_tab_indented_source_decoys",
+		Description: "Go test source whose nested lines are indented with tabs, which must stay EMPTY " +
+			"(#849). DetectStructure counted any line holding two tabs as a TSV row, indentation tabs " +
+			"included, and typed a document from its first 2000 characters, so this file typed TSV and " +
+			"every candidate in it took tabular_boost +20 twice, in the validator's own score and again " +
+			"in the bridge: the four string concatenations around pw in the table rows, which score 45 " +
+			"and are not reported in an untyped file, reported as API_KEY_OR_SECRET at 85 MEDIUM on " +
+			"main. Indentation now separates no fields. The positives (a TSV table, a CSV table, a table " +
+			"below a page of prose, spreadsheet rows) are unit tests in internal/context, so this case " +
+			"adds no finding to the census.",
+		Checks: []string{"SECRETS"},
+		Input: "func TestLineVeto(t *testing.T) {\n" +
+			"\tpw := fixturePassword()\n" +
+			"\tfor _, c := range []struct {\n" +
+			"\t\tname string\n" +
+			"\t\tline string\n" +
+			"\t\twant bool\n" +
+			"\t}{\n" +
+			"\t\t{\"url member beside a password\", `{\"url\": \"https://github.com/orders/app\", \"password\": \"` + pw + `\"}`, true},\n" +
+			"\t\t{\"homepage member in a minified document\", `{\"homepage\":\"https://github.com/orders/svc\",\"db\":{\"password\":\"` + pw + `\"}}`, true},\n" +
+			"\t\t{\"checksum beside a word holding sha\", `{\"bucket\":\"shared-assets\",\"checksum\":\"crc32:00000000\",\"password\":\"` + pw + `\"}`, true},\n" +
+			"\t\t{\"keyword key with a version value\", `  \"password\": \"7.` + pw[:10] + `\"`, true},\n" +
+			"\t} {\n" +
+			"\t\tif got := reported(c.line); got != c.want {\n" +
+			"\t\t\tt.Errorf(\"%s: reported = %v, want %v\", c.name, got, c.want)\n" +
+			"\t\t}\n" +
+			"\t}\n" +
+			"}\n",
+	},
+	{
 		Name: "context_keywords_snake_case",
 		Description: "Context keywords carried by snake_case / SCREAMING_SNAKE identifiers rather " +
 			"than spaced prose — the dominant shape in the code and config files this tool scans. " +

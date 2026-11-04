@@ -173,9 +173,28 @@ one shared core function called from the orchestration sites. Consequences accep
    reported nothing). The production boost (+10) is not a penalty and still applies file-wide,
    bounded for generic matches by the M27 cap. Marker words are matched as whole tokens, under the
    `kwmatch` rule (`_` is a boundary; `latest` is not `test`, `device` is not `dev`), with the
-   affix spellings `prod-`, `prod_` and `.prod` bounded on their word side only. The same reach
-   argument applies to the other whole-file inputs to a secrets score — `DetectStructure`'s
-   Configuration ratio and the `tabular_boost` — and is why #785 item 3 is tracked separately.
+   affix spellings `prod-`, `prod_` and `.prod` bounded on their word side only.
+
+   The other whole-file inputs to a secrets score are the structural boosts: `DetectStructure`
+   types the document once, and the type moves every candidate in it. `Configuration` is +15,
+   `Code` +8 and `JSON` +12 (`structured_config_boost`), all in the environmental delta that the M27
+   cap holds to +30 for a generic match. There is no `YAML` type, so a YAML file reaches the
+   Configuration boost through its `key: value` lines (#849 removed the dead `YAML` case). `CSV`,
+   `TSV` and `FixedWidth` are `tabular_boost` +20 for every validator, and it reaches a secrets
+   finding twice: in the validator's own score, outside the M27 cap (the M24 cap of 55 still applies
+   after it to an uncorroborated generic match), and again in the dual-path bridge's
+   `applyDocumentContext`, after every validator-side cap, where only 100 and a published
+   `confidence_ceiling` bound it. Measured on #849's decoy: four code expressions that score 45 and
+   are not reported scored 65 in the validator and 85 MEDIUM after the bridge, because the file's
+   indentation typed it TSV.
+
+   What bounds their reach is the type decision, so it is a property of the whole content (#788,
+   #849): every line of a document up to 32 KiB and 2000 lines, and beyond that 16 evenly spaced
+   windows of lines of one length, so a title block weighs one window at most; the Configuration
+   share is taken over the lines that are neither blank nor comment-only; a CSV or TSV row needs three
+   fields, and indentation tabs and commas inside double quotes separate none; a CSV row does not
+   end a sentence, and a CSV table's rows share the document's most common field count, so the
+   commas of prose do not type it CSV; and a type needs 30 % of the lines it is taken over.
 
 ## 7. Bugs and quirks found during the survey (side findings, not blockers)
 
