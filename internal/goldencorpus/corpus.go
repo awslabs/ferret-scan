@@ -953,6 +953,88 @@ var Cases = []Case{
 			"Wire DOCUMENT checklist for the savings desk\n",
 	},
 	{
+		Name: "bankaccount_iban_structure_decoys",
+		Description: "Tokens that pass an IBAN's country, length and mod-97 checks but not its BBAN " +
+			"structure (#862). The first 54 lines are the rows of a seeded 4 MiB xxd dump (random.Random(13616)) " +
+			"in which the display-form IBAN scan reads a country head and enough hex groups to fill " +
+			"that country's length and pass mod-97: main reported 13 of them at 85 (be07 f027 2368 " +
+			"203d and its like), and the scan as widened for #862 would report all 54 without the " +
+			"structure check, since AD, BA, BE and EE allow only digits where hex has letters. Then " +
+			"letter-bearing DE tokens main reported at 85 (195 of 20,000 seeded ones), a build id and " +
+			"a licence key main reported at 85, '_'-joined file names that name no bank label, a UUID " +
+			"and a dd-mm-yy run. Pure decoy, adding no finding to the metadata-key census: every " +
+			"line must stay silent. The residual the check cannot see is not here because it is " +
+			"reported: GT's BBAN is all alphanumeric, so the licence key " +
+			"GT03-EXAM-PLEK-EY00-0000-0000-ABCD, which happens to pass mod-97, is an IBAN to it.",
+		Checks: []string{"BANK_ACCOUNT"},
+		Input: "000081f0: be25 2be1 118f 7e6a b4c5 5aad 08fb e754  .%+...~j..Z....T\n" +
+			"000283b0: 42bd 773e ee40 ae15 520b 83a6 8026 0481  B.w>.@..R....&..\n" +
+			"00031410: bde2 4e52 ad64 fc81 5e37 cbb9 dc97 d23e  ..NR.d..^7.....>\n" +
+			"00054b70: 967d ef61 8cce ba89 4401 bb39 3e13 b28a  .}.a....D..9>...\n" +
+			"00057810: 82d2 be45 fc90 e2da 6508 df5a ce5a 7530  ...E....e..Z.Zu0\n" +
+			"000595c0: ee66 073b 610f f54d 7bfa dbfe b5dc 2ad0  .f.;a..M{.....*.\n" +
+			"000615c0: 79c4 4bc6 ba12 20cf 5785 b4b6 34c8 6d04  y.K... .W...4.m.\n" +
+			"00076570: 8016 817c 2853 6c3a be07 f027 2368 203d  ...|(Sl:...'#h =\n" +
+			"00086160: bc99 be57 13d8 41e5 9acf 8d46 1369 331c  ...W..A....F.i3.\n" +
+			"00087710: 5c1f cdf9 be68 67e2 0d0c 8149 f1d7 eb5f  \\....hg....I..._\n" +
+			"000bd830: 08c7 ad07 8d76 e7b2 ff65 694d 378d baa2  .....v...eiM7...\n" +
+			"000c2040: 2ba3 f99d ba63 0ba5 cf4d ae10 8c40 788c  +....c...M...@x.\n" +
+			"000e9050: d076 8c7b a4a0 be65 538a a1ef 272e 9bc6  .v.{...eS...'...\n" +
+			"000ee8f0: 84ec 5c7f 9f0e ee38 263d f7c1 e6d6 3873  ..\\....8&=....8s\n" +
+			"0011cca0: 332b ad17 0554 8a64 0aa0 9162 d7a0 af91  3+...T.d...b....\n" +
+			"0012d660: 857b f704 ad96 e5c0 3497 6c96 0072 1797  .{......4.l..r..\n" +
+			"00131c80: 3747 79b1 ca38 be28 83f6 367b 6323 92e9  7Gy..8.(..6{c#..\n" +
+			"00139a10: 9f81 2d14 a6b6 eacd be79 9f8b 10c5 8be4  ..-......y......\n" +
+			"0013fd10: 6d4f 3547 ba37 64f9 7d93 b601 5500 83d4  mO5G.7d.}...U...\n" +
+			"0015f070: de90 f801 ad14 bd89 1494 a9d0 18e2 36ef  ..............6.\n" +
+			"0016b3f0: ae87 b8fe ba98 f517 a1b0 ddf0 5a5f 97c9  ............Z_..\n" +
+			"0016b5b0: 2ca3 8733 be56 4799 e7f3 8344 bf0b 62a7  ,..3.VG....D..b.\n" +
+			"0016eb60: 5892 505e ee40 a9ba 1ec0 9814 a470 6c01  X.P^.@.......pl.\n" +
+			"00170ce0: 6b74 ba75 038d f677 9e29 facc 21b1 10fc  kt.u...w.)..!...\n" +
+			"0018e9d0: ba40 daec 832e 917e dec7 294b 76d5 8603  .@.....~..)Kv...\n" +
+			"001c0cf0: 67be d432 ebb7 ba82 2f9a 0047 9600 4cc2  g..2..../..G..L.\n" +
+			"001e8240: 05ce 8c13 c49b ba37 cd7b d3c7 6688 dcdd  .......7.{..f...\n" +
+			"001fed10: a6ef c9f5 7269 49de be05 d761 ff60 affe  ....riI....a.`..\n" +
+			"00216ad0: 3e2f ad28 873a f900 124a 48e9 b89e 920b  >/.(.:...JH.....\n" +
+			"0022c210: 81cb ad45 b562 7d38 d554 f47a c56a 3810  ...E.b}8.T.z.j8.\n" +
+			"0023cf70: 4487 67cf be90 8088 77e9 613c dcdc 80a0  D.g.....w.a<....\n" +
+			"00247dc0: be38 3825 1ab5 a8d1 5c20 51c1 3ae5 388b  .88%....\\ Q.:.8.\n" +
+			"0025a170: ee08 cdd5 e41c 6a74 f152 4c03 bdcb c831  ......jt.RL....1\n" +
+			"00264e60: 7438 ad89 9ebf b209 e8ef 3058 8268 3f02  t8........0X.h?.\n" +
+			"00276f10: 1844 df8c ee35 01ba 4316 5647 e18f 523a  .D...5..C.VG..R:\n" +
+			"00278890: ba06 ea52 0577 dbd6 ee30 19aa fa91 5f60  ...R.w...0...._`\n" +
+			"0027b930: 6929 b991 0424 9871 be46 dd3b 86cc 9901  i)...$.q.F.;....\n" +
+			"00285640: ee57 3c6f e41c 1c5b 3749 7e62 b53f f894  .W<o...[7I~b.?..\n" +
+			"002fb330: 8287 ee36 e61d 1628 9cb3 2a5b 4c0b c328  ...6...(..*[L..(\n" +
+			"00317fb0: 2e39 a5d9 be48 a6fc a544 f83b 3ac6 4e5d  .9...H...D.;:.N]\n" +
+			"00337560: d5ed 7b3f 2c3e ee38 2df1 a3b9 d9b1 35ac  ..{?,>.8-.....5.\n" +
+			"0035a1a0: 2f33 7a49 ba83 50ef 4200 0a56 68d1 5461  /3zI..P.B..Vh.Ta\n" +
+			"00363350: 26d7 4e86 be60 c08e 3324 ca46 090d a79d  &.N..`..3$.F....\n" +
+			"003721b0: ee82 05bb 1423 33c8 80dd 479f 03c4 3bc0  .....#3...G...;.\n" +
+			"003826f0: b08b 6f7f ce9b 0db1 be34 d08b 1ff4 9bd9  ..o......4......\n" +
+			"003850e0: e80a 2d1b be36 aee0 e416 b1ae bbb4 fcf8  ..-..6..........\n" +
+			"00385fb0: be39 4660 f637 55b6 0c94 9ba6 828d 0fd0  .9F`.7U.........\n" +
+			"00396cf0: f02b ee67 6008 667c d7e3 eb81 eebe 4c30  .+.g`.f|......L0\n" +
+			"003978f0: 8d04 ee75 3dc6 e32f db86 ae1e 82f0 c8de  ...u=../........\n" +
+			"0039fd70: 4913 39ee 3e7d ba17 dc5d 24ee 7e16 4a88  I.9.>}...]$.~.J.\n" +
+			"003a4560: 5b5a 474a ee58 06b3 1ada 9212 241b 16d0  [ZGJ.X......$...\n" +
+			"003abb10: 8234 8f61 be22 047f 702c b541 37f5 aea8  .4.a.\"..p,.A7...\n" +
+			"003b5cc0: 7ced 1675 15e9 ee59 d190 79e0 392c 4f92  |..u...Y..y.9,O.\n" +
+			"003f7950: be62 0f4c f429 55e5 7c3c 224d 64c5 f309  .b.L.)U.|<\"Md...\n" +
+			"ref DE40PR7DXBFIZXPGVRA6UH\n" +
+			"ref DE70KZYM5RXJQRLFXVJQQQ\n" +
+			"ref DE63WHHN2YN0DLY1X7JE6K\n" +
+			"ref DE89N17664XGYS6XUL08PM\n" +
+			"ref DE0255IB1YLS9YMZBP4VX2\n" +
+			"ref DE10J6ILB8ADE8X4D78E33\n" +
+			"build id DE34EXAMPLE00000000000\n" +
+			"license key BE16 KEYE XAMP LE00\n" +
+			"statement_DE68012345678901234567.pdf\n" +
+			"DE68012345678901234567_2026.pdf\n" +
+			"request de305d54-75b4-431b-adb2-eb6b9e546014 completed\n" +
+			"rota 12-03-26 13-03-26 14-03-26 15-03-26 16-03-26\n",
+	},
+	{
 		Name: "keyword_separator_forms",
 		Description: "The same field labels written with the separators real files use: " +
 			"snake_case config keys, kebab-case column headers, tab-separated exports and " +

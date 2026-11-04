@@ -27,21 +27,21 @@ All keyword matching uses **word-boundary-aware** `containsKeyword` (not `string
 | Type | Pattern | Validation |
 |---|---|---|
 | `ABA_ROUTING` | 9 digits, first 2 in 01-32 | ABA checksum: `(3(d1+d4+d7) + 7(d2+d5+d8) + (d3+d6+d9)) % 10 == 0` |
-| `IBAN` | 2-letter country + 2 check digits + up to 30 alphanumeric | mod-97 checksum (ISO 7064) |
+| `IBAN` | 2-letter country + 2 check digits + BBAN, compact or in print grouping (fours separated by one space, two spaces or a hyphen; the last group shorter), read at the country's registered length; a value joined by `_` only when the identifier names it (`iban_DE89…`) | Country, length and BBAN structure (each position's digit/letter class) from the SWIFT IBAN Registry, 89 countries, generated into `iban_registry.go`; mod-97 checksum (ISO 7064) |
 | `SWIFT_BIC` | 4 bank + 2 country + 2 location + optional 3 branch | ISO 9362 format, 8 or 11 chars |
 | `US_BANK_ACCOUNT` | 8-17 digits in banking context | No structural validation (too diverse); relies entirely on keyword context |
 
 ### Context system
-- **Positive keywords** (+10 to +25 each): `routing`, `aba`, `account number`, `bank account`, `checking`, `savings`, `wire`, `swift`, `bic`, `iban`, `transit`, `financial institution`, `deposit`, `ach`, `direct deposit`
-- **Negative keywords** (-15 to -30): `phone`, `zip`, `postal`, `serial`, `model`, `version`, `test`, `example`, `ssn`, `social security`
+- **Positive keywords** (+15 each, total capped at +40): `routing`, `aba`, `account number`, `bank account`, `checking`, `savings`, `wire`, `swift`, `bic`, `iban`, `transit`, `financial institution`, `deposit`, `ach`, `direct deposit`, `bank`, `routing number`, `account no`, `acct`
+- **Negative keywords** (-20 each, total floored at -50): `phone`, `zip`, `postal`, `serial`, `model`, `version`, `test`, `example`, `sample`, `ssn`, `social security`, `placeholder`, `fake`, `mock`, `demo`, `ip address`, `order`, `invoice`, `tracking`, `confirmation`
 - **Cross-validator guard**: Luhn-valid 13-19 digit numbers are excluded (they're credit cards, not bank accounts)
 
 ### Why this context design
 Routing numbers are exactly 9 digits — the same length as SSNs. Without context, every 9-digit number is ambiguous. The ABA checksum eliminates ~90% of random numbers, and the keyword requirement ("routing", "bank", "ach") handles the remaining overlap with SSN/phone. The Luhn guard was added after adversarial testing found credit card numbers matching as bank accounts.
 
 ### Confidence curve
-- IBAN (mod-97 valid): 100 base (structural proof)
-- SWIFT/BIC (format match): 80 base
+- IBAN (registry structure and mod-97 valid): 85 + keyword impact, set to 15 when the line's negative context is strong; never dropped, because the checksum is value-intrinsic and context may demote it but not erase it
+- SWIFT/BIC (format match): 50 + keyword impact, 75 + keyword impact with a banking keyword on the line; an all-letter code needs `swift`, `bic` or `iban` on the line
 - ABA routing (checksum valid + keyword): 85
 - ABA routing (checksum valid, no keyword): 50
 - US bank account (digits + keyword): 65 base; without keyword: suppressed

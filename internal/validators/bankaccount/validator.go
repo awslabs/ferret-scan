@@ -37,14 +37,8 @@ var (
 
 	// IBAN: 2-letter country code + 2 check digits + up to 30 alphanumeric.
 	// We require at least 15 characters total (shortest valid IBAN is Norway at 15).
+	// The grouped display forms are read by findDisplayIBANs instead of a regex.
 	reIBAN = regexp.MustCompile(`\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b`)
-
-	// IBAN in the standard display format: space-separated groups of 4
-	// (e.g. "DE89 3704 0044 0532 0130 00" on invoices and statements).
-	// Candidates are normalized (spaces stripped) and must pass the same
-	// isValidIBAN gate (valid country, exact length, mod-97 checksum) as
-	// contiguous IBANs, so the loose grouping here adds no FP surface.
-	reIBANSpaced = regexp.MustCompile(`\b[A-Z]{2}\d{2}(?: [A-Z0-9]{4}){2,7}(?: [A-Z0-9]{1,4})?\b`)
 
 	// SWIFT/BIC: 4 bank + 2 country + 2 location + optional 3 branch (8 or 11 chars).
 	reSWIFT = regexp.MustCompile(`\b[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?\b`)
@@ -61,20 +55,8 @@ var (
 	// without a bare "v." substring firing inside unrelated words.
 	reVersionPrefix = regexp.MustCompile(`\b[vV]\.?\d`)
 
-	// ISO 3166-1 alpha-2 country codes (subset used for IBAN validation).
-	validIBANCountries = map[string]int{
-		"AL": 28, "AD": 24, "AT": 20, "AZ": 28, "BH": 22, "BY": 28, "BE": 16,
-		"BA": 20, "BR": 29, "BG": 22, "CR": 22, "HR": 21, "CY": 28, "CZ": 24,
-		"DK": 18, "DO": 28, "TL": 23, "EE": 20, "FO": 18, "FI": 18, "FR": 27,
-		"GE": 22, "DE": 22, "GI": 23, "GR": 27, "GL": 18, "GT": 28, "HU": 28,
-		"IS": 26, "IQ": 23, "IE": 22, "IL": 23, "IT": 27, "JO": 30, "KZ": 20,
-		"XK": 20, "KW": 30, "LV": 21, "LB": 28, "LI": 21, "LT": 20, "LU": 20,
-		"MK": 19, "MT": 31, "MR": 27, "MU": 30, "MC": 27, "MD": 24, "ME": 22,
-		"NL": 18, "NO": 15, "PK": 24, "PS": 29, "PL": 28, "PT": 25, "QA": 29,
-		"RO": 24, "LC": 32, "SM": 27, "SA": 24, "RS": 22, "SC": 31, "SK": 24,
-		"SI": 19, "ES": 24, "SE": 24, "CH": 21, "TN": 24, "TR": 26, "UA": 29,
-		"AE": 23, "GB": 22, "VA": 22, "VG": 24,
-	}
+	// IBAN countries, lengths and BBAN structures: ibanRegistry in iban_registry.go, generated
+	// from the SWIFT IBAN Registry (#862).
 )
 
 // containsKeyword reports whether text contains keyword as a whole word/phrase,
@@ -363,7 +345,9 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 				// explanation collapsed to "Flagged as an IBAN; nearby context raised
 				// confidence by 15%" — restating the type and a number the reviewer had
 				// already been shown, with no mention of the mod-97 proof that is the whole
-				// reason this finding is trustworthy (#363).
+				// reason this finding is trustworthy (#363). valid_characters covers the BBAN
+				// structure check (#862): every character has the class the registry gives its
+				// position. No key was added for it, so the metadata a finding carries is unchanged.
 				//
 				// Recording only, never scoring: isValidIBAN is a hard gate, so all three are
 				// necessarily true here and adding them changes no confidence. Metadata is not
@@ -379,20 +363,15 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 		})
 	}
 
-	// Second pass: display-format (space-grouped) IBANs. Candidates are
-	// normalized and must pass the identical isValidIBAN gate; the reported
-	// span is the original spaced text so redaction masks the whole token.
-	for i, loc := range reIBANSpaced.FindAllStringIndex(upperLine, -1) {
-		if execguard.LineLoopCancelled(ctx, i) {
-			return matches
-		}
-		normalized := strings.ReplaceAll(upperLine[loc[0]:loc[1]], " ", "")
-		if !v.isValidIBAN(normalized) {
-			continue
-		}
+	// Second pass: display-format IBANs, grouped in fours by spaces or hyphens, and any form
+	// joined to a label by '_'. Each candidate is read at its country's registered length and
+	// must pass the identical isValidIBAN gate; the reported span is the original grouped text
+	// so redaction masks the whole token. See findDisplayIBANs.
+	for _, d := range v.findDisplayIBANs(ctx, upperLine) {
+		normalized := d.normalized
 
 		// Back to offsets in the ORIGINAL line — see upperWithOffsets.
-		oStart, oEnd := origSpan(upperMap, loc[0], loc[1])
+		oStart, oEnd := origSpan(upperMap, d.start, d.end)
 
 		// Value-intrinsic floor (TM-11) — same reasoning as the compact-form pass
 		// above; mod-97 is verified, so context may demote but not erase.
@@ -428,6 +407,240 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 
 	return matches
 }
+
+// displayIBAN is one IBAN found by findDisplayIBANs: its [start, end) span in the uppercased line
+// and its value with the separators removed.
+type displayIBAN struct {
+	start, end int
+	normalized string
+}
+
+// underscoreLabelWindow bounds how far either side of a '_'-joined value the label check reads,
+// so a line of '_'-joined candidates stays linear. A label further away than this inside one
+// identifier is not plausibly naming the value.
+const underscoreLabelWindow = 64
+
+// findDisplayIBANs reads IBANs in their printed form: the electronic value broken into groups of
+// four ("DE89 3704 0044 0532 0130 00"), with a single space, two spaces or a hyphen between groups,
+// and the last group (L-4) mod 4 long, or 4 when that is 0. It replaces a regex,
+//
+//	\b[A-Z]{2}\d{2}(?: [A-Z0-9]{4}){2,7}(?: [A-Z0-9]{1,4})?\b
+//
+// that lost IBANs in three ways, measured on main for #862:
+//
+//   - Its optional short last group took the next word whenever the country's length is a
+//     multiple of 4, and a failing candidate was dropped whole: "IBAN: <ES IBAN> BIC: EXMPESMM"
+//     read the "BIC:" into the candidate, failed the length check and reported nothing. That held
+//     for 29 of the 74 countries it knew, before any word of 1-4 characters ("BIC", "EUR", "for",
+//     "2026"), so the footer of an invoice had its BIC masked and its IBAN left in cleartext.
+//   - FindAll is non-overlapping, so no start inside a rejected candidate was ever tried:
+//     "Ref XX12 <IBAN>" and two IBANs on one line lost the IBAN after the rejected start.
+//   - It accepted one ASCII space only, so hyphen- and double-space-grouped IBANs were never
+//     found, and the normalized pass (which folds Unicode dashes to '-') had nothing to land on.
+//
+// So every candidate is read at exactly its country's registered length. A candidate starts at
+// each two letters and two digits that begin a word: at the start of the line, after any byte
+// outside [A-Za-z0-9_], or after a '_' (see below). The separator is taken from the first gap
+// and must repeat at every gap. The byte after the last group must not be a letter, digit or
+// '_', which keeps a cut out of a longer run (a hex dump row, a licence key). A hyphen-grouped
+// value additionally must not continue a hyphen run on either side ("ABCD-<value>",
+// "<value>-ABCD"): the trailing word that a spaced IBAN must tolerate ("BIC:", "EUR") has no
+// hyphenated counterpart in print. On rejection the scan moves to the next start, including
+// starts inside the rejected span; on acceptance it resumes after the span.
+//
+// The compact form at an ordinary boundary is the reIBAN pass's, and is skipped here. A value of
+// any form joined to its neighbour by '_' ("iban_DE89...", "bank_iban_DE89 3704 ...") is a value
+// that \b never matched, because '_' is a word byte to RE2. It is reported only when the
+// '_'-joined identifier names it with one of this validator's positive keywords, so
+// "statement_<IBAN>.pdf" and "<IBAN>_2026.pdf" stay unreported.
+//
+// Every candidate passes the same isValidIBAN gate as a compact one, including the BBAN
+// structure check. That check is what keeps this wider read from widening the false positives:
+// measured with the check disabled, the wider read took a seeded 4 MiB xxd dump from 13 IBAN
+// findings (main) to 54; with it, the dump reports none (#862).
+//
+// Not accepted, since none is the standard print form and each would need its own decoy
+// measurement: a split head ("DE 89 3704 ..."), mixed separators, grouping by BBAN component.
+//
+// Each start reads at most 34 characters across at most 8 gaps, so the scan is linear in the line.
+func (v *Validator) findDisplayIBANs(ctx stdctx.Context, u string) []displayIBAN {
+	var found []displayIBAN
+	var buf [maxIBANLength]byte
+	for i := 0; i+4 <= len(u); i++ {
+		if execguard.LineLoopCancelled(ctx, i) {
+			return found
+		}
+		if !isUpperLetter(u[i]) || !isUpperLetter(u[i+1]) || !isDigit(u[i+2]) || !isDigit(u[i+3]) {
+			continue
+		}
+		leadUnderscore := false
+		if i > 0 {
+			switch p := u[i-1]; {
+			case p == '_':
+				leadUnderscore = true
+			case isIdentByte(p):
+				continue // inside a word: not a start
+			}
+		}
+		country, ok := lookupIBANCountry(u[i], u[i+1])
+		if !ok {
+			continue
+		}
+		sep := displaySeparator(u, i+4)
+		end, n := readIBANGroups(u, i, country.length, sep, buf[:])
+		if end < 0 {
+			continue
+		}
+		trailUnderscore := false
+		if end < len(u) {
+			switch c := u[end]; {
+			case c == '_':
+				trailUnderscore = true
+			case isIdentByte(c):
+				continue // a cut out of a longer run
+			}
+		}
+		if sep == "" && !leadUnderscore && !trailUnderscore {
+			continue // the compact pass reports this value
+		}
+		if sep == "-" && continuesHyphenRun(u, i, end) {
+			continue
+		}
+		normalized := string(buf[:n])
+		if !v.isValidIBAN(normalized) {
+			continue
+		}
+		if (leadUnderscore || trailUnderscore) && !v.underscoreJoinIsLabelled(u, i, end, leadUnderscore, trailUnderscore) {
+			continue
+		}
+		found = append(found, displayIBAN{start: i, end: end, normalized: normalized})
+		i = end - 1 // resume after the accepted span
+	}
+	return found
+}
+
+// displaySeparator returns the gap a display-form IBAN uses, read at the first gap (offset j, just
+// after the 4-character head): two spaces, one space, a hyphen, or "" for the compact form.
+func displaySeparator(u string, j int) string {
+	switch {
+	case j+1 < len(u) && u[j] == ' ' && u[j+1] == ' ':
+		return "  "
+	case j < len(u) && u[j] == ' ':
+		return " "
+	case j < len(u) && u[j] == '-':
+		return "-"
+	}
+	return ""
+}
+
+// readIBANGroups reads an IBAN of exactly length characters starting at u[i], grouped in fours
+// with sep between groups, into buf. It returns the end offset of the last group and the number
+// of characters written, or -1 when the text does not hold that grouping.
+func readIBANGroups(u string, i, length int, sep string, buf []byte) (int, int) {
+	n := copy(buf, u[i:i+4])
+	pos := i + 4
+	for rem := length - 4; rem > 0; {
+		g := 4
+		if rem < 4 {
+			g = rem
+		}
+		if sep != "" {
+			if !strings.HasPrefix(u[pos:], sep) {
+				return -1, 0
+			}
+			pos += len(sep)
+		}
+		if pos+g > len(u) {
+			return -1, 0
+		}
+		for k := 0; k < g; k++ {
+			c := u[pos+k]
+			if !isUpperLetter(c) && !isDigit(c) {
+				return -1, 0
+			}
+			buf[n] = c
+			n++
+		}
+		pos += g
+		rem -= g
+	}
+	return pos, n
+}
+
+// continuesHyphenRun reports whether the hyphen-grouped span [i, end) is one segment of a longer
+// hyphenated token: a letter or digit joined to it by a hyphen on either side.
+func continuesHyphenRun(u string, i, end int) bool {
+	if i >= 2 && u[i-1] == '-' && isAlnumByte(u[i-2]) {
+		return true
+	}
+	return end+1 < len(u) && u[end] == '-' && isAlnumByte(u[end+1])
+}
+
+// underscoreJoinIsLabelled reports whether the identifier a '_'-joined value sits in names it:
+// one of the positive keywords in the part of the identifier before the value (leading '_') or
+// after it (trailing '_'). Each side is read at most underscoreLabelWindow bytes; when the
+// identifier runs past that, the partial segment at the cut is dropped, so a cut can never turn
+// "xbank" into "bank".
+func (v *Validator) underscoreJoinIsLabelled(u string, start, end int, lead, trail bool) bool {
+	if lead {
+		j := start
+		for j > 0 && start-j < underscoreLabelWindow && isIdentByte(u[j-1]) {
+			j--
+		}
+		if j > 0 && isIdentByte(u[j-1]) {
+			k := strings.IndexByte(u[j:start], '_')
+			if k < 0 {
+				j = start
+			} else {
+				j += k
+			}
+		}
+		if v.namesBankingValue(u[j:start]) {
+			return true
+		}
+	}
+	if trail {
+		j := end
+		for j < len(u) && j-end < underscoreLabelWindow && isIdentByte(u[j]) {
+			j++
+		}
+		if j < len(u) && isIdentByte(u[j]) {
+			k := strings.LastIndexByte(u[end:j], '_')
+			if k < 0 {
+				j = end
+			} else {
+				j = end + k
+			}
+		}
+		if v.namesBankingValue(u[end:j]) {
+			return true
+		}
+	}
+	return false
+}
+
+// namesBankingValue reports whether s holds one of the positive keywords as a label.
+func (v *Validator) namesBankingValue(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, kw := range v.positiveKeywords {
+		if containsLabel(s, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func isUpperLetter(c byte) bool { return c >= 'A' && c <= 'Z' }
+
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
+
+func isAlnumByte(c byte) bool { return isDigit(c) || isUpperLetter(c) || (c >= 'a' && c <= 'z') }
+
+// isIdentByte is RE2's \w: the bytes that do not end a word, so a value starts and ends next to
+// anything else.
+func isIdentByte(c byte) bool { return isAlnumByte(c) || c == '_' }
 
 // scanSWIFT detects and validates SWIFT/BIC codes.
 func (v *Validator) scanSWIFT(ctx stdctx.Context, line string, lineNum int, originalPath string, lc lineContext) []detector.Match {
@@ -883,21 +1096,28 @@ func (v *Validator) isValidABA(s string) bool {
 	return checksum%10 == 0
 }
 
-// isValidIBAN validates an IBAN using the mod-97 algorithm (ISO 13616).
+// isValidIBAN validates an uppercased, separator-free IBAN against the SWIFT IBAN Registry
+// (ibanRegistry): the country must be registered, the length must be that country's, the check
+// digits must be numeric and not 00, 01 or 99, every BBAN character must have the class the
+// registry gives its position, and the ISO 7064 mod 97-10 checksum must hold.
+//
+// The BBAN structure check (#862) is value-intrinsic, like mod-97: a real IBAN conforms to its
+// country's registered structure by definition, so no content can use the check to hide one. It
+// is what lets the display-form scan read more forms without reporting more noise. A
+// letter-bearing token behind "DE" plus two digits passes mod-97 about once in 97 tries and used
+// to be reported at 85 (195 of 20,000 seeded "ref DE<kk><18 random A-Z0-9>" lines on main), but a
+// German BBAN is 18 digits; a group of hex from an xxd dump behind "be" passes for a Belgian IBAN
+// the same way, and a Belgian BBAN is 12 digits. Both are now rejected. What remains is the
+// residual the check cannot see: a random value that fits a country whose BBAN is mostly
+// alphanumeric ("c"), such as GT or MD, and happens to pass mod-97.
 func (v *Validator) isValidIBAN(s string) bool {
-	if len(s) < 15 || len(s) > 34 {
+	if len(s) < minIBANLength || len(s) > maxIBANLength {
 		return false
 	}
 
-	// Country code must be valid
-	country := s[:2]
-	expectedLen, ok := validIBANCountries[country]
-	if !ok {
-		return false
-	}
-
-	// Length must match country expectation
-	if len(s) != expectedLen {
+	// Country code must be registered, and the length must be that country's.
+	country, ok := lookupIBANCountry(s[0], s[1])
+	if !ok || len(s) != country.length {
 		return false
 	}
 
@@ -912,32 +1132,35 @@ func (v *Validator) isValidIBAN(s string) bool {
 		return false
 	}
 
-	// Move first 4 chars to end and convert letters to numbers
-	rearranged := s[4:] + s[:4]
-	var numStr strings.Builder
-	for _, c := range rearranged {
-		if c >= '0' && c <= '9' {
-			numStr.WriteRune(c)
-		} else if c >= 'A' && c <= 'Z' {
-			// A=10, B=11, ..., Z=35
-			numStr.WriteString(strconv.Itoa(int(c-'A') + 10))
-		} else {
-			return false // invalid character
-		}
+	// Every BBAN character must have its registered class: digit, letter, or either.
+	if !bbanConforms(s[4:], country.layout) {
+		return false
 	}
 
-	// Compute mod 97
-	return mod97(numStr.String()) == 1
+	return ibanChecksumValid(s)
 }
 
-// mod97 computes n mod 97 for a large number represented as a string.
-func mod97(s string) int {
-	remainder := 0
-	for _, c := range s {
-		digit := int(c - '0')
-		remainder = (remainder*10 + digit) % 97
+// ibanChecksumValid computes the ISO 7064 mod 97-10 check over an uppercased IBAN: the first four
+// characters moved to the end, each letter read as two digits (A=10 ... Z=35), and the whole
+// number taken mod 97, which must be 1. The remainder is carried digit by digit, so no big number
+// or intermediate string is built. Any character other than A-Z and 0-9 fails.
+func ibanChecksumValid(s string) bool {
+	if len(s) < 5 {
+		return false
 	}
-	return remainder
+	remainder := 0
+	for i := 0; i < len(s); i++ {
+		c := s[(i+4)%len(s)]
+		switch {
+		case c >= '0' && c <= '9':
+			remainder = (remainder*10 + int(c-'0')) % 97
+		case c >= 'A' && c <= 'Z':
+			remainder = (remainder*100 + int(c-'A') + 10) % 97
+		default:
+			return false
+		}
+	}
+	return remainder == 1
 }
 
 // isValidSWIFT validates a SWIFT/BIC code structure.
