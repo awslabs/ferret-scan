@@ -62,6 +62,10 @@ type ScanConfig struct {
 	Explain bool
 	Config  *config.Config
 	Profile *config.Profile
+	// ValidatorOverrides, when non-nil, are applied after Config and Profile: the
+	// command line's validator settings (today --disable-ip-types). See
+	// ValidatorOverrides for the precedence. Nil = historical behavior.
+	ValidatorOverrides *ValidatorOverrides
 	// SuppressionManager, when non-nil, is applied to matches before returning.
 	// ScanResult.SuppressedCount and SuppressedMatches are populated accordingly.
 	SuppressionManager *suppressions.SuppressionManager
@@ -118,6 +122,14 @@ type ScanResult struct {
 	// whether to retry, to fix permissions, or to treat the result as partial (#391). The CLI has had
 	// six causes all along, derived in its own layer, which is why the two disagreed.
 	NotExamined []NotExaminedFile
+
+	// DisabledDetectionTypes and UnrecognisedDisabledTypes are what the validators this scan BUILT say
+	// configuration switched off, and which `disabled_types` entries matched nothing (see
+	// DisabledDetectionTypes); nil when neither applies. Reported so a caller that never sees the
+	// validator set (the CLI's --stdin path, which goes through ScanContent) can disclose a narrowed scan
+	// from the same answer the file path reads off its own validators (#887).
+	DisabledDetectionTypes    map[string][]string
+	UnrecognisedDisabledTypes map[string][]string
 }
 
 // NotExaminedFile is one file that was not fully examined, with the cause its producer stated.
@@ -163,7 +175,8 @@ func ScanFileCtx(ctx context.Context, scanConfig ScanConfig) (*ScanResult, error
 
 	// Build the filtered validator set via the shared factory
 	enabledChecks := ParseChecksToRun(scanConfig.Checks)
-	standardValidators := BuildValidatorSet(enabledChecks, scanConfig.Config, scanConfig.Profile)
+	standardValidators := BuildValidatorSetWithOverrides(enabledChecks, scanConfig.Config, scanConfig.Profile, scanConfig.ValidatorOverrides)
+	disabledTypes, unrecognisedTypes := DisabledDetectionTypes(standardValidators)
 
 	// Set up the detection facade (dual-path: document body + metadata).
 	detectorFacade := validators.NewDetector(observer)
@@ -243,13 +256,15 @@ func ScanFileCtx(ctx context.Context, scanConfig ScanConfig) (*ScanResult, error
 	incomplete, incompleteReason := coverageOf(stats)
 
 	return &ScanResult{
-		Matches:           unsuppressed,
-		SuppressedMatches: suppressed,
-		SuppressedCount:   len(suppressed),
-		ProcessedFiles:    stats.ProcessedFiles,
-		Incomplete:        incomplete,
-		IncompleteReason:  incompleteReason,
-		NotExamined:       collectNotExamined(stats),
+		Matches:                   unsuppressed,
+		SuppressedMatches:         suppressed,
+		SuppressedCount:           len(suppressed),
+		ProcessedFiles:            stats.ProcessedFiles,
+		Incomplete:                incomplete,
+		IncompleteReason:          incompleteReason,
+		NotExamined:               collectNotExamined(stats),
+		DisabledDetectionTypes:    disabledTypes,
+		UnrecognisedDisabledTypes: unrecognisedTypes,
 	}, nil
 }
 
@@ -357,6 +372,11 @@ type ContentScanConfig struct {
 	Config  *config.Config
 	Profile *config.Profile
 
+	// ValidatorOverrides, when non-nil, are applied after Config and Profile;
+	// same semantics as ScanConfig.ValidatorOverrides. The CLI's --stdin path
+	// passes --disable-ip-types here, which it used to drop (#887).
+	ValidatorOverrides *ValidatorOverrides
+
 	// Explain, when true, attaches an advisory explanation to each surfaced
 	// match via internal/explain. Same semantics as ScanConfig.Explain.
 	Explain bool
@@ -419,7 +439,8 @@ func ScanContentCtx(ctx context.Context, content string, cfg ContentScanConfig) 
 
 	// Build the filtered validator set.
 	enabledChecks := ParseChecksToRun(cfg.Checks)
-	standardValidators := BuildValidatorSet(enabledChecks, cfg.Config, cfg.Profile)
+	standardValidators := BuildValidatorSetWithOverrides(enabledChecks, cfg.Config, cfg.Profile, cfg.ValidatorOverrides)
+	disabledTypes, unrecognisedTypes := DisabledDetectionTypes(standardValidators)
 
 	// In-memory content cannot drive metadata extraction (no filesystem path
 	// for the metadata extractors to read), so omit the metadata validator.
@@ -524,13 +545,15 @@ func ScanContentCtx(ctx context.Context, content string, cfg ContentScanConfig) 
 	}
 
 	return &ScanResult{
-		Matches:           unsuppressed,
-		SuppressedMatches: suppressed,
-		SuppressedCount:   len(suppressed),
-		ProcessedFiles:    1,
-		Incomplete:        incomplete,
-		IncompleteReason:  incompleteReason,
-		NotExamined:       notExamined,
+		Matches:                   unsuppressed,
+		SuppressedMatches:         suppressed,
+		SuppressedCount:           len(suppressed),
+		ProcessedFiles:            1,
+		Incomplete:                incomplete,
+		IncompleteReason:          incompleteReason,
+		NotExamined:               notExamined,
+		DisabledDetectionTypes:    disabledTypes,
+		UnrecognisedDisabledTypes: unrecognisedTypes,
 	}, nil
 }
 

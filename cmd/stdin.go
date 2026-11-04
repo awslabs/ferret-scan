@@ -14,7 +14,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/awslabs/ferret-scan/v2/internal/config"
 	"github.com/awslabs/ferret-scan/v2/internal/core"
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
@@ -67,6 +66,24 @@ func runStdinScan(in stdinScanInputs) int {
 		fmt.Fprintln(os.Stderr, "  Example: echo 'data here' | ferret-scan --stdin")
 		return 1
 	}
+
+	// The front half --file runs, shared rather than copied, and run before stdin is read so that a
+	// refusal (an unknown --profile, an expiry spelling that does not parse) costs the caller nothing
+	// and writes nothing to stdout. This path used to resolve its own configuration with a copy of
+	// main()'s that skipped four of its steps (#887); see prepareRun.
+	var debugObs *observability.DebugObserver
+	if in.flags.debug {
+		debugObs = observability.NewDebugObserver(os.Stderr)
+	}
+	run, err := prepareRun(in.flags, stdinRun, debugObs)
+	if err != nil {
+		return 1
+	}
+	cfg := run.cfg
+	precommitConfig := run.precommitConfig
+	effectiveProfileName := run.effectiveProfileName
+	activeProfile := run.activeProfile
+	finalCfg := run.final
 
 	// Read stdin with a hard cap matching the file-mode size limit. We read
 	// MaxFileSize+1 so we can distinguish "exactly at limit" from "over limit".
@@ -131,66 +148,6 @@ func runStdinScan(in stdinScanInputs) int {
 		}
 	}
 
-	// Resolve config and pre-commit settings the same way main() does.
-	cfg := loadConfiguration(in.flags.configFile)
-	precommitDetector := precommit.NewPrecommitDetectorWithFlag(in.flags.precommitMode)
-	var precommitConfig *precommit.PrecommitConfig
-	if precommitDetector.IsPrecommitEnvironment() {
-		precommitConfig = precommitDetector.GetOptimizedConfig()
-		refusePrecommitConfigError(precommitDetector)
-	}
-
-	effectiveProfileName := in.flags.profileName
-	if effectiveProfileName == "" && precommitDetector.IsPrecommitEnvironment() {
-		suggestedProfile := precommitDetector.GetSuggestedProfile()
-		if suggestedProfile != "" && cfg != nil && cfg.GetProfile(suggestedProfile) != nil {
-			effectiveProfileName = suggestedProfile
-		}
-	}
-	var activeProfile *config.Profile
-	if effectiveProfileName != "" && cfg != nil {
-		activeProfile = cfg.GetProfile(effectiveProfileName)
-	}
-
-	finalCfg := resolveConfiguration(cfg, activeProfile, &configFlags{
-		outputFormat:         in.flags.outputFormat,
-		confidenceLevels:     in.flags.confidenceLevels,
-		checksToRun:          in.flags.checksToRun,
-		verbose:              in.flags.verbose,
-		debug:                in.flags.debug,
-		noColor:              in.flags.noColor,
-		recursive:            false,
-		enablePreprocessors:  in.flags.enablePreprocessors,
-		preprocessOnly:       in.flags.preprocessOnly,
-		precommitMode:        in.flags.precommitMode,
-		quiet:                in.flags.quiet,
-		showMatch:            in.flags.showMatch,
-		showSuppressed:       in.flags.showSuppressed,
-		generateSuppressions: in.flags.generateSuppressions,
-		failOnIncomplete:     in.flags.failOnIncomplete,
-		suppressionFile:      in.flags.suppressionFile,
-		enableRedaction:      in.flags.enableRedaction,
-		redactionOutputDir:   "",
-		redactionStrategy:    in.flags.redactionStrategy,
-		redactionAuditLog:    "",
-		respectGitignore:     false,
-		excludePatterns:      nil,
-		disableIPTypes:       in.flags.disableIPTypes,
-		activeProfileName:    effectiveProfileName,
-	})
-
-	// Same helper as the --file path, same place: a strategy typo is refused here,
-	// before the findings table or any redacted bytes reach stdout/stderr (#772).
-	applyRedactionStrategy(finalCfg, precommitConfig)
-
-	// The --debug record of the active profile, as the --file path logs it (#768).
-	if finalCfg.debug {
-		profileObs := observability.NewDebugObserver(os.Stderr)
-		for _, line := range profileDebugRecord(cfg, effectiveProfileName, in.flags.profileName, in.flags.precommitMode) {
-			profileObs.LogDetail("profile", line)
-		}
-	}
-
 	// Apply pre-commit overrides for non-color/format defaults that the
 	// main path would normally apply via precommitConfig.
 	if precommitConfig != nil {
@@ -230,6 +187,10 @@ func runStdinScan(in stdinScanInputs) int {
 	}
 	suppressionManager := suppressions.NewSuppressionManagerWithOptions(finalCfg.suppressionFile,
 		suppressions.ManagerOptions{Warnings: loaderWarnings})
+	// The lifetime --generate-suppressions gives new rules, from --suppression-expires or
+	// suppressions.expires_in. Never applied here before #887, so stdin's generated rules never
+	// expired and a spelling the file path refuses was accepted.
+	suppressionManager.SetGeneratedExpirySpec(run.generatedExpiry)
 
 	// Parse checks list into a []string for ScanContent.
 	//
@@ -250,7 +211,8 @@ func runStdinScan(in stdinScanInputs) int {
 		Explain:            in.explain,
 		Config:             cfg,
 		Profile:            activeProfile,
-		SuppressionManager: nil, // applied below so we can run --generate-suppressions on raw matches
+		ValidatorOverrides: run.validatorOverrides, // --disable-ip-types, after config and profile (#887)
+		SuppressionManager: nil,                    // applied below so we can run --generate-suppressions on raw matches
 		ValidatorBudgets:   in.validatorBudgets,
 	}
 
@@ -350,6 +312,18 @@ func runStdinScan(in stdinScanInputs) int {
 		reportConfigProvenance(os.Stderr, cfg, in.flags.configFile)
 		// Same rule for the built-in precommit profile's remaining override (#768).
 		reportBuiltinProfileChecks(os.Stderr, cfg, effectiveProfileName)
+		// Same rule for detection that config, a profile or --disable-ip-types switched off, and for a
+		// disabled_types entry that named nothing: the file path's Note and Warning, from the answer the
+		// validators ScanContent built gave. This path printed neither, so a narrowed stdin scan looked
+		// complete. With stderr carrying the findings document the narrowing has no channel yet: the
+		// document's stats.disabled_detection_types is the remaining half of #887.
+		reportDisabledDetectionTypes(os.Stderr, result.DisabledDetectionTypes, result.UnrecognisedDisabledTypes)
+		// And for findings an EXPIRED rule would have suppressed (#866). The file path has printed it
+		// since #699; here it was never printed, so `--stdin --pre-commit-mode` blocked a commit with 0
+		// bytes on stderr and no hint that the operator's own baseline had lapsed. Counted by the
+		// IsSuppressed loop above, once per lapsed (rule, finding) pair.
+		expiredSkips, oldestExpiry := suppressionManager.ExpiredSkips()
+		writeExpiredRulesWarning(os.Stderr, expiredSkips, oldestExpiry)
 	}
 
 	if !shouldSuppressStdinProse(finalCfg, precommitConfig, in.outputFile) {
@@ -383,6 +357,15 @@ func runStdinScan(in stdinScanInputs) int {
 	if finalCfg.enableRedaction {
 		if in.flags.redactionAuditLog != "" {
 			fmt.Fprintln(os.Stderr, "Note: --redaction-audit-log is not supported with --stdin and will be ignored")
+		}
+		// The same notice for the redacted-copy directory, which this path does not use either: the
+		// redacted content is the stream on stdout. Before #887 the flag was dropped without a word, so
+		// `--redaction-output-dir out` left no out/ and nothing said why. Like the audit-log notice it is
+		// printed whatever stderr carries: the operator named a flag that does nothing here, and a loud
+		// mismatch is the better failure. Only the flag triggers it; redaction.output_dir in a config
+		// file, written for --file runs, does not.
+		if isFlagSet("redaction-output-dir") {
+			fmt.Fprintln(os.Stderr, "Note: --redaction-output-dir is not supported with --stdin and will be ignored; the redacted content is written to stdout")
 		}
 		return runStdinRedaction(in, finalCfg, content, unsuppressedMatches, suppressedMatches, precommitConfig, stdinEncoding, incompleteCount)
 	}

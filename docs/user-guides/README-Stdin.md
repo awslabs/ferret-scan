@@ -227,6 +227,18 @@ Recommended flags for production gateway use:
 
 Exit codes follow `--pre-commit-mode` semantics when set: non-zero on findings at or above the configured confidence threshold.
 
+## Flags shared with `--file`
+
+`--stdin` and `--file` run one front half: the configuration, pre-commit detection, the profile, the resolved settings, the redaction strategy, the expiry for generated rules and debug mode are all settled the same way, before stdin is read. Before [#887](https://github.com/awslabs/ferret-scan/issues/887) stdin kept its own copy of that code, and these flags did nothing on it, with no message:
+
+- **`--profile <name>`**: an unknown name exits `1` with `Profile '<name>' not found in config file`, before stdin is read and with nothing on stdout. It used to scan with the defaults at exit `0`.
+- **`--disable-ip-types`**: disables the named sub-types after config and profile, so it outranks both and its list replaces theirs, as on `--file`.
+- **`--suppression-expires`** and `suppressions.expires_in`: rules written by `--generate-suppressions` carry `expires_at`, and a value that does not parse exits `1` before anything is written.
+- **`--list-profiles`**: lists the profiles and exits without reading stdin.
+- **`--debug`** (and `FERRET_DEBUG` in the environment): exports `FERRET_DEBUG`, so the validators print their own `[DEBUG]`/`[INFO]` lines.
+
+The disclosures `--file` prints on stderr are printed here too: `Note: config disabled N … sub-type(s)`, the warning for a `disabled_types` name that matches nothing, and `WARNING: N finding(s) are reported because their suppression rule has EXPIRED`. Like the project-config note they are **withheld when stderr carries the findings document** (`--enable-redaction` with no `--output`), and the stdin JSON document does not carry `stats.disabled_detection_types` yet, so in that shape narrowed detection is not disclosed. Pass `--output <file>` to get the disclosures on stderr.
+
 ## Limitations
 
 - **Plaintext only**: stdin content is never run through the PDF/Office/image preprocessors. Use `--file` for binary documents.
@@ -234,7 +246,8 @@ Exit codes follow `--pre-commit-mode` semantics when set: non-zero on findings a
   File mode is type-aware and admits a video container up to 500 MB; stdin deliberately is not,
   because the only name available here is the `--stdin-name` label the caller invents, and stdin
   rejects binary content anyway — so it could never scan a video regardless of the limit.
-- **No redaction audit log**: `--redaction-audit-log <path>` is silently ignored with a stderr notice. Audit logs require the on-disk index manager. Scan a file if you need them.
+- **No redaction audit log**: `--redaction-audit-log <path>` is ignored, and a stderr notice says so. Audit logs require the on-disk index manager. Scan a file if you need them.
+- **No redaction output directory**: `--redaction-output-dir <dir>` is ignored, and a stderr notice says so: the redacted content is the stdout stream. A `redaction.output_dir` in the config file, written for `--file` runs, draws no notice. Both notices are printed even when stderr carries the findings document, because the flag was named and does nothing here.
 - **No directory walk**: `--recursive`, `--exclude`, and `--respect-gitignore` don't apply (no filesystem to walk).
 - **No PDF/Office redaction**: only the plaintext redactor runs against stdin content.
 
