@@ -84,8 +84,8 @@
       "extra_same_span": 0
     },
     "PASSPORT": {
-      "tp": 1,
-      "tp_high_medium": 1,
+      "tp": 2,
+      "tp_high_medium": 2,
       "fn_missed": 0,
       "fn_band": 0,
       "fp_high_medium": 0,
@@ -157,7 +157,7 @@
       "residue4": 0
     }
   },
-  "sink_labels": 212,
+  "sink_labels": 213,
   "suppression": {
     "cases": 65,
     "targeted": 65,
@@ -170,8 +170,8 @@
     "findings": 0
   },
   "global": {
-    "cases": 158,
-    "labels": 212,
+    "cases": 159,
+    "labels": 213,
     "negatives": 30
   }
 }

@@ -1052,10 +1052,12 @@ func (v *Validator) analyzeContext(match string, context detector.ContextInfo, l
 			// Weight keywords by their specificity to passports
 			weight := v.getKeywordWeight(keyword)
 
-			// Give more weight to keywords that are closer to the match.
-			// NOTE: preserves the original semantics of checking the
-			// ORIGINAL-CASE full line against the lower-cased keyword.
-			if strings.Contains(context.FullLine, keywordLower) {
+			// Give more weight to keywords on the match's own line. The lowered
+			// line is the haystack because the keyword is lowered: testing the
+			// original-case line here meant "Passport" and "PASSPORT" never
+			// earned the 1.5x that "passport" did, so the same sentence scored
+			// lower when its label was capitalised (#888).
+			if lc.inLine(keywordLower) {
 				confidenceImpact += weight * 1.5 // Boost for same-line keywords
 			} else {
 				confidenceImpact += weight // Base weight for surrounding context
@@ -1067,7 +1069,14 @@ func (v *Validator) analyzeContext(match string, context detector.ContextInfo, l
 	for _, keyword := range v.negativeKeywords {
 		keywordLower := strings.ToLower(keyword)
 		if lc.contains(keywordLower, beforeLower, afterLower) {
-			// Give more weight to keywords that are closer to the match
+			// Give more weight to keywords that are closer to the match.
+			//
+			// Deliberately still the ORIGINAL-CASE line, unlike the positive
+			// keywords above: this branch is a suppressor, so making it
+			// case-blind would take points away and drop findings that are
+			// reported today ("Customer passport GK123456 on booking" is one).
+			// Left as it was by #888; a case-blind negative check needs its own
+			// measurement.
 			if strings.Contains(context.FullLine, keywordLower) {
 				confidenceImpact -= 20 // Strong penalty for negative keywords in same line
 			} else {
@@ -1100,13 +1109,21 @@ func (v *Validator) calculatePassportProximity(match string, context detector.Co
 
 // calculatePassportProximityWith is the per-match proximity calculation used by
 // the hot path. lc carries the pre-lower-cased line (computed once per line)
-// and memoizes the per-line "variant present in line" scans. To stay
-// byte-for-byte identical with the original implementation, the match position
-// used for the distance calculation is strings.Index(lineLower, match) — i.e.
-// the first occurrence of the (original-case) match within the LOWER-CASED
-// line, which is what the original code computed. That index is only ever
-// needed when a passport variant is actually present on the line, so the
-// (line-length) scan is skipped entirely for the common case.
+// and memoizes the per-line "variant present in line" scans.
+//
+// The distance is measured between the first occurrence of the LOWERED match
+// and the first occurrence of the variant, both in the lowered line. Both
+// operands of every Index are lower-case, so the two offsets are in the same
+// coordinate space even when lower-casing changes the line's byte length
+// (#656), and only their difference is used. The match used to be searched for
+// in its original case, which can never be found in a lowered line once it
+// contains a capital letter: every letter-bearing passport number (C12345678,
+// GK123456) got no same-line boost at all, while a 9-digit number in the same
+// sentence got 25 (#888).
+//
+// That index is only ever needed when a passport variant is actually present
+// on the line, so the (line-length) scan is skipped entirely for the common
+// case.
 func (v *Validator) calculatePassportProximityWith(match string, context detector.ContextInfo, lc *lineContext) float64 {
 	lineLower := lc.lineLower
 	beforeText := strings.ToLower(context.BeforeText)
@@ -1120,7 +1137,7 @@ func (v *Validator) calculatePassportProximityWith(match string, context detecto
 		if lc.inLine(variant) {
 			// Check if it's very close (within 20 characters). Only now do we
 			// pay for locating the match within the line.
-			matchIndex := strings.Index(lineLower, match)
+			matchIndex := strings.Index(lineLower, strings.ToLower(match))
 			variantIndex := strings.Index(lineLower, variant)
 
 			if matchIndex >= 0 && variantIndex >= 0 {

@@ -992,20 +992,33 @@ func TestPassportValidator_CalculatePassportProximity(t *testing.T) {
 		wantMin float64
 		wantMax float64
 	}{
+		// Uppercase fixtures, which is what the scan actually hands this function.
+		// The rows used to be lowercase "c12345678", the one form the proximity
+		// search could find in the lowered line, so the test passed while every real
+		// letter-bearing number got no boost (#888).
 		{
 			name:  "Very close to passport keyword",
-			match: "c12345678",
+			match: "C12345678",
 			context: detector.ContextInfo{
-				FullLine: "passport: c12345678",
+				FullLine: "passport: C12345678",
+			},
+			wantMin: 15,
+			wantMax: 25,
+		},
+		{
+			name:  "Very close to capitalised Passport keyword",
+			match: "C12345678",
+			context: detector.ContextInfo{
+				FullLine: "Passport: C12345678",
 			},
 			wantMin: 15,
 			wantMax: 25,
 		},
 		{
 			name:  "Passport in before text",
-			match: "c12345678",
+			match: "C12345678",
 			context: detector.ContextInfo{
-				FullLine:   "c12345678",
+				FullLine:   "C12345678",
 				BeforeText: "passport holder information",
 			},
 			wantMin: 1,
@@ -1013,9 +1026,9 @@ func TestPassportValidator_CalculatePassportProximity(t *testing.T) {
 		},
 		{
 			name:  "No passport keyword",
-			match: "c12345678",
+			match: "C12345678",
 			context: detector.ContextInfo{
-				FullLine: "some random text c12345678 here",
+				FullLine: "some random text C12345678 here",
 			},
 			wantMin: 0,
 			wantMax: 0,
