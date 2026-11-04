@@ -15,6 +15,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
+	"github.com/awslabs/ferret-scan/v2/internal/version"
 )
 
 // RedactionManager coordinates all redaction operations and manages multiple redactors
@@ -244,8 +245,9 @@ func NewRedactionManagerWithConfig(outputManager *OutputStructureManager, observ
 		StartTime:     time.Now(),
 	}
 
-	// Create audit log manager
-	auditLogManager := NewRedactionAuditLogManager("v1.0.0", outputManager.baseOutputDir)
+	// Create audit log manager. The version is the build's, as SARIF and GitLab SAST report it: this
+	// was the literal "v1.0.0", so a 2.5.3 release wrote ferret_version "v1.0.0" (#865).
+	auditLogManager := NewRedactionAuditLogManager(version.Short(), outputManager.baseOutputDir)
 
 	return &RedactionManager{
 		redactors:       make(map[string]Redactor),
@@ -495,13 +497,37 @@ func (rm *RedactionManager) AddRedactionResult(originalPath, redactedPath string
 
 		// Add each redaction to the index
 		for i, redactionMapping := range result.RedactionMap {
+			targetType, targetPath := auditTarget(redactionMapping)
+
+			// A metadata REMOVAL is not a content redaction: nothing replaced a value, and the
+			// image redactor's constant 1.0 is not a detection confidence. It used to be logged as a
+			// content redaction of type IMAGE_METADATA at 0.01, and metadata_redactions was always [].
+			if redactionMapping.DataType == metadataDataType {
+				if err := rm.auditLogManager.AddMetadataRedaction(documentID, MetadataRedaction{
+					TargetType: targetType,
+					TargetPath: targetPath,
+					Field:      removedMetadataField(redactionMapping),
+					Action:     "removed",
+					Timestamp:  time.Now(),
+				}); err != nil {
+					rm.logEvent("redaction_add_failed", false, map[string]interface{}{
+						"error":       err.Error(),
+						"document_id": documentID,
+					})
+				}
+				continue
+			}
+
 			contentRedaction := ContentRedaction{
 				ID:           fmt.Sprintf("%s_redaction_%d", documentID, i),
-				TargetType:   "parent_document",
+				TargetType:   targetType,
+				TargetPath:   targetPath,
 				DataType:     redactionMapping.DataType,
 				RedactedText: redactionMapping.RedactedText,
 				Strategy:     redactionMapping.Strategy,
-				Confidence:   redactionMapping.Confidence / 100.0, // Convert to 0-1 range
+				Confidence:   detectionConfidence(redactionMapping) / 100.0, // 0-100 -> 0-1
+				Line:         redactionMapping.Position.Line,
+				Placement:    placementOf(redactionMapping),
 				Timestamp:    time.Now(),
 			}
 			// One entry per overlap group, naming every finding it covered (#773).
@@ -518,6 +544,13 @@ func (rm *RedactionManager) AddRedactionResult(originalPath, redactedPath string
 			}
 		}
 
+		if err := rm.auditLogManager.SetRunSummary(documentID, rm.runStrategy(result), result.ProcessingTime); err != nil {
+			rm.logEvent("redaction_add_failed", false, map[string]interface{}{
+				"error":       err.Error(),
+				"document_id": documentID,
+			})
+		}
+
 		// Update statistics
 		rm.updateStats(func(stats *RedactionStats) {
 			stats.TotalRedactions += int64(len(result.RedactionMap))
@@ -531,6 +564,79 @@ func (rm *RedactionManager) AddRedactionResult(originalPath, redactedPath string
 			"document_id":     documentID,
 		})
 	}
+}
+
+// Where each audit field comes from (#865). Every value below is taken from what the run did, on
+// one declared scale; before, the log echoed defaults (version, summary) or mixed scales
+// (confidence).
+
+// detectionConfidence is the finding's detection confidence, 0-100, as the report prints it.
+//
+// The text-family redactor (plaintext, and SVG and RTF through it) stores its PLACEMENT score in
+// RedactionMapping.Confidence -- the correlator's 0.95 for an exact match, 0.8 fuzzy, x0.7 when
+// corrected, or (detection/100)*0.5 on the fallback path -- and keeps the detection confidence in
+// Metadata["original_confidence"]. Read as a detection confidence, that wrote 0.0095 for findings
+// the report scored 15, 61 and 100. Every other content redactor stores the detection confidence
+// itself.
+func detectionConfidence(m RedactionMapping) float64 {
+	if c, ok := m.Metadata["original_confidence"].(float64); ok {
+		return c
+	}
+	return m.Confidence
+}
+
+// placementOf records the text-family redactor's placement, the score that used to stand in for the
+// confidence. Only that redactor names a position_method; for the rest it is nil.
+func placementOf(m RedactionMapping) *Placement {
+	method, ok := m.Metadata["position_method"].(string)
+	if !ok || method == "" {
+		return nil
+	}
+	p := &Placement{Method: method}
+	if _, ok := m.Metadata["original_confidence"].(float64); ok && m.Confidence >= 0 && m.Confidence <= 1 {
+		score := m.Confidence
+		p.Score = &score
+	}
+	return p
+}
+
+// auditTarget says where in the file a redaction happened: the document itself, or the embedded
+// part the Office redactor named in Metadata["embedded_part"] (e.g. word/media/image1.jpeg). The
+// Office redactor sets that key "so the audit trail says WHERE inside the container"; the log used
+// to drop it and write parent_document for every entry.
+func auditTarget(m RedactionMapping) (targetType, targetPath string) {
+	if part, ok := m.Metadata["embedded_part"].(string); ok && part != "" {
+		return "embedded_media", part
+	}
+	return "parent_document", ""
+}
+
+// removedMetadataField names what a metadata removal dropped: the EXIF field, or, for a PNG (whose
+// re-encode drops every ancillary chunk), the class of chunks.
+func removedMetadataField(m RedactionMapping) string {
+	if f, ok := m.Metadata["exif_field"].(string); ok && f != "" {
+		return f
+	}
+	if t, ok := m.Metadata["metadata_type"].(string); ok && t == "png_chunks" {
+		return "png_ancillary_chunks"
+	}
+	return "metadata"
+}
+
+// runStrategy is the strategy the run handed the redactor for this document.
+//
+// Every redactor stamps the strategy it was called with on each mapping it returns, so that is the
+// first source; a result with no mappings falls back to the manager's configured strategy, which
+// the CLI and core.RedactFile build from the same parsed value they hand the worker pool. (The worker
+// pool does not pass the strategy to AddRedactionResult; doing so would remove the fallback.)
+func (rm *RedactionManager) runStrategy(result *RedactionResult) RedactionStrategy {
+	if len(result.RedactionMap) > 0 {
+		return result.RedactionMap[0].Strategy
+	}
+	if rm.config != nil {
+		return rm.config.DefaultStrategy
+	}
+	return RedactionFormatPreserving
 }
 
 // ExportAuditLog exports the redaction audit log to the specified file path
