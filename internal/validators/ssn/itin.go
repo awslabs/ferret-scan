@@ -46,8 +46,9 @@ func isITINGroup(group int) bool {
 //
 //   - 987-65-4320 through 987-65-4329, the block the SSA reserves for advertising. Its group, 65, is an
 //     ITIN group, so before this the advertising block was "safe" only because the area veto rejected
-//     it: lifting the veto for ITINs reported "SSN: 987-65-4325" at 90. It is now an explicit drop
-//     rather than a side effect of a rule about something else.
+//     it: with this drop removed, "SSN: 987-65-4325" reports ITIN 100 (the issue measured 90 with the
+//     type left as SSN). It is now an explicit drop rather than a side effect of a rule about
+//     something else.
 //   - the repdigit 999-99-9999, the 9xx placeholder; isTestSSN already lists it for the SSN path.
 //
 // A serial of 0000 is rejected as it is for an SSN. The SSN's pattern checks (sequential digits,

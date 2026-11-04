@@ -138,8 +138,8 @@ var Cases = []Case{
 		Name: "ssn_itin_decoys",
 		Description: "The #884 decoys, which must stay EMPTY: 9xx values the ITIN lane must decline. " +
 			"Lines 1-3 are the SSA advertising block 987-65-4320..4329 (bare, under SSN:, under ITIN:), whose " +
-			"group 65 is an ITIN group, so lifting the area veto without an explicit drop reported " +
-			"'SSN: 987-65-4325' at 90; line 4 is the 9xx repdigit; lines 5-7 are groups 93 (an ATIN), 40 and " +
+			"group 65 is an ITIN group, so without an explicit drop 'SSN: 987-65-4325' reports ITIN 100; " +
+			"line 4 is the 9xx repdigit; lines 5-7 are groups 93 (an ATIN), 40 and " +
 			"89, none issued as an ITIN; line 8 has serial 0000; line 9 is a bare nine-digit 9xx run with no " +
 			"ITIN label and line 10 a Chilean mobile, +56 9XXXXXXXX, both kept out by the form gate (accepting " +
 			"any 9xx form reported 75-92 false findings per 200 mobiles). Positive controls (separated and " +

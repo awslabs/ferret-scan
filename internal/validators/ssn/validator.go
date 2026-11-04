@@ -1387,10 +1387,9 @@ func (v *Validator) isTestSSN(ssn string) bool {
 		//     entry here. As an SSN, area 987 is outside the valid 001-665/667-899
 		//     range, so isValidSSN rejects them. As an ITIN their group, 65, is
 		//     an ITIN group, so isITIN drops the block explicitly rather than
-		//     relying on a rule about something else (#884); measured with the
-		//     area veto lifted and no drop, "SSN: 987-65-4325" reported at 90.
-		//     "987654321" below is in that block and is left alone rather than
-		//     quietly removed.
+		//     relying on a rule about something else (#884); with that drop
+		//     removed, "SSN: 987-65-4325" reports ITIN 100. "987654321" below is
+		//     in that block and is left alone rather than quietly removed.
 		//   - 219-09-9999, also described as voided, is this suite's canonical
 		//     REAL-SSN fixture, and validator_test.go asserts isTestSSN returns
 		//     false for it. Suppressing it is a separate call with a much larger
