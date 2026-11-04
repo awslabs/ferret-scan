@@ -115,25 +115,10 @@ type Validator struct {
 func NewValidator() *Validator {
 	v := &Validator{
 		pattern: reAnyDL.String(),
-		positiveKeywords: []string{
-			"driver", "license", "licence", "dl", "dmv",
-			"motor vehicle", "driving", "permit", "state id",
-			"identification card", "operator", "driver's license",
-			"drivers license", "driver license", "dl number",
-			"license number", "licence number",
-			// The three-word forms exist for ONE reason: kwmatch matches a keyword's
-			// concatenation as a whole WORD, so a camelCase field name is only found when some
-			// keyword's words concatenate to exactly that word. "drivers license" gives
-			// "driverslicense" and matched `driversLicense`, but appending "Number" makes the
-			// word "driverslicensenumber" and no keyword reached it — measured 0 findings for
-			// `driversLicenseNumber: D1234567` on both the same line and the cross-line window,
-			// while the spaced, snake_case and apostrophe spellings of the same label all
-			// reported at 85-95 (#438). camelCase is the default key style of JSON, REST
-			// payloads and ORM exports, and a licence that is not reported is never redacted.
-			"drivers license number", "drivers licence number",
-			"driver license number", "driver licence number",
-			"driving license number", "driver's license number",
-		},
+		// Generated: contextKeywords plus every {driver, drivers, driver's, driving} x
+		// {license, licence} x {"", number, no} spelling. See vocabulary.go for why the list is
+		// built rather than written out (#438, #861).
+		positiveKeywords: buildPositiveKeywords(),
 		negativeKeywords: []string{
 			"ssn", "social security", "phone", "account", "serial",
 			"order", "invoice", "reference", "tracking", "confirmation",
@@ -514,8 +499,14 @@ func isDateOrZipShape(text string) bool {
 // DL-related keyword. This is the first gate: without a keyword, no format
 // match is considered (because all DL formats overlap with generic numbers).
 func (v *Validator) lineHasPositiveKeyword(line string) bool {
+	// Lowercased ONCE. containsLabel lowercases the line again for every keyword, and this gate
+	// runs on every line of every file: with the generated vocabulary that would be 38 copies of
+	// the line instead of 23. The keywords are lowercase already (TestVocabularyIsLowercase), so
+	// ContainsLabelLower on the lowered line is exactly containsLabel.
+	lower := strings.ToLower(line)
+	hasDriv := strings.Contains(lower, drivPrefix)
 	for _, kw := range v.positiveKeywords {
-		if containsLabel(line, kw) {
+		if containsLabelKeywordLower(lower, kw, hasDriv) {
 			return true
 		}
 	}
@@ -525,7 +516,6 @@ func (v *Validator) lineHasPositiveKeyword(line string) bool {
 	// such word wrongly opened the DL gate. "number"/"no."/"no:" stay as-is
 	// (they do not collide with common words the way bare "id" does).
 	if reStateName.MatchString(line) {
-		lower := strings.ToLower(line)
 		if containsKeyword(line, "id") || strings.Contains(lower, "number") ||
 			strings.Contains(lower, "no.") || strings.Contains(lower, "no:") {
 			return true
@@ -666,7 +656,11 @@ var identifierTypeMarkers = []string{
 // silently reintroduce this: one list, one vocabulary.
 func labelIndexLower(lower string, keywords []string) int {
 	at := -1
+	hasDriv := strings.Contains(lower, drivPrefix)
 	for _, kw := range keywords {
+		if !hasDriv && strings.HasPrefix(kw, drivPrefix) {
+			continue // cannot occur in lower; see drivPrefix
+		}
 		// IndexLabelLower, not ContainsFunc: it shares the separator-flexible semantics that ADMIT a
 		// line, so a camelCase spelling like `driversLicense:` yields a label position here exactly
 		// when it counts as a label there. With the stricter matcher it did not, and that one spelling
@@ -921,19 +915,14 @@ func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) f
 
 	// Check for explicit DL prefix patterns (strongest signal)
 	lower := strings.ToLower(line)
-	if strings.Contains(lower, "dl:") || strings.Contains(lower, "dl #") ||
-		strings.Contains(lower, "dl#") || strings.Contains(lower, "d.l.") ||
-		strings.Contains(lower, "driver's license:") || strings.Contains(lower, "drivers license:") ||
-		strings.Contains(lower, "driver license:") || strings.Contains(lower, "license number:") ||
-		strings.Contains(lower, "licence number:") || strings.Contains(lower, "license no:") ||
-		strings.Contains(lower, "license no.") ||
-		v.labelledFieldPrefix(lower) {
+	if hasLabelLiteral(lower) || v.labelledFieldPrefix(lower) {
 		impact += 75 // prefix pattern -> base 20 + 75 = 95
 	} else {
 		// Check for positive keywords (moderate signal)
 		keywordCount := 0
+		hasDriv := strings.Contains(lower, drivPrefix)
 		for _, kw := range v.positiveKeywords {
-			if containsLabel(line, kw) {
+			if containsLabelKeywordLower(lower, kw, hasDriv) {
 				keywordCount++
 			}
 		}
@@ -1045,28 +1034,11 @@ func isSequentialDigits(s string) bool {
 	return ascending || descending
 }
 
-// prefixLabels are the labels that, standing in the LABEL POSITION of a field, identify the value
-// beside them as a driver's licence number. They are the same concepts as the literal substrings in
-// AnalyzeContext, expressed once each instead of once per spelling.
-var prefixLabels = []string{
-	"driver's license", "drivers license", "driver license",
-	"driver's licence", "drivers licence", "driver licence",
-	"license number", "licence number", "license no", "licence no",
-	"dl number", "dl",
-	// The three-word forms are here for composition, and they are a no-op on their own. A keyword's
-	// concatenation must equal the WHOLE word, so the label position "driverslicensenumber" is NOT
-	// matched by "drivers license" — the trailing "number" makes it a different word. Without these
-	// entries a camelCase three-word label would be detected but band-demoted, which is the very
-	// defect this function fixes.
-	//
-	// On this branch alone they change nothing measurable, because `driversLicenseNumber:` produces no
-	// finding at all to boost until the vocabulary gains the three-word positives (#438/#554). Adding
-	// them cannot widen anything either: a label position containing "drivers license number"
-	// necessarily contains "drivers license", which is already above.
-	"drivers license number", "drivers licence number",
-	"driver license number", "driver licence number",
-	"driving license number", "driver's license number",
-}
+// prefixLabels (vocabulary.go) are the labels that, standing in the LABEL POSITION of a field,
+// identify the value beside them as a driver's licence number. They are generated from the same parts
+// as positiveKeywords and labelLiterals, so a spelling admitted by one cannot be band-demoted by
+// another (#861). The suffixed spellings matter for composition: a keyword's concatenation must equal
+// the WHOLE word, so the label position "driverslicensenumber" is NOT matched by "drivers license".
 
 // valueSeparators end a field label. A labelled field is `<label><sep><value>`, and the separator is
 // what distinguishes a label from prose: "please renew your drivers license soon" contains the label
@@ -1147,8 +1119,12 @@ const maxLabelPrefixLen = 64
 // evidence even though the validator had matched a label to raise its confidence (#553).
 func (v *Validator) findLabelsOnLine(line string, keywords []string) []string {
 	var found []string
+	// Lowercased once, as in lineHasPositiveKeyword; the keyword ORDER is kept because it is the
+	// order the formatters report.
+	lower := strings.ToLower(line)
+	hasDriv := strings.Contains(lower, drivPrefix)
 	for _, kw := range keywords {
-		if containsLabel(line, kw) {
+		if containsLabelKeywordLower(lower, strings.ToLower(kw), hasDriv) {
 			found = append(found, kw)
 		}
 	}
