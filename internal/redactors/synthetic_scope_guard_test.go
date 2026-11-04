@@ -25,14 +25,24 @@ import (
 //  3. seeding a scope outside a test: every "synthetic" value would become a function of a constant.
 
 type sourceCall struct {
-	file string
+	file string // module-relative, slash-separated
 	pos  token.Position
 	call *ast.CallExpr
-	sel  *ast.SelectorExpr
+	name string // the function called
+	qual string // the package qualifier, "" for a call from inside the declaring package
 }
 
-// productionCalls returns every call of the form pkg.Name(...) whose Name is in names, in every
-// non-test .go file of the module.
+// of reports whether the call reaches pkg's function: qualified by pkg's name from anywhere, or
+// unqualified from a file in pkg's own directory.
+func (c sourceCall) of(pkg, dir string) bool {
+	if c.qual != "" {
+		return c.qual == pkg
+	}
+	return filepath.ToSlash(filepath.Dir(c.file)) == dir
+}
+
+// productionCalls returns every call of a function whose name is in names, written pkg.Name(...) or
+// Name(...), in every non-test .go file of the module.
 func productionCalls(t *testing.T, names map[string]bool) []sourceCall {
 	t.Helper()
 	root := moduleRoot(t)
@@ -62,9 +72,20 @@ func productionCalls(t *testing.T, names map[string]bool) []sourceCall {
 			if !ok {
 				return true
 			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if ok && names[sel.Sel.Name] {
-				out = append(out, sourceCall{file: rel, pos: fset.Position(call.Pos()), call: call, sel: sel})
+			c := sourceCall{file: rel, pos: fset.Position(call.Pos()), call: call}
+			switch fn := call.Fun.(type) {
+			case *ast.SelectorExpr:
+				c.name = fn.Sel.Name
+				if id, ok := fn.X.(*ast.Ident); ok {
+					c.qual = id.Name
+				} else {
+					c.qual = "?" // a method on a value: never one of the package functions guarded here
+				}
+			case *ast.Ident:
+				c.name = fn.Name
+			}
+			if names[c.name] {
+				out = append(out, c)
 			}
 			return true
 		})
@@ -76,18 +97,13 @@ func productionCalls(t *testing.T, names map[string]bool) []sourceCall {
 	return out
 }
 
-func qualifier(sel *ast.SelectorExpr) string {
-	if id, ok := sel.X.(*ast.Ident); ok {
-		return id.Name
-	}
-	return ""
-}
+const replacementDir = "internal/redactors/replacement"
 
 func TestNoProductionCodeDrawsASyntheticValueWithoutAScope(t *testing.T) {
 	for _, c := range productionCalls(t, map[string]bool{"Synthetic": true, "SyntheticName": true}) {
-		if qualifier(c.sel) == "replacement" {
+		if c.of("replacement", replacementDir) {
 			t.Errorf("%s: replacement.%s is one independent draw; write synthetic values through "+
-				"Generate, Render or RenderGroup with the invocation's scope (#886)", c.pos, c.sel.Sel.Name)
+				"Generate, Render or RenderGroup with the invocation's scope (#886)", c.pos, c.name)
 		}
 	}
 }
@@ -95,12 +111,12 @@ func TestNoProductionCodeDrawsASyntheticValueWithoutAScope(t *testing.T) {
 func TestNoProductionCallPassesANilScopeForSynthetic(t *testing.T) {
 	checked := 0
 	for _, c := range productionCalls(t, map[string]bool{"Generate": true, "Render": true, "RenderGroup": true}) {
-		if qualifier(c.sel) != "replacement" {
+		if !c.of("replacement", replacementDir) {
 			continue
 		}
 		checked++
 		if len(c.call.Args) != 4 {
-			t.Errorf("%s: replacement.%s with %d arguments; the guard expects (…, strategy, scope)", c.pos, c.sel.Sel.Name, len(c.call.Args))
+			t.Errorf("%s: replacement.%s with %d arguments; the guard expects (…, strategy, scope)", c.pos, c.name, len(c.call.Args))
 			continue
 		}
 		if id, ok := c.call.Args[3].(*ast.Ident); !ok || id.Name != "nil" {
@@ -110,7 +126,7 @@ func TestNoProductionCallPassesANilScopeForSynthetic(t *testing.T) {
 		st, ok := c.call.Args[2].(*ast.SelectorExpr)
 		if !ok || (st.Sel.Name != "RedactionFormatPreserving" && st.Sel.Name != "RedactionSimple") {
 			t.Errorf("%s: replacement.%s passes a nil scope with a strategy that may be synthetic; pass the "+
-				"redactor's scope (#886)", c.pos, c.sel.Sel.Name)
+				"redactor's scope (#886)", c.pos, c.name)
 		}
 	}
 	if checked == 0 {
@@ -120,6 +136,8 @@ func TestNoProductionCallPassesANilScopeForSynthetic(t *testing.T) {
 
 func TestNoProductionCodeSeedsTheSyntheticScope(t *testing.T) {
 	for _, c := range productionCalls(t, map[string]bool{"NewSeededSyntheticScope": true}) {
-		t.Errorf("%s: a seeded synthetic scope outside a test makes every synthetic value a function of a constant", c.pos)
+		if c.of("redactors", "internal/redactors") {
+			t.Errorf("%s: a seeded synthetic scope outside a test makes every synthetic value a function of a constant", c.pos)
+		}
 	}
 }
