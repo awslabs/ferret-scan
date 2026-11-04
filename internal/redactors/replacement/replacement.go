@@ -112,19 +112,19 @@ func (r Rendering) Kept() int { return r.kept }
 func Render(original, dataType string, strategy redactors.RedactionStrategy) Rendering {
 	switch strategy {
 	case redactors.RedactionSimple:
-		return Rendering{Text: Simple(dataType)}
+		return Rendering{Text: simpleFor(dataType, original)}
 	case redactors.RedactionFormatPreserving:
 		text := FormatPreserving(original, dataType)
 		return newRendering(text, original, formatPreservingCopies(original, dataType), false)
 	case redactors.RedactionSynthetic:
 		text, err := Synthetic(original, dataType)
 		if err != nil {
-			return Rendering{Text: Simple(dataType)}
+			return Rendering{Text: simpleFor(dataType, original)}
 		}
 		folded := textnorm.Fold(original)
 		return newRendering(text, folded, syntheticCopies(folded, dataType, text), folded != original)
 	default:
-		return Rendering{Text: Simple(dataType)}
+		return Rendering{Text: simpleFor(dataType, original)}
 	}
 }
 
@@ -224,7 +224,7 @@ func formatPreservingCopies(original, dataType string) []Copy {
 			return nil
 		}
 		return runsWhere(original, digitTailKept(original, 4))
-	case dataType == "EMAIL", dataType == "GMAIL", dataType == "BUSINESS":
+	case isEmailType(dataType, original):
 		at := strings.IndexByte(original, '@')
 		switch {
 		case at < 0:
@@ -348,21 +348,21 @@ func RenderGroup(g redactors.OverlapGroup, matches []detector.Match, strategy re
 		if !anyGuard {
 			return r
 		}
-		return withhold(r, g.Text, strategy, rep.Type, func(p int) bool { return !guarded[p] })
+		return withhold(r, g.Text, strategy, simpleFor(rep.Type, rep.Text), func(p int) bool { return !guarded[p] })
 
 	case redactors.GroupIdentical:
 		r := Render(g.Text, rep.Type, strategy)
-		return withhold(r, g.Text, strategy, rep.Type, keptByEveryCoveringMember(g, matches, strategy))
+		return withhold(r, g.Text, strategy, simpleFor(rep.Type, rep.Text), keptByEveryCoveringMember(g, matches, strategy))
 
 	case redactors.GroupPartial:
 		if t, ok := sharedType(g, matches); ok {
 			r := Render(g.Text, t, strategy)
-			return withhold(r, g.Text, strategy, rep.Type, keptByEveryCoveringMember(g, matches, strategy))
+			return withhold(r, g.Text, strategy, simpleFor(rep.Type, rep.Text), keptByEveryCoveringMember(g, matches, strategy))
 		}
 		if strategy == redactors.RedactionFormatPreserving {
 			return Rendering{Text: strings.Repeat("*", len(g.Text))}
 		}
-		return Rendering{Text: Simple(rep.Type)}
+		return Rendering{Text: simpleFor(rep.Type, rep.Text)}
 	}
 	return Render(g.Text, rep.Type, strategy)
 }
@@ -409,14 +409,14 @@ func keptByEveryCoveringMember(g redactors.OverlapGroup, matches []detector.Matc
 
 // withhold applies a group's per-byte rule to a rendering of the union: every copied value byte the
 // rule does not allow is masked (format_preserving) or the whole rendering falls back to the
-// representative's placeholder (synthetic).
-func withhold(r Rendering, value string, strategy redactors.RedactionStrategy, repType string, allowed func(p int) bool) Rendering {
+// representative's placeholder, repSimple (synthetic).
+func withhold(r Rendering, value string, strategy redactors.RedactionStrategy, repSimple string, allowed func(p int) bool) Rendering {
 	if len(r.Copies) == 0 {
 		return r
 	}
 	if r.Normalized {
 		// The copies are offsets into a folded spelling and cannot be checked byte by byte.
-		return Rendering{Text: Simple(repType)}
+		return Rendering{Text: repSimple}
 	}
 
 	out := []byte(r.Text)
@@ -450,9 +450,88 @@ func withhold(r Rendering, value string, strategy redactors.RedactionStrategy, r
 		return r
 	}
 	if strategy != redactors.RedactionFormatPreserving {
-		return Rendering{Text: Simple(repType)}
+		return Rendering{Text: repSimple}
 	}
 	return newRendering(string(out), value, keep, false)
+}
+
+// ─── Type families ───────────────────────────────────────────────────────────
+
+// Three validators report one family of value under many Type values (#864): email under 24 (the
+// generic EMAIL, one per provider, one per sector), social media under one per platform plus the
+// cluster, and secrets under one per credential kind. The renderers switched on the Type, and their
+// email arms listed three of the 24, so the other 21 took the generic arm in every strategy: simple
+// named the provider or sector ("[SALESFORCE-REDACTED]", "[GOVERNMENT-REDACTED]"), format_preserving
+// wrote an all-'*' mask with no '@' or domain, and synthetic random alphanumerics with no '@'.
+// Measured on main at b0a9163 with one address per type: 3 of 24 lines kept an '@' under
+// format_preserving and under synthetic. The same switch left synthetic's social media arm reached by
+// no platform type, and synthetic's secrets arm by 12 of the 13 secret types.
+//
+// The family is chosen from the Type and, for the one Type two validators share, from the value: a
+// renderer is handed the value and its Type, not the validator that reported it. The lists are kept
+// honest by a test that reads the validators' own type functions (family_guard_test.go).
+
+// emailTypes is every Type internal/validators/email reports (getEmailProviderType), plus nothing
+// else: each one is an email address. The metadata validator reports "EMAIL" too, for an address in
+// document properties, and renders as an email through the same entry.
+var emailTypes = map[string]bool{
+	"EMAIL": true, "BUSINESS": true, "EDUCATIONAL": true, "GOVERNMENT": true, "DISPOSABLE": true,
+	"GMAIL": true, "GOOGLE_WORKSPACE": true, "OUTLOOK": true, "MICROSOFT_365": true, "YAHOO": true,
+	"ICLOUD": true, "APPLE_CORPORATE": true, "AOL": true, "PROTONMAIL": true, "TUTANOTA": true,
+	"FASTMAIL": true, "ZOHO": true, "YANDEX": true, "MAIL_RU": true, "SALESFORCE": true,
+	"SLACK": true, "ATLASSIAN": true, "GITHUB": true, "GITLAB": true,
+}
+
+// socialMediaTypes is every Type internal/validators/socialmedia reports for a built-in platform
+// (getPlatformDisplayName, and the upper-cased names identifyPlatform returns), its cluster type, and
+// the family's own name. A platform a user adds in config reports its upper-cased name, which this
+// list cannot know, and takes the generic arm.
+var socialMediaTypes = map[string]bool{
+	"SOCIAL_MEDIA": true, "SOCIAL_MEDIA_CLUSTER": true,
+	"LINKEDIN": true, "TWITTER": true, "GITHUB": true, "FACEBOOK": true, "INSTAGRAM": true,
+	"YOUTUBE": true, "TIKTOK": true, "DISCORD": true, "REDDIT": true, "SNAPCHAT": true,
+	"PINTEREST": true, "TWITCH": true, "MEDIUM": true, "STACKOVERFLOW": true, "MASTODON": true,
+	"TELEGRAM": true, "WHATSAPP": true, "SKYPE": true, "CLUBHOUSE": true, "THREADS": true,
+	"BLUESKY": true,
+}
+
+// secretTypes is every Type internal/validators/secrets reports, plus the family's own name. synthetic
+// sends all of them to syntheticSecret; simple keeps naming the credential kind
+// ("[GITHUB_TOKEN-REDACTED]"), which docs/configuration.md documents as deliberate.
+var secretTypes = map[string]bool{
+	"SECRETS": true, "API_KEY_OR_SECRET": true, "AWS_ACCESS_KEY": true, "AWS_SECRET_ACCESS_KEY": true,
+	"GITHUB_TOKEN": true, "GOOGLE_CLOUD_API_KEY": true, "STRIPE_API_KEY": true, "GITLAB_TOKEN": true,
+	"DOCKER_TOKEN": true, "SLACK_TOKEN": true, "JWT_TOKEN": true, "SSH_PRIVATE_KEY": true,
+	"CERTIFICATE": true, "PGP_PRIVATE_KEY": true,
+}
+
+// isEmailType reports whether a value of this Type renders as an email address.
+//
+// GITHUB is both an email provider type (an address at github.com) and a social media platform (a
+// GitHub profile). Only the value tells them apart, so it decides: an address renders as an email,
+// a profile URL or handle as a profile.
+func isEmailType(dataType, value string) bool {
+	if !emailTypes[dataType] {
+		return false
+	}
+	return !socialMediaTypes[dataType] || looksLikeEmailAddress(value)
+}
+
+// isSocialMediaType reports whether a value of this Type renders as a social media profile.
+func isSocialMediaType(dataType, value string) bool {
+	return socialMediaTypes[dataType] && !isEmailType(dataType, value)
+}
+
+// looksLikeEmailAddress reports whether v has an email address's shape: one '@' after a non-empty
+// local part, a dotted domain, and nothing a URL or a handle carries (a '/', a ':' or white space).
+func looksLikeEmailAddress(v string) bool {
+	at := strings.IndexByte(v, '@')
+	if at <= 0 || at != strings.LastIndexByte(v, '@') || strings.ContainsAny(v, "/: \t\r\n") {
+		return false
+	}
+	domain := v[at+1:]
+	dot := strings.IndexByte(domain, '.')
+	return dot > 0 && dot < len(domain)-1
 }
 
 // ─── Simple ──────────────────────────────────────────────────────────────────
@@ -486,19 +565,36 @@ func isCreditCardType(dataType string) bool {
 }
 
 // Simple returns a bracketed placeholder for the given data type.
+//
+// Every email type writes "[EMAIL-REDACTED]" and every social media platform
+// "[SOCIAL-MEDIA-REDACTED]", as every card brand writes "[CREDIT-CARD-REDACTED]":
+// the placeholder names the kind of value, never the provider, employer, sector
+// or platform, which identify the person behind it (#864). A secret keeps its
+// credential kind ("[GITHUB_TOKEN-REDACTED]").
+//
+// Simple has no value to look at, so GITHUB -- an email provider type and a social
+// media platform -- takes the social media placeholder here. Render and Generate,
+// which have the value, write "[EMAIL-REDACTED]" for an address at github.com.
 func Simple(dataType string) string {
+	return simpleFor(dataType, "")
+}
+
+// simpleFor is Simple, with the value to decide GITHUB by.
+func simpleFor(dataType, value string) string {
 	if isCreditCardType(dataType) {
 		return "[CREDIT-CARD-REDACTED]"
+	}
+	if isEmailType(dataType, value) {
+		return "[EMAIL-REDACTED]"
+	}
+	if isSocialMediaType(dataType, value) {
+		return "[SOCIAL-MEDIA-REDACTED]"
 	}
 	switch dataType {
 	case "SSN":
 		return "[SSN-REDACTED]"
-	case "EMAIL", "GMAIL", "BUSINESS":
-		return "[EMAIL-REDACTED]"
 	case "PHONE":
 		return "[PHONE-REDACTED]"
-	case "SECRETS":
-		return "[SECRET-REDACTED]"
 	case "IP_ADDRESS":
 		return "[IP-ADDRESS-REDACTED]"
 	case "PASSPORT":
@@ -514,15 +610,20 @@ func Simple(dataType string) string {
 
 // FormatPreserving returns a replacement that keeps the original structure
 // (separators, length, character types) while masking the sensitive content.
+//
+// Every email type keeps the first character and the domain ("j***@acme.com"),
+// as documented and pinned by TestEmail_FormatPreserving_KeepsDomain; before #864
+// only EMAIL, GMAIL and BUSINESS did, and the other 21 email types were masked whole.
 func FormatPreserving(original, dataType string) string {
 	if isCreditCardType(dataType) {
 		return preserveCreditCard(original)
 	}
+	if isEmailType(dataType, original) {
+		return preserveEmail(original)
+	}
 	switch dataType {
 	case "SSN":
 		return preserveSSN(original)
-	case "EMAIL", "GMAIL", "BUSINESS":
-		return preserveEmail(original)
 	case "PHONE":
 		return preservePhone(original)
 	case "IP_ADDRESS":
@@ -657,26 +758,27 @@ func Synthetic(original, dataType string) (string, error) {
 	if isCreditCardType(dataType) {
 		return syntheticCreditCard(original)
 	}
+	// By family (#864): every email type gets a random address at example.com, every social media
+	// platform a fake profile on its own host, every secret type a token of its own shape.
+	switch {
+	case isEmailType(dataType, original):
+		return syntheticEmail(original)
+	case isSocialMediaType(dataType, original):
+		return syntheticSocialMedia(original)
+	case secretTypes[dataType]:
+		return syntheticSecret(original, dataType)
+	}
 	switch dataType {
 	case "SSN":
 		return syntheticSSN(original)
-	case "EMAIL", "GMAIL", "BUSINESS":
-		return syntheticEmail(original)
 	case "PHONE":
 		return syntheticPhone(original)
 	case "IP_ADDRESS":
 		return syntheticIP()
 	case "PERSON_NAME":
 		return SyntheticName(original)
-	case "SECRETS", "API_KEY_OR_SECRET", "AWS_ACCESS_KEY", "GITHUB_TOKEN",
-		"GOOGLE_CLOUD_API_KEY", "STRIPE_API_KEY", "GITLAB_TOKEN",
-		"DOCKER_TOKEN", "SLACK_TOKEN", "JWT_TOKEN", "SSH_PRIVATE_KEY",
-		"CERTIFICATE", "PGP_PRIVATE_KEY":
-		return syntheticSecret(original, dataType)
 	case "PASSPORT":
 		return syntheticPassport(original)
-	case "SOCIAL_MEDIA":
-		return syntheticSocialMedia(original)
 	case "INTELLECTUAL_PROPERTY":
 		return syntheticIntellectualProperty(original)
 	default:

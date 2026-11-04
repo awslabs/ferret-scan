@@ -48,7 +48,7 @@ Replaces sensitive data with a bracketed placeholder. Nothing from the original 
 4916338506082832  →  [CREDIT-CARD-REDACTED]
 372-84-1951       →  [SSN-REDACTED]
 john@acme.com     →  [EMAIL-REDACTED]
-AKIAIOSFODNN7...  →  [SECRET-REDACTED]
+AKIAIOSFODNN7...  →  [AWS_ACCESS_KEY-REDACTED]
 ```
 
 Use this when the document will be shared externally or when downstream systems don't need to parse the field.
@@ -93,6 +93,18 @@ ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 | SOCIAL_MEDIA | ✅ | ✅ Asterisk mask | ✅ Fake profile URL |
 | INTELLECTUAL_PROPERTY | ✅ | ✅ Asterisk mask | ✅ Fake copyright/patent/trademark |
 | CLOUD_RESOURCES | ✅ | ✅ Generic mask | ✅ Length-matched random token (no provider-specific format) |
+
+A row covers every type its validator reports. EMAIL is 24 types (`EMAIL`, a provider type such
+as `GMAIL` or `OUTLOOK`, or a sector type such as `GOVERNMENT`), and every one of them is redacted
+as an email: `simple` writes `[EMAIL-REDACTED]`, never the provider or sector. SOCIAL_MEDIA is one
+type per platform (`LINKEDIN`, `GITHUB`, …): `simple` writes `[SOCIAL-MEDIA-REDACTED]`, and
+`synthetic` a fake profile URL on the same host (LinkedIn, X/Twitter, GitHub, Facebook, Instagram,
+YouTube, TikTok, Reddit) or a fake `@handle`. An address at `github.com` is an email and a GitHub
+profile is a profile, although both are reported as `GITHUB`. A platform added in your own config
+reports its own name as the type and is not covered by this row. SECRETS keeps the credential kind in
+its `simple` marker (`[GITHUB_TOKEN-REDACTED]`). Up to v2.5.5 only `EMAIL`, `GMAIL` and `BUSINESS`
+took the email row: the other 21 email types wrote a provider-named placeholder, an all-`*` mask
+with no domain, or a random string with no `@`.
 
 ## Document Type Support
 

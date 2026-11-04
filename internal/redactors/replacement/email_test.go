@@ -127,9 +127,10 @@ func TestEmail_FormatPreserving_DegenerateInputs(t *testing.T) {
 // The alias types route to the same helper, so the fix must cover them. A leak
 // that only closes for "EMAIL" while "GMAIL"/"BUSINESS" still pass the value
 // through would be worse than no fix, because the type that leaks is the one a
-// reader is least likely to check.
+// reader is least likely to check. Every type the email validator reports is an
+// alias here (#864): this used to list three of the 24.
 func TestEmail_FormatPreserving_CoversAliasTypes(t *testing.T) {
-	for _, dataType := range []string{"EMAIL", "GMAIL", "BUSINESS"} {
+	for _, dataType := range emailProviderTypes {
 		got := FormatPreserving("a@b.co", dataType)
 		if got == "a@b.co" {
 			t.Errorf("FormatPreserving(%q, %s) returned the input unchanged", "a@b.co", dataType)
