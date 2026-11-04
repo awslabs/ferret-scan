@@ -6,6 +6,7 @@ package dob
 import (
 	stdctx "context"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -53,6 +54,60 @@ var (
 	reVersionContext = regexp.MustCompile(`(?i)\b(?:version|build|release|upgrade|patch|changelog|semver|pip|npm|v\d+\.\d+)\b|==\d`)
 )
 
+// Label-adjacent shapes (#857). These are standard ways of writing a date of
+// birth that the patterns above never matched, so a value directly after
+// "Date of Birth:", "DOB" or {"dob": ...} produced no finding of any type and
+// stayed in cleartext under --enable-redaction:
+//
+//   - ISO 8601 date-times, the output of toISOString() and every JSON
+//     serializer: reISODate's trailing \b cannot sit between "14" and "T";
+//   - year-first numerics with '/' or '.', and unpadded ISO dates (1987-3-14);
+//   - month names in any case (MARCH, march, Oracle's DD-MON-YYYY 14-MAR-1987,
+//     SAS DATE9 14MAR1987), "Mar.", "Sept", "14th of March", year-first
+//     "1987 March 14" and "March 14,1987".
+//
+// They are an ADMISSION PATH ONLY, consulted after the patterns above: a
+// candidate is kept only when an explicit DOB label ends at most maxLabelGap
+// separator bytes before it (labelValueStarts), and never when it overlaps a
+// candidate the patterns above produced, whose spans, scores and hashes are
+// therefore untouched. The gate is what makes widening safe. Without it, on
+// 1,726 text files (Go toolchain testdata and this repository's Markdown) these
+// shapes added 210 findings, 209 of them ISO timestamps; gated on a DOB keyword
+// anywhere on the line -- the model the scoring uses -- the corpus was clean
+// but the timestamps beside a DOB key in one JSON object reported at 90-100
+// ({"dob": null, "createdAt": "2024-..."}); gated on an adjacent label, both
+// added nothing (#857).
+//
+// Every one of them is ANCHORED (^): it is tried only at the value start right
+// after an admitting label, never scanned across the line. Scanned across a
+// 1MB line, the three month-name patterns alone cost 1.0s -- twice the five
+// original patterns together -- because a case-insensitive alternation of 23
+// month names is expanded at every byte.
+var (
+	// YYYY-MM-DDTHH:MM, with whatever seconds, fraction and offset follow. The
+	// span is the DATE PART only, as reISODate already gives for the SQL
+	// "1987-03-14 00:00:00": redaction then masks the date and leaves the time.
+	reISODateTime = regexp.MustCompile(`^(\d{4})-(\d{2})-(\d{2})[Tt]\d{2}:\d{2}`)
+
+	// YYYY/MM/DD, YYYY.MM.DD and the unpadded YYYY-M-D. Both separators are
+	// captured and compared in code (RE2 has no backreferences). The padded
+	// YYYY-MM-DD stays reISODate's.
+	reYearFirstNumeric = regexp.MustCompile(`^(\d{4})([-/.])(\d{1,2})([-/.])(\d{1,2})\b`)
+
+	// Month names in any case, in month-first, day-first and year-first order.
+	// Each joiner is whitespace, '-', '/' or (where a digit meets a letter)
+	// nothing; before a year a comma takes optional whitespace. Both joiners are
+	// captured so joinersAgree can require one joiner per date.
+	reMonthFirstAnyCase  = regexp.MustCompile(`(?i)^(` + monthNamePattern + `)(\.?)(\s+|-|/)(\d{1,2})(?:st|nd|rd|th)?(,\s*|\s+|-|/)(\d{4})\b`)
+	reDayFirstAnyCase    = regexp.MustCompile(`(?i)^(\d{1,2})(?:st|nd|rd|th)?(\s+of\s+|\s+|-|/|)(` + monthNamePattern + `)(\.?)(,\s*|\s+|-|/|)(\d{4}|\d{2})\b`)
+	reYearFirstMonthName = regexp.MustCompile(`(?i)^(\d{4})(\s+|-|/|)(` + monthNamePattern + `)(\.?)(\s+|-|/|)(\d{1,2})(?:st|nd|rd|th)?\b`)
+)
+
+// monthNamePattern lists every full month name before its abbreviations, and
+// "sept" before "sep": Go's alternation is leftmost-first, so a prefix listed
+// first would win and strand the rest of the word.
+const monthNamePattern = `january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec`
+
 // monthMap maps month names/abbreviations to their numeric value.
 var monthMap = map[string]int{
 	"january": 1, "february": 2, "march": 3, "april": 4,
@@ -60,7 +115,82 @@ var monthMap = map[string]int{
 	"september": 9, "october": 10, "november": 11, "december": 12,
 	"jan": 1, "feb": 2, "mar": 3, "apr": 4,
 	"jun": 6, "jul": 7, "aug": 8,
-	"sep": 9, "oct": 10, "nov": 11, "dec": 12,
+	"sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+// dobKeyword is one entry of positiveVocabulary.
+type dobKeyword struct {
+	word string
+	// strong marks an explicit field label. It dominates context-negative
+	// keywords in analyzeContext and is what markerBeforeDOBLabel locates.
+	strong bool
+	// admits marks a label that may admit a label-adjacent shape. The weak
+	// keywords "age", "years old" and "birth" do not: "Patient age 39, seen
+	// 2024-03-14T09:00:00Z" holds no date of birth.
+	admits bool
+}
+
+// positiveVocabulary is the ONE list of DOB-positive keywords. Scoring
+// (analyzeContext), admission of the label-adjacent shapes (labelValueStarts) and
+// the positional disqualifier rule (markerBeforeDOBLabel) all derive from it,
+// and all match it with kwmatch's LABEL semantics, so the camelCase key
+// "dateOfBirth" is the label "date of birth" in each of them.
+//
+// The positional rule used to search a separate list of label spellings that
+// lacked "d.o.b". "D.O.B.: 03/14/1987, blood sample collected" therefore found
+// no label, fell back to "the disqualifier wins", and reported nothing while
+// its "DOB:" twin scored 90 (#857) -- the drift #614/#616 removed from
+// driverslicense. The order here is the order of the recorded PositiveKeywords.
+var positiveVocabulary = []dobKeyword{
+	{word: "date of birth", strong: true, admits: true},
+	{word: "dob", strong: true, admits: true},
+	{word: "born", admits: true},
+	{word: "birthday", admits: true},
+	{word: "birth date", strong: true, admits: true},
+	{word: "birthdate", strong: true, admits: true},
+	{word: "d.o.b", strong: true, admits: true},
+	{word: "age"},
+	{word: "years old"},
+	{word: "birth"},
+	{word: "date-of-birth", strong: true, admits: true},
+	{word: "date_of_birth", strong: true, admits: true},
+	{word: "born on", admits: true},
+	{word: "patient dob", strong: true, admits: true},
+	{word: "applicant dob", strong: true, admits: true},
+	{word: "member dob", strong: true, admits: true},
+}
+
+// vocabularyWords returns, in vocabulary order, the words whose entry satisfies keep.
+func vocabularyWords(keep func(dobKeyword) bool) []string {
+	var words []string
+	for _, k := range positiveVocabulary {
+		if keep(k) {
+			words = append(words, k.word)
+		}
+	}
+	return words
+}
+
+var (
+	// strongLabels are the explicit field labels, in vocabulary order.
+	strongLabels = vocabularyWords(func(k dobKeyword) bool { return k.strong })
+	// admittingLabels are the labels that may admit a label-adjacent shape.
+	admittingLabels = vocabularyWords(func(k dobKeyword) bool { return k.admits })
+)
+
+// containsLabelLower is containsKeywordLower with kwmatch's LABEL semantics: a
+// multi-word keyword's spaces may also match ZERO separator bytes, so "date of
+// birth" finds "dateofbirth" -- the lowercased camelCase key "dateOfBirth", the
+// default style of JSON and XML -- and "patient dob" finds "patientdob". Those
+// keys used to score 5 (LOW) where their snake_case twins scored 90.
+//
+// Positive keywords only. A suppressor (negative keyword, disqualifier,
+// non-human indicator) keeps containsKeywordLower, because widening a
+// suppressor's reach silences real values: with label semantics "created at"
+// would match the key "createdAt" and veto a weakly labelled date of birth
+// beside it. See kwmatch.ContainsLabel.
+func containsLabelLower(lowerText, lowerKeyword string) bool {
+	return kwmatch.ContainsLabelLower(lowerText, lowerKeyword)
 }
 
 // containsKeywordLower reports whether lowerText contains lowerKeyword as a
@@ -89,6 +219,12 @@ type Validator struct {
 	negativeKeywords []string
 	regex            *regexp.Regexp
 	observer         observability.Observer
+
+	// skipLabelStemPrefilter runs the label-adjacent extractors on every line
+	// instead of only on lines holding a label stem (see hasLabelStem). Tests
+	// set it to prove the prefilter changes no finding; it is never set in
+	// production.
+	skipLabelStemPrefilter bool
 }
 
 // NewValidator creates and returns a new Validator instance with predefined
@@ -97,13 +233,8 @@ func NewValidator() *Validator {
 	v := &Validator{
 		// Combined pattern is not used directly; we use the individual compiled
 		// patterns above. This field satisfies the struct contract.
-		pattern: `date_of_birth_composite`,
-		positiveKeywords: []string{
-			"date of birth", "dob", "born", "birthday", "birth date",
-			"birthdate", "d.o.b", "age", "years old", "birth",
-			"date-of-birth", "date_of_birth", "born on", "patient dob",
-			"applicant dob", "member dob",
-		},
+		pattern:          `date_of_birth_composite`,
+		positiveKeywords: vocabularyWords(func(dobKeyword) bool { return true }),
 		negativeKeywords: []string{
 			"created", "modified", "expires", "expiry", "due", "deadline",
 			"meeting", "published", "released", "updated", "version", "build",
@@ -199,7 +330,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				// so folding only ASCII loses no match.
 				lowerLineCached = bytefold.Lower(line)
 				lineContextImpact = v.analyzeContext(lowerLineCached)
-				linePositiveKeywords = v.findKeywords(lowerLineCached, v.positiveKeywords)
+				linePositiveKeywords = v.findLabels(lowerLineCached, v.positiveKeywords)
 				lineNegativeKeywords = v.findKeywords(lowerLineCached, v.negativeKeywords)
 				lineHasDisqualifier = hasDisqualifierOnLine(lowerLineCached)
 				lineScanned = true
@@ -407,6 +538,14 @@ func (v *Validator) extractDates(line string) []dateCandidate {
 		})
 	}
 
+	// Label-adjacent shapes, last, so they can never displace a candidate the
+	// patterns above produced. Only on a line holding a label stem: every
+	// admitting label contains one, and the stem scan costs less than
+	// lowercasing the line to look for labels.
+	if v.skipLabelStemPrefilter || hasLabelStem(line) {
+		candidates = v.appendLabelAdjacent(line, candidates)
+	}
+
 	return candidates
 }
 
@@ -502,29 +641,21 @@ var nonHumanIndicators = []string{
 }
 
 // strongPositiveKeywords are explicit PII field labels that should always
-// dominate over negative keywords on the same line.
-var strongPositiveKeywords = map[string]bool{
-	"date of birth": true, "dob": true, "d.o.b": true,
-	"date-of-birth": true, "date_of_birth": true,
-	"patient dob": true, "applicant dob": true, "member dob": true,
-	"birthdate": true, "birth date": true,
-}
+// dominate over negative keywords on the same line. Derived from
+// positiveVocabulary, never listed separately.
+var strongPositiveKeywords = func() map[string]bool {
+	m := make(map[string]bool, len(strongLabels))
+	for _, w := range strongLabels {
+		m[w] = true
+	}
+	return m
+}()
 
 // disqualifierKeywords indicate the data is synthetic/fake. These override
 // even strong positive DOB labels because "Test DOB: 01/01/2000" is not real PII.
 var disqualifierKeywords = map[string]bool{
 	"test": true, "example": true, "sample": true,
 	"placeholder": true, "fake": true, "mock": true, "demo": true,
-}
-
-// dobLabelForms are the label spellings that mark a value as a date of birth.
-// Used to decide whether a disqualifier modifies the label (see
-// disqualifierModifiesLabel); the earliest occurrence wins, so order is for
-// readability only.
-var dobLabelForms = []string{
-	"date of birth", "date-of-birth", "date_of_birth",
-	"patient dob", "applicant dob", "member dob",
-	"birthdate", "birth date", "dob",
 }
 
 // disqualifierModifiesLabel reports whether a synthetic-data keyword is
@@ -561,10 +692,19 @@ func hasDisqualifierOnLine(lowerLine string) bool {
 	return false
 }
 
+// markerBeforeDOBLabel is the per-line half of the positional rule: a
+// synthetic-data marker before the earliest strong DOB label modifies it.
+//
+// The label is located with kwmatch.IndexLabelLower over strongLabels -- the
+// same vocabulary and the same label semantics that decided hasStrongPositive --
+// so a line scored as strongly labelled always has a label to anchor on here.
+// It used to search a separate list with strings.Index: that list lacked
+// "d.o.b", so a "D.O.B.:" line with "sample" later in it found no label and was
+// dropped, and the substring search found "dob" inside "adobe".
 func markerBeforeDOBLabel(lowerLine string) bool {
 	labelAt := -1
-	for _, form := range dobLabelForms {
-		if i := strings.Index(lowerLine, form); i >= 0 && (labelAt < 0 || i < labelAt) {
+	for _, label := range strongLabels {
+		if i := kwmatch.IndexLabelLower(lowerLine, label); i >= 0 && (labelAt < 0 || i < labelAt) {
 			labelAt = i
 		}
 	}
@@ -650,11 +790,12 @@ func isWordByteASCII(b byte) bool {
 func (v *Validator) analyzeContext(lowerLine string) float64 {
 	var impact float64
 
-	// Check positive keywords first to identify strong DOB signals
+	// Check positive keywords first to identify strong DOB signals. Matched as
+	// LABELS (containsLabelLower), so "dateOfBirth" counts as "date of birth".
 	positiveCount := 0
 	hasStrongPositive := false
 	for _, kw := range v.positiveKeywords {
-		if containsKeywordLower(lowerLine, kw) {
+		if containsLabelLower(lowerLine, kw) {
 			positiveCount++
 			if strongPositiveKeywords[kw] {
 				hasStrongPositive = true
@@ -778,4 +919,373 @@ func (v *Validator) findKeywords(lowerText string, keywords []string) []string {
 		}
 	}
 	return found
+}
+
+// findLabels is findKeywords for the POSITIVE keywords, matched with the same
+// label semantics analyzeContext scores them with, so the recorded
+// PositiveKeywords keep explaining the score ("dateOfBirth" records "date of
+// birth").
+func (v *Validator) findLabels(lowerText string, labels []string) []string {
+	var found []string
+	for _, kw := range labels {
+		if containsLabelLower(lowerText, kw) {
+			found = append(found, kw)
+		}
+	}
+	return found
+}
+
+// --- Label-adjacent admission (#857) -----------------------------------------
+
+// maxLabelGap is how many bytes may separate a DOB label from a label-adjacent
+// value, all of them isLabelGapByte. Eight covers every key/value and markup
+// shape measured in #857: `Date of Birth: `, `{"dob": "`, `| DOB | `,
+// `<DateOfBirth>`, a tab.
+const maxLabelGap = 8
+
+// maxLabelSpan bounds the length of an admitting label match. The longest label
+// is 13 bytes ("applicant dob", "date of birth"); the slack admits runs of
+// separators inside it ("date  of  birth"). With maxLabelGap this is the
+// 48-byte window before the value that the #857 prototype searched.
+const maxLabelSpan = 40
+
+// isLabelGapByte reports whether b may sit between a DOB label and its value.
+// Deliberately excludes '-', '/', '.', '_' and letters: "dob-service
+// 2024.03.14", "dob_updated_at": "2024-..." and "dobUpdatedAt" name something
+// other than a date of birth.
+func isLabelGapByte(b byte) bool {
+	switch b {
+	case ' ', '\t', '"', '\'', ':', '=', '>', '|', '(', '[', '{', ',':
+		return true
+	}
+	return false
+}
+
+// isAlnumLower reports whether b is [a-z0-9]: kwmatch's word byte, for text
+// that is already ASCII-lowercased.
+func isAlnumLower(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= '0' && b <= '9'
+}
+
+// labelValueStarts returns, sorted and without duplicates, every offset of
+// lowerLine where a label-adjacent value may begin: right after an admitting
+// label that has a word boundary on both sides, past at most maxLabelGap gap
+// bytes.
+//
+// Admission is decided by ADJACENCY, not by a DOB keyword somewhere on the line
+// (the model analyzeContext scores with), because that is the only gate #857
+// measured as adding nothing: a line-global gate admits the timestamps that sit
+// beside a DOB key in the same JSON object ({"dob": null, "createdAt":
+// "2024-03-14T10:22:01Z"}) and scores them 90. Scoring is unchanged: an
+// admitted value is scored by analyzeContext like any other candidate.
+//
+// Labels are found with kwmatch's label semantics over admittingLabels, never a
+// list or regex written for this gate, so "dateOfBirth" admits exactly as it
+// scores (#614/#616).
+func labelValueStarts(lowerLine string) []int {
+	var starts []int
+	for _, label := range admittingLabels {
+		for from := 0; from < len(lowerLine); {
+			i := kwmatch.IndexLabelLower(lowerLine[from:], label)
+			if i < 0 {
+				break
+			}
+			s := from + i
+			// kwmatch saw a word boundary at the slice edge; the line must give one too.
+			if s == 0 || !isAlnumLower(lowerLine[s-1]) {
+				if e := labelEnd(lowerLine, s, label); e > 0 {
+					if p := valueStart(lowerLine, e, label); p >= 0 {
+						starts = append(starts, p)
+					}
+				}
+			}
+			from = s + 1
+		}
+	}
+	if len(starts) < 2 {
+		return starts
+	}
+	sort.Ints(starts)
+	out := starts[:1]
+	for _, p := range starts[1:] {
+		if p != out[len(out)-1] {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// labelEnd returns the end of the label match that starts at s, or -1 when the
+// match runs past maxLabelSpan.
+//
+// kwmatch reports where a label match STARTS, and with label semantics its
+// length varies ("date of birth", "dateOfBirth", "date  of  birth"), so the end
+// is recovered from kwmatch itself: the prefix lowerLine[s:x] still holds the
+// match at its start exactly when x is at or past the end. That is monotone in x
+// because kwmatch's walk is deterministic (each keyword space consumes the
+// longest run of separators) and reads no byte past the match, so the end is
+// the shortest such prefix, found by binary search.
+func labelEnd(lowerLine string, s int, label string) int {
+	lo, hi := s+1, s+maxLabelSpan
+	if hi > len(lowerLine) {
+		hi = len(lowerLine)
+	}
+	if lo > hi || kwmatch.IndexLabelLower(lowerLine[s:hi], label) != 0 {
+		return -1
+	}
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		if kwmatch.IndexLabelLower(lowerLine[s:mid], label) == 0 {
+			hi = mid
+		} else {
+			lo = mid + 1
+		}
+	}
+	return lo
+}
+
+// valueStart returns where a value may begin after a label ending at e: past
+// the label's own closing period when it is an abbreviation ("D.O.B.: "), then
+// past at most maxLabelGap gap bytes. -1 when the gap is longer, or when what
+// follows cannot open a date (a value starts with a digit or a month name).
+func valueStart(lowerLine string, e int, label string) int {
+	p := e
+	if p < len(lowerLine) && lowerLine[p] == '.' && strings.IndexByte(label, '.') >= 0 {
+		p++
+	}
+	for gap := 0; p < len(lowerLine) && isLabelGapByte(lowerLine[p]); gap++ {
+		if gap == maxLabelGap {
+			return -1
+		}
+		p++
+	}
+	if p >= len(lowerLine) || !isAlnumLower(lowerLine[p]) {
+		return -1
+	}
+	return p
+}
+
+// labelStems are the substrings every admitting label contains, so a line
+// holding none of them cannot admit a label-adjacent shape. Each stem lies
+// inside one word of its labels, and label semantics only flex the SPACES
+// between words, so every spelling of a label ("dateOfBirth", "D.O.B.") still
+// contains its stem. TestLabelStemsCoverEveryAdmittingLabel pins this.
+var labelStems = [...]string{"dob", "d.o.b", "birth", "born"}
+
+// hasLabelStem reports whether line contains a label stem, ASCII
+// case-insensitively, without allocating. It runs on every line, so it is the
+// whole cost of the label-adjacent path on a line that has no DOB label: the
+// lowercased copy and the label search are made only where it passes.
+func hasLabelStem(line string) bool {
+	for i := 0; i < len(line); i++ {
+		c := line[i] | 0x20 // 'D'/'d' -> 'd', 'B'/'b' -> 'b'; no other byte lands on either
+		if c != 'd' && c != 'b' {
+			continue
+		}
+		for _, stem := range labelStems {
+			if stem[0] == c && hasPrefixFoldASCII(line[i:], stem) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hasPrefixFoldASCII reports whether s starts with lowerPrefix, folding ASCII
+// uppercase in s.
+func hasPrefixFoldASCII(s, lowerPrefix string) bool {
+	if len(s) < len(lowerPrefix) {
+		return false
+	}
+	for j := 0; j < len(lowerPrefix); j++ {
+		b := s[j]
+		if b >= 'A' && b <= 'Z' {
+			b += 'a' - 'A'
+		}
+		if b != lowerPrefix[j] {
+			return false
+		}
+	}
+	return true
+}
+
+// joinerKind classifies a month-name shape's joiner: whitespace (including
+// " of " and a comma with optional whitespace), '-', '/', or nothing (0).
+func joinerKind(j string) byte {
+	switch j {
+	case "":
+		return 0
+	case "-", "/":
+		return j[0]
+	}
+	return ' '
+}
+
+// joinersAgree reports whether a month-name shape is written with one joiner:
+// "14-MAR-1987", "14 Mar 1987", "14MAR1987" and "Mar. 14, 1987" are; "14-Mar
+// 1987" is not. A period after an abbreviation needs whitespace after it
+// ("Mar. 14", "14 Mar. 1987"); "14-MAR.-1987" is not a written date.
+func joinersAgree(j1, j2 string, dotted bool) bool {
+	k := joinerKind(j1)
+	if k != joinerKind(j2) {
+		return false
+	}
+	return !dotted || k == ' '
+}
+
+// spanSet marks the bytes of a line that a candidate already covers.
+type spanSet []uint64
+
+func newSpanSet(n int) spanSet { return make(spanSet, (n+63)/64) }
+
+func (s spanSet) mark(start, end int) {
+	for i := start; i < end; i++ {
+		s[i>>6] |= 1 << (uint(i) & 63)
+	}
+}
+
+func (s spanSet) overlaps(start, end int) bool {
+	for i := start; i < end; i++ {
+		if s[i>>6]&(1<<(uint(i)&63)) != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// appendLabelAdjacent appends the label-adjacent shapes (see reISODateTime) in
+// line to candidates, which must already hold every candidate the original
+// patterns produced.
+//
+// The patterns are anchored and tried only at the offsets labelValueStarts
+// returns, so the cost is per LABEL, not per byte. A value is kept only when it
+// overlaps no earlier candidate, so a value the original patterns already
+// matched keeps its span, score and hash ("March 14, 1987" stays
+// reMonthDDYYYY's) and is never reported twice. The overlap test is a byte set
+// rather than a pairwise scan, so a dense line of labelled values stays linear.
+func (v *Validator) appendLabelAdjacent(line string, candidates []dateCandidate) []dateCandidate {
+	starts := labelValueStarts(bytefold.Lower(line)) // byte-length preserving: offsets stay valid
+	if len(starts) == 0 {
+		return candidates
+	}
+	version := -1 // reVersionContext verdict for this line, computed on demand
+	var taken spanSet
+	for _, p := range starts {
+		c, ok := labelAdjacentValueAt(line, p, &version)
+		if !ok {
+			continue
+		}
+		end := c.start + len(c.text)
+		if taken == nil {
+			taken = newSpanSet(len(line))
+			for _, prev := range candidates {
+				taken.mark(prev.start, prev.start+len(prev.text))
+			}
+		}
+		if taken.overlaps(c.start, end) {
+			continue
+		}
+		taken.mark(c.start, end)
+		candidates = append(candidates, c)
+	}
+	return candidates
+}
+
+// labelAdjacentValueAt matches a label-adjacent shape starting exactly at p.
+// version caches the line's reVersionContext verdict (-1 = not yet computed).
+func labelAdjacentValueAt(line string, p int, version *int) (dateCandidate, bool) {
+	rest := line[p:]
+	atoi := func(start, end int) int {
+		n, _ := strconv.Atoi(rest[start:end])
+		return n
+	}
+	month := func(start, end int) int {
+		return monthMap[strings.ToLower(rest[start:end])]
+	}
+	cand := func(end, day, mon, year int) (dateCandidate, bool) {
+		return dateCandidate{text: rest[:end], start: p, day: day, month: mon, year: year}, true
+	}
+
+	// Every shape opens with a 4-digit year, a 1-2 digit day or a month name, so
+	// the leading bytes pick the patterns worth running; on a line dense with
+	// labels and no dates none runs at all.
+	digits := 0
+	for digits < len(rest) && digits < 5 && rest[digits] >= '0' && rest[digits] <= '9' {
+		digits++
+	}
+	switch {
+	case digits == 1 || digits == 2:
+		return dayFirstValueAt(rest, p)
+	case digits == 0:
+		if len(rest) < 3 || monthMap[strings.ToLower(rest[:3])] == 0 {
+			return dateCandidate{}, false
+		}
+		// Month DD YYYY in any case: groups month, dot, joiner, day, joiner, year.
+		loc := reMonthFirstAnyCase.FindStringSubmatchIndex(rest)
+		if loc == nil || !joinersAgree(rest[loc[6]:loc[7]], rest[loc[10]:loc[11]], loc[5] > loc[4]) {
+			return dateCandidate{}, false
+		}
+		return cand(loc[1], atoi(loc[8], loc[9]), month(loc[2], loc[3]), atoi(loc[12], loc[13]))
+	case digits != 4:
+		return dateCandidate{}, false
+	}
+
+	// YYYY-MM-DDTHH:MM...: the span is the date part, groups 1-3.
+	if loc := reISODateTime.FindStringSubmatchIndex(rest); loc != nil {
+		return cand(loc[7], atoi(loc[6], loc[7]), atoi(loc[4], loc[5]), atoi(loc[2], loc[3]))
+	}
+
+	// YYYY/MM/DD, YYYY.MM.DD, YYYY-M-D: groups year, sep, month, sep, day.
+	if loc := reYearFirstNumeric.FindStringSubmatchIndex(rest); loc != nil {
+		sep := rest[loc[4]:loc[5]]
+		switch {
+		case sep != rest[loc[8]:loc[9]]:
+			return dateCandidate{}, false
+		case sep == "-" && loc[7]-loc[6] == 2 && loc[11]-loc[10] == 2:
+			return dateCandidate{}, false // YYYY-MM-DD is reISODate's
+		case sep == ".":
+			// A dotted year-first value is shaped like a CalVer release
+			// ("2024.03.14"), and a strong label in a package name ("pip install
+			// dob==2024.03.14") would otherwise lift it to 90.
+			if *version < 0 {
+				*version = 0
+				if reVersionContext.MatchString(line) {
+					*version = 1
+				}
+			}
+			if *version == 1 {
+				return dateCandidate{}, false
+			}
+		}
+		return cand(loc[1], atoi(loc[10], loc[11]), atoi(loc[6], loc[7]), atoi(loc[2], loc[3]))
+	}
+
+	// YYYY Month DD in any case: groups year, joiner, month, dot, joiner, day.
+	if loc := reYearFirstMonthName.FindStringSubmatchIndex(rest); loc != nil {
+		if !joinersAgree(rest[loc[4]:loc[5]], rest[loc[10]:loc[11]], loc[9] > loc[8]) {
+			return dateCandidate{}, false
+		}
+		return cand(loc[1], atoi(loc[12], loc[13]), month(loc[6], loc[7]), atoi(loc[2], loc[3]))
+	}
+
+	return dateCandidate{}, false
+}
+
+// dayFirstValueAt matches DD [of] Month YYYY|YY in any case at the start of
+// rest, which begins at offset p of its line. Groups: day, joiner, month, dot,
+// joiner, year.
+func dayFirstValueAt(rest string, p int) (dateCandidate, bool) {
+	loc := reDayFirstAnyCase.FindStringSubmatchIndex(rest)
+	if loc == nil || !joinersAgree(rest[loc[4]:loc[5]], rest[loc[10]:loc[11]], loc[9] > loc[8]) {
+		return dateCandidate{}, false
+	}
+	day, _ := strconv.Atoi(rest[loc[2]:loc[3]])
+	year, _ := strconv.Atoi(rest[loc[12]:loc[13]])
+	if loc[13]-loc[12] == 2 {
+		year = resolveTwoDigitYear(year) // Oracle's DD-MON-RR: 14-MAR-87
+	}
+	return dateCandidate{
+		text: rest[:loc[1]], start: p,
+		day: day, month: monthMap[strings.ToLower(rest[loc[6]:loc[7]])], year: year,
+	}, true
 }

@@ -1178,6 +1178,45 @@ var Cases = []Case{
 			"Jane,jane.smith@acmecorp.io,512345671,US\n",
 	},
 	{
+		Name: "dob_new_shape_decoys",
+		Description: "The #857 decoys, which must stay EMPTY. DATE_OF_BIRTH now reports ISO 8601 " +
+			"date-times, year-first dates and month names in any case, but only when an explicit DOB " +
+			"label ends at most 8 separator bytes before the value. Lines 1-3 are timestamps with no " +
+			"label; lines 4-9 carry a DOB word that is not a label adjacent to the value (dobUpdatedAt, " +
+			"birthdayReminderAt, dob_updated_at, a `\"dob\": null` before a createdAt) or only `age`; " +
+			"lines 10-14 are unlabelled values in the new shapes; lines 15-17 are dated paths and a CalVer " +
+			"pin; lines 18-20 put a dotted year-first value after `dob` in a package or service name, " +
+			"refused as versions; lines 21-24 are labelled values marked as synthetic. Measured with the " +
+			"gate widened to a DOB keyword anywhere on the line, lines 6-9 reported at 70-90; with no " +
+			"gate, lines 1-14 and 16. The positives (every shape after five label styles) are unit " +
+			"tests in internal/validators/dob, so this case adds no finding to the census.",
+		Checks: []string{"DATE_OF_BIRTH"},
+		Input: "2024-03-14T10:22:01Z INFO request served\n" +
+			"{\"createdAt\": \"2024-03-14T10:22:01.123Z\", \"status\": \"ok\"}\n" +
+			"{\"lastLogin\": \"2019-03-14T00:00:00Z\"}\n" +
+			"{\"dobUpdatedAt\": \"2024-03-14T10:22:01Z\"}\n" +
+			"{\"birthdayReminderAt\": \"2024-03-14T09:00:00Z\"}\n" +
+			"{\"ts\":\"2024-03-14T10:22:01Z\",\"level\":\"warn\",\"msg\":\"cache age exceeded\"}\n" +
+			"{\"dob\": null, \"createdAt\": \"2024-03-14T10:22:01Z\"}\n" +
+			"\"dob_updated_at\": \"2024-03-14T10:22:01Z\"\n" +
+			"Patient age 39, seen 2024-03-14T09:00:00Z\n" +
+			"Reference 14-MAR-1987 recorded.\n" +
+			"Reference 1987/03/14 recorded.\n" +
+			"Reference MARCH 14, 1987 recorded.\n" +
+			"Reference 14th of March 1987 recorded.\n" +
+			"Reference 1987-3-14 recorded.\n" +
+			"See https://example.com/blog/2019/03/14/release-notes for details\n" +
+			"/var/logs/2019/03/14/app.log rotated\n" +
+			"certifi==2024.02.02\n" +
+			"pip install dob==2024.03.14\n" +
+			"dob: 2024.03.14 release notes\n" +
+			"deploy dob-service 2024.03.14 build 7\n" +
+			"Test DOB: 1987/03/14\n" +
+			"Sample DOB: 14-MAR-1987\n" +
+			"DOB: 14-MAR-1987 (test)\n" +
+			"Date of Birth: 14 MAR 1987 (sample)\n",
+	},
+	{
 		Name: "vin_check_digit",
 		Description: "VIN had ZERO golden coverage. Locks that the ISO 3779 check digit (position 9) " +
 			"is actually verified: the first and third VINs are valid and must be reported, the " +

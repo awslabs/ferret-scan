@@ -1,0 +1,26 @@
+=== REDACTED ===
+2024-03-14T10:22:01Z INFO request served
+{"createdAt": "2024-03-14T10:22:01.123Z", "status": "ok"}
+{"lastLogin": "2019-03-14T00:00:00Z"}
+{"dobUpdatedAt": "2024-03-14T10:22:01Z"}
+{"birthdayReminderAt": "2024-03-14T09:00:00Z"}
+{"ts":"2024-03-14T10:22:01Z","level":"warn","msg":"cache age exceeded"}
+{"dob": null, "createdAt": "2024-03-14T10:22:01Z"}
+"dob_updated_at": "2024-03-14T10:22:01Z"
+Patient age 39, seen 2024-03-14T09:00:00Z
+Reference 14-MAR-1987 recorded.
+Reference 1987/03/14 recorded.
+Reference MARCH 14, 1987 recorded.
+Reference 14th of March 1987 recorded.
+Reference 1987-3-14 recorded.
+See https://example.com/blog/2019/03/14/release-notes for details
+/var/logs/2019/03/14/app.log rotated
+certifi==2024.02.02
+pip install dob==2024.03.14
+dob: 2024.03.14 release notes
+deploy dob-service 2024.03.14 build 7
+Test DOB: 1987/03/14
+Sample DOB: 14-MAR-1987
+DOB: 14-MAR-1987 (test)
+Date of Birth: 14 MAR 1987 (sample)
+=== FINDINGS (sorted) ===
