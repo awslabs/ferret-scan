@@ -29,6 +29,21 @@ var (
 	reMRZChars     = regexp.MustCompile(`^[A-Z0-9<]+$`)
 	reGenericChars = regexp.MustCompile(`^[A-Z0-9]+$`)
 
+	// reMixedCaseLabelGate is the label a passport number containing a lowercase
+	// letter needs in the mixedCaseLabelGateWindow bytes before it (#888). The
+	// window must END in the label and its separators, so the label sits right
+	// before the value: "Passport Number: gk123456", "passport_number: gk123456",
+	// "my passport no is gk123456", "passport: ya1234567", "showed passport
+	// gk123456 at". A bare "passport" needs whitespace after it, which refuses a
+	// path or a tag such as ".../passport:v20241012".
+	//
+	// (?i) widens only the LABEL, never a value: a value pattern under (?i) also
+	// matches U+212A (Kelvin sign) and U+017F (long s), which Go folds into
+	// [A-Za-z]. The line prefilter in ValidateContentCtx additionally requires
+	// "passport" or "travel document" in the lower-cased line, so a label spelled
+	// with those two runes is refused too.
+	reMixedCaseLabelGate = regexp.MustCompile(`(?i)\b(?:passport|travel document)(?:[ _-]?(?:no\.?|number|num|nr\.?|#)\s*(?:[:=#-]\s*)?(?:is\s+)?|(?:\s*[:=])?\s+(?:is\s+)?)$`)
+
 	// Utility patterns
 	reMultiSpace    = regexp.MustCompile(`\s{3,}`)
 	reMultiSpace2   = regexp.MustCompile(`\s{2,}`)
@@ -62,6 +77,12 @@ var (
 type Validator struct {
 	patterns         map[string]string
 	compiledPatterns map[string]*regexp.Regexp
+	// compiledMixedCase holds, for each national pattern whose shape contains
+	// letters, the same shape with its letters widened to both ASCII cases. It
+	// runs as a second pass, only on lines that carry a passport label, and only
+	// its hits containing a lowercase letter are considered; see
+	// ValidateContentCtx for why it is a second pass and not a widened first one.
+	compiledMixedCase map[string]*regexp.Regexp
 	// patternOrder fixes the order the patterns are applied in. The scan used to
 	// range the patterns map, and Go randomizes map iteration, so when two
 	// patterns matched the SAME span the resulting findings came out in a random
@@ -179,9 +200,34 @@ func NewValidator() *Validator {
 	// and reporting a fragment instead of the whole line.
 	patternOrder := []string{"MRZ_TD3_L2", "MRZ_TD3", "MRZ", "US", "UK", "Canada", "EU"}
 
+	// The national shapes above with their letters widened to both ASCII cases, so
+	// "Passport Number: gk123456" and "Gk123456" are candidates at all (#888): the
+	// uppercase-only classes made every lowercase or Title-case value invisible,
+	// and an invisible value is never handed to the redactor.
+	//
+	// Explicit [A-Za-z], never (?i). Go folds U+212A (Kelvin sign) and U+017F
+	// (long s) into (?i)[A-Z], so (?i)^[A-Z]{2}\d{6}$ matches the 10-byte
+	// "\u212aA123456", and every later check that slices the value by byte
+	// (cleanMatch[0:2]) would cut a rune in half.
+	//
+	// UK has no letters, and the MRZ patterns stay uppercase: ICAO 9303 defines the
+	// machine-readable zone over A-Z, 0-9 and "<" only.
+	mixedCasePatterns := map[string]string{
+		"US":     `\b[A-Za-z]\d{8}\b`,
+		"Canada": `\b[A-Za-z]{2}\d{6}\b`,
+		"EU":     `\b[A-Za-z]{2}[A-Za-z0-9]{7}\b`,
+	}
+
 	compiledPatterns := make(map[string]*regexp.Regexp, len(patterns))
 	for country, pattern := range patterns {
 		compiledPatterns[country] = regexp.MustCompile(pattern)
+	}
+	compiledMixedCase := make(map[string]*regexp.Regexp, len(mixedCasePatterns))
+	for country, pattern := range mixedCasePatterns {
+		if _, ok := patterns[country]; !ok {
+			panic("passport: mixed-case pattern for unknown pattern " + country)
+		}
+		compiledMixedCase[country] = regexp.MustCompile(pattern)
 	}
 
 	// Guard against patternOrder drifting out of sync with patterns: a pattern
@@ -197,9 +243,10 @@ func NewValidator() *Validator {
 	}
 
 	return &Validator{
-		patterns:         patterns,
-		patternOrder:     patternOrder,
-		compiledPatterns: compiledPatterns,
+		patterns:          patterns,
+		patternOrder:      patternOrder,
+		compiledPatterns:  compiledPatterns,
+		compiledMixedCase: compiledMixedCase,
 		positiveKeywords: []string{
 			// High-confidence passport-specific keywords
 			"passport", "passport number", "passport no", "travel document",
@@ -670,6 +717,17 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	// non-table and leaves behavior exactly as before.
 	table := tabular.Analyze(content)
 
+	// Whether any column of the table is a passport column. Computed once per
+	// document; it only decides whether data rows get the mixed-case pass, and the
+	// per-match column header still decides each value.
+	tableNamesPassport := false
+	for _, h := range table.Headers() {
+		if namesPassport(h) {
+			tableNamesPassport = true
+			break
+		}
+	}
+
 	for lineNum, line := range lines {
 		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
 		if execguard.LineLoopCancelled(ctx, lineNum) {
@@ -695,6 +753,10 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// short-string test per line and cannot grow with document size.
 		if lineNum > 0 && kwmatch.LooksLikeFieldLabel(lines[lineNum-1], v.positiveKeywords) {
 			lc.labelAbove = strings.ToLower(strings.TrimSpace(lines[lineNum-1]))
+			if namesPassport(lc.labelAbove) {
+				// Once per line, and only when the mixed-case gate can read it.
+				lc.firstWord = firstASCIIWord(line)
+			}
 		}
 
 		// Field offsets for this line, computed once and reused for every match on
@@ -710,6 +772,27 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// be arbitrated before the spans are lost (detector.Match has no offset
 		// field). See keepOutermostSpans.
 		var lineMatches []spannedMatch
+
+		cl := candidateLine{
+			line:          line,
+			lineNum:       lineNum,
+			lc:            lc,
+			lineIsForm:    lineIsForm,
+			lineIsTabular: lineIsTabular,
+			originalPath:  originalPath,
+		}
+
+		// Whether this line can carry the label a mixed-case value needs: a
+		// passport word on the line itself, a passport label on the line above, or
+		// a passport column on a table row. Without one the mixed-case gate refuses
+		// every candidate, so the mixed-case pass is not run at all and a line
+		// without a passport label costs what it cost before #888. Plain Contains on
+		// the lowered line rather than lc.inLine, so lines that never reach a
+		// proximity check do not allocate the memo map.
+		mixedCaseLine := strings.Contains(lineLower, "passport") ||
+			strings.Contains(lineLower, "travel document") ||
+			namesPassport(lc.labelAbove) ||
+			(lineBounds != nil && tableNamesPassport)
 
 		// Check each pattern against the line, in the fixed order (see
 		// Validator.patternOrder) rather than the patterns map's random one.
@@ -728,114 +811,48 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			foundIdx := re.FindAllStringIndex(line, maxMatchesPerLinePerPattern)
 
 			for _, loc := range foundIdx {
-				matchIndex := loc[0]
-				match := line[loc[0]:loc[1]]
-
 				// The column header naming THIS match's column. Set per match
 				// because the column varies along the row; resolved by binary
 				// search over the per-line bounds computed above, so this is
 				// O(log fields) rather than a rescan. Empty for non-tabular
 				// documents, which leaves scoring exactly as it was.
-				lc.columnHeader = table.HeaderAt(lineBounds, matchIndex)
+				lc.columnHeader = table.HeaderAt(lineBounds, loc[0])
 
-				// A line-2 MRZ candidate is only a passport if its check digits
-				// verify. The pattern is a 44-character shape gate that any base32
-				// secret or hash of that length also satisfies, so this test is what
-				// makes it precise rather than a false-positive machine. Five
-				// independent mod-10 digits have to line up.
-				if country == "MRZ_TD3_L2" && !mrzLine2ChecksValid(match) {
+				if sm, ok := v.scoreCandidate(&cl, country, loc[0], loc[1], line[loc[0]:loc[1]]); ok {
+					lineMatches = append(lineMatches, sm)
+				}
+			}
+
+			// The mixed-case pass (#888): the same shape with lowercase letters
+			// admitted, for a value written "gk123456" or "Gk123456".
+			//
+			// A second pass, not a widened first one, because of the per-line hit
+			// cap. A widened first pass would share maxMatchesPerLinePerPattern
+			// between uppercase values and every lowercase word of the right shape
+			// (any 9-character word is EU-shaped), so on a long line those words
+			// could use up the cap before an uppercase passport later on it was
+			// reached: a finding main reports, lost. Kept apart, the uppercase pass
+			// above is exactly what it was, and this one has its own cap.
+			mixed := v.compiledMixedCase[country]
+			if mixed == nil || !mixedCaseLine {
+				continue
+			}
+			for _, loc := range mixed.FindAllStringIndex(line, maxMatchesPerLinePerPattern) {
+				match := line[loc[0]:loc[1]]
+				// An all-uppercase hit is the uppercase pass's, already considered.
+				if !hasASCIILower(match) {
 					continue
 				}
-
-				// Skip if it's a common word or test pattern
-				if v.isCommonWord(match) || v.isTestPattern(match) {
+				lc.columnHeader = table.HeaderAt(lineBounds, loc[0])
+				if !v.mixedCaseLabelled(line, loc[0], lc) || v.isLowercasePlaceholder(match) {
 					continue
 				}
-
-				// Double-check that this match actually belongs to a valid country format
-				actualCountry := v.determineCountry(match)
-				if actualCountry == "" {
-					continue // Skip matches that don't fit any specific passport format
+				// One canonical form for every later check: the country prefix,
+				// the test-number lists and the format anchors are all uppercase.
+				// Length-preserving, so it is never confused with an offset.
+				if sm, ok := v.scoreCandidate(&cl, country, loc[0], loc[1], asciiUpper(match)); ok {
+					lineMatches = append(lineMatches, sm)
 				}
-
-				confidence, checks := v.CalculateConfidence(match + ":" + country)
-
-				// Create context info for the line
-				contextInfo := detector.ContextInfo{
-					FullLine: line,
-				}
-
-				// Extract some context around the match in the line using the
-				// known byte offset (no rescan).
-				start := matchIndex - 50
-				if start < 0 {
-					start = 0
-				}
-				end := matchIndex + len(match) + 50
-				if end > len(line) {
-					end = len(line)
-				}
-
-				contextInfo.BeforeText = line[start:matchIndex]
-				contextInfo.AfterText = line[matchIndex+len(match) : end]
-
-				// Analyze context and adjust confidence. Pass the shared per-line
-				// lineContext and the per-line form-context flag so the proximity
-				// / keyword scan does not re-lower-case or re-scan the whole line
-				// per match.
-				contextImpact := v.analyzeContext(match, contextInfo, lc, lineIsForm)
-
-				// Check for tabular data and boost confidence (per-line property).
-				if lineIsTabular {
-					contextImpact += 15 // Boost for tabular data
-				}
-
-				confidence += contextImpact
-
-				// Ensure confidence stays within bounds
-				if confidence > 100 {
-					confidence = 100
-				} else if confidence < 0 {
-					confidence = 0
-				}
-
-				contextInfo.ConfidenceImpact = contextImpact
-
-				// Require strong context for passport matches. Pass the shared
-				// per-line lineContext and per-line form flag so this does not
-				// re-lower-case or re-scan the whole line per match.
-				hasStrongContext := v.hasStrongPassportContextWith(match, &contextInfo, lc, lineIsForm)
-
-				// Skip matches with 0% confidence - they are false positives
-				if confidence <= 0 {
-					continue
-				}
-
-				// Only include matches with reasonable confidence AND strong context
-				if confidence <= 60 || !hasStrongContext {
-					continue
-				}
-
-				lineMatches = append(lineMatches, spannedMatch{
-					start: loc[0],
-					end:   loc[1],
-					match: detector.Match{
-						Text:       match,
-						LineNumber: lineNum + 1, // 1-based line numbering
-						Type:       "PASSPORT",
-						Confidence: confidence,
-						Filename:   originalPath,
-						Validator:  "passport",
-						Context:    contextInfo,
-						Metadata: map[string]any{
-							"country":           country,
-							"validation_checks": checks,
-							"context_impact":    contextImpact,
-							"source":            "preprocessed_content",
-							"original_file":     originalPath,
-						},
-					},
-				})
 			}
 		}
 
@@ -846,6 +863,251 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	}
 
 	return matches, nil
+}
+
+// candidateLine is the per-line state scoreCandidate reads, all of it computed
+// once per line by ValidateContentCtx.
+type candidateLine struct {
+	line          string
+	lineNum       int
+	lc            *lineContext
+	lineIsForm    bool
+	lineIsTabular bool
+	originalPath  string
+}
+
+// scoreCandidate scores the candidate at line[start:end], claimed by the pattern
+// named country, and returns the finding when it is reported.
+//
+// canon is the form every VALUE check reads: the candidate itself, or its ASCII
+// upper-case form for a candidate with lowercase letters. The reported Text, the
+// span and the context always keep the original bytes, because those are what
+// the redactor rewrites and what a suppression rule hashes.
+func (v *Validator) scoreCandidate(cl *candidateLine, country string, start, end int, canon string) (spannedMatch, bool) {
+	line, lc := cl.line, cl.lc
+	matchIndex := start
+	match := line[start:end]
+
+	// A line-2 MRZ candidate is only a passport if its check digits
+	// verify. The pattern is a 44-character shape gate that any base32
+	// secret or hash of that length also satisfies, so this test is what
+	// makes it precise rather than a false-positive machine. Five
+	// independent mod-10 digits have to line up.
+	if country == "MRZ_TD3_L2" && !mrzLine2ChecksValid(canon) {
+		return spannedMatch{}, false
+	}
+
+	// Skip if it's a common word or test pattern
+	if v.isCommonWord(canon) || v.isTestPattern(canon) {
+		return spannedMatch{}, false
+	}
+
+	// Double-check that this match actually belongs to a valid country format
+	actualCountry := v.determineCountry(canon)
+	if actualCountry == "" {
+		return spannedMatch{}, false // Skip matches that don't fit any specific passport format
+	}
+
+	confidence, checks := v.CalculateConfidence(canon + ":" + country)
+
+	// Create context info for the line
+	contextInfo := detector.ContextInfo{
+		FullLine: line,
+	}
+
+	// Extract some context around the match in the line using the
+	// known byte offset (no rescan).
+	ctxStart := matchIndex - 50
+	if ctxStart < 0 {
+		ctxStart = 0
+	}
+	ctxEnd := matchIndex + len(match) + 50
+	if ctxEnd > len(line) {
+		ctxEnd = len(line)
+	}
+
+	contextInfo.BeforeText = line[ctxStart:matchIndex]
+	contextInfo.AfterText = line[matchIndex+len(match) : ctxEnd]
+
+	// Analyze context and adjust confidence. Pass the shared per-line
+	// lineContext and the per-line form-context flag so the proximity
+	// / keyword scan does not re-lower-case or re-scan the whole line
+	// per match.
+	contextImpact := v.analyzeContext(match, contextInfo, lc, cl.lineIsForm)
+
+	// Check for tabular data and boost confidence (per-line property).
+	if cl.lineIsTabular {
+		contextImpact += 15 // Boost for tabular data
+	}
+
+	confidence += contextImpact
+
+	// Ensure confidence stays within bounds
+	if confidence > 100 {
+		confidence = 100
+	} else if confidence < 0 {
+		confidence = 0
+	}
+
+	contextInfo.ConfidenceImpact = contextImpact
+
+	// Require strong context for passport matches. Pass the shared
+	// per-line lineContext and per-line form flag so this does not
+	// re-lower-case or re-scan the whole line per match.
+	hasStrongContext := v.hasStrongPassportContextWith(match, &contextInfo, lc, cl.lineIsForm)
+
+	// Skip matches with 0% confidence - they are false positives
+	if confidence <= 0 {
+		return spannedMatch{}, false
+	}
+
+	// Only include matches with reasonable confidence AND strong context
+	if confidence <= 60 || !hasStrongContext {
+		return spannedMatch{}, false
+	}
+
+	return spannedMatch{
+		start: start,
+		end:   end,
+		match: detector.Match{
+			Text:       match,
+			LineNumber: cl.lineNum + 1, // 1-based line numbering
+			Type:       "PASSPORT",
+			Confidence: confidence,
+			Filename:   cl.originalPath,
+			Validator:  "passport",
+			Context:    contextInfo,
+			Metadata: map[string]any{
+				"country":           country,
+				"validation_checks": checks,
+				"context_impact":    contextImpact,
+				"source":            "preprocessed_content",
+				"original_file":     cl.originalPath,
+			},
+		},
+	}, true
+}
+
+// mixedCaseLabelGateWindow is how many bytes before a mixed-case candidate its
+// passport label and separators must fit in (#888).
+const mixedCaseLabelGateWindow = 50
+
+// mixedCaseLabelled reports whether the mixed-case candidate starting at
+// line[start] carries a passport label: the mixedCaseLabelGateWindow bytes before
+// it end in reMixedCaseLabelGate, or its column header names a passport, or the
+// field label on the line above names a passport and the candidate is the first
+// word of its line (only indentation, a bullet or punctuation before it), as in
+// "Passport Number" written above "gk123456". The first-word rule is the VIN
+// validator's (#860): without it a passport label line vouched for any token on
+// the next line, and "image: registry.example.com/team/passport:v20241012" under
+// "Passport Number: invalid01" reported v20241012.
+//
+// This gate is what keeps the mixed-case pass from reporting the lowercase
+// identifiers that sit near the word "passport" in logs and code: a request id
+// after "passport-svc req=", a kid in a passport.js comment, "img482071" in
+// "passport photo booth saved img482071.jpg". Measured without it on the #888
+// decoys, 19 findings in 10 of 12 files at 72.5-100; with it, none. A label
+// AFTER the value ("gk123456 (passport number)") is deliberately not covered.
+//
+// Uppercase values keep today's context rules and never come here, so the gate
+// cannot hide a value that was reported before it existed.
+func (v *Validator) mixedCaseLabelled(line string, start int, lc *lineContext) bool {
+	if namesPassport(lc.columnHeader) {
+		return true
+	}
+	if start == lc.firstWord && namesPassport(lc.labelAbove) {
+		return true
+	}
+	lo := start - mixedCaseLabelGateWindow
+	if lo < 0 {
+		lo = 0
+	}
+	loc := reMixedCaseLabelGate.FindStringIndex(line[lo:start])
+	if loc == nil {
+		return false
+	}
+	// The \b before the label is tested against the window, where its first byte
+	// always looks like a boundary. It is a boundary of the LINE only when the
+	// byte before the window is not a word byte ("xpassport" is no label).
+	if loc[0] == 0 && lo > 0 && isASCIIWordByte(line[lo-1]) {
+		return false
+	}
+	return true
+}
+
+// lowercasePlaceholderRuns are the leading letter runs of the placeholders a
+// labelled field holds when it has no real value. Each is EU-shaped once a digit
+// follows ("redacted1", "tbd123456") and every one passes the label gate, so
+// without this list all nine of the #888 labelled placeholders reported at 85.
+var lowercasePlaceholderRuns = map[string]bool{
+	"redacted": true, "password": true, "pending": true, "unknown": true,
+	"missing": true, "sample": true, "document": true, "tbd": true,
+	"abc": true, "xyz": true, "none": true, "null": true, "test": true,
+}
+
+// isLowercasePlaceholder reports whether a mixed-case candidate is a placeholder
+// rather than a value: its leading letter run is one of lowercasePlaceholderRuns,
+// or a word of four letters or more by the isLikelyWord test, which catches the
+// placeholders nobody listed ("Passport Number: invalid01" and "deleted01" were
+// EU 100 without it).
+//
+// Applied to mixed-case candidates only. On uppercase values it would remove
+// findings reported today (REDACTED1 and PASSWORD1 under a passport label are EU
+// 85), which would make it a suppressor narrowing, not a recall fix.
+// "gk123456", "ya1234567", "de1234567" and "k12345678" have runs of one or two
+// letters and are not touched.
+func (v *Validator) isLowercasePlaceholder(match string) bool {
+	n := 0
+	for n < len(match) && isASCIILetter(match[n]) {
+		n++
+	}
+	run := strings.ToLower(match[:n])
+	if lowercasePlaceholderRuns[run] {
+		return true
+	}
+	return n >= 4 && v.isLikelyWord(run)
+}
+
+// namesPassport reports whether a lowercased label (a column header, the field
+// label above a value) names a passport.
+func namesPassport(label string) bool {
+	return strings.Contains(label, "passport") || strings.Contains(label, "travel document")
+}
+
+// hasASCIILower reports whether s contains an ASCII lowercase letter.
+func hasASCIILower(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 'a' && s[i] <= 'z' {
+			return true
+		}
+	}
+	return false
+}
+
+// asciiUpper upper-cases the ASCII letters of s and leaves every other byte as it
+// is, so the result has exactly len(s) bytes. strings.ToUpper is not
+// length-preserving on non-ASCII input (#656); the mixed-case patterns only ever
+// match ASCII, but the canonical form must not depend on that remaining true.
+func asciiUpper(s string) string {
+	if !hasASCIILower(s) {
+		return s
+	}
+	b := []byte(s)
+	for i := range b {
+		if b[i] >= 'a' && b[i] <= 'z' {
+			b[i] -= 'a' - 'A'
+		}
+	}
+	return string(b)
+}
+
+func isASCIILetter(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+// isASCIIWordByte reports whether c is a regexp \w byte: [0-9A-Za-z_].
+func isASCIIWordByte(c byte) bool {
+	return isASCIILetter(c) || (c >= '0' && c <= '9') || c == '_'
 }
 
 // Check if two passport patterns are similar (likely part of a test sequence)
@@ -959,10 +1221,26 @@ type lineContext struct {
 	// is the same length, carries the keyword and has no digits. The shape test is what
 	// separates them.
 	labelAbove string
+
+	// firstWord is the offset of the line's first ASCII letter or digit, or -1 when
+	// the line has none. Computed only when labelAbove names a passport, because it
+	// is only read by the mixed-case gate's label-above arm: a label line vouches for
+	// the value written under it, not for a token inside the next field's line.
+	firstWord int
 }
 
 func newLineContext(lineLower string) *lineContext {
-	return &lineContext{lineLower: lineLower}
+	return &lineContext{lineLower: lineLower, firstWord: -1}
+}
+
+// firstASCIIWord returns the offset of the first ASCII letter or digit in s, or -1.
+func firstASCIIWord(s string) int {
+	for i := 0; i < len(s); i++ {
+		if isASCIILetter(s[i]) || (s[i] >= '0' && s[i] <= '9') {
+			return i
+		}
+	}
+	return -1
 }
 
 // inLine reports whether kw is present in the full lower-cased line, memoizing
