@@ -132,16 +132,34 @@ Addresses are notoriously hard because "number + words" occurs everywhere (code 
 ## 5. DRIVERS_LICENSE
 
 ### What it detects
-| Type | Pattern | Validation |
+| Type | Pattern (`format`) | Validation |
 |---|---|---|
-| `DRIVERS_LICENSE` | State-specific formats for top 10 US states | CA: 1 letter + 7 digits; TX: 8 digits; FL: 1 letter + 12 digits; NY: 9 digits; PA: 8 digits; IL: 1 letter + 11 digits; OH: 2 letters + 6 digits; GA: 9 digits; NC: 1-12 digits; MI: 1 letter + 12 digits |
+| `DRIVERS_LICENSE` | US state shapes: 1 letter + 7 digits (`CA_1L7D`); 8 digits (`TX_PA_8D`); 1 letter + 12 digits (`FL_MI_1L12D`); 9 digits (`NY_GA_9D`); 1 letter + 11 digits (`IL_1L11D`); 2 letters + 6 digits (`OH_2L6D`); 1 letter + 14 digits (`NJ_1L14D`); 1 letter + 13 digits (`WI_1L13D`). Also written with dashes or spaces (`D123-4567-8901`). | Shape plus licence context: a label on the line, a label alone on the line above, the column header, or a state name with `id`/`number`. There is no checksum. |
+| `DRIVERS_LICENSE` | Great Britain DVLA driver number (`GB_DVLA`): 16 characters, or 18 with the two-digit issue number written straight after it; contiguous, or in 5/6/5 groups separated by single spaces. Written `WOMBA901010ZZ9AA 01`, the issue number stays outside the span. | The DVLA layout: surname letters then 9-padding, birth month 01-12 or 51-62 (+50 for women), day 01-31, initials `[A-Z][A-Z9]` or `99`. No check algorithm is published, so the layout is the gate, on top of the licence context every shape needs. |
+| `DRIVERS_LICENSE` | Ontario with hyphens, `A1234-12345-12345` (`CA_ON`); Quebec with hyphens, `A1234-123456-12` (`CA_QC`) — the printed layouts in [#861](https://github.com/awslabs/ferret-scan/issues/861) | Fixed groups, never one segment of a longer hyphenated token (`W1234-12345-12345-0001` is not reported). |
+
+**`format` names the shape, not the issuing authority.** A number from elsewhere that has a US shape is reported under that shape's name: Ontario and Quebec numbers written without hyphens are `NJ_1L14D` and `FL_MI_1L12D`, and Northern Ireland's 8-digit numbers are `TX_PA_8D`. Read the state names in `format` as "a shape these states use", not as the jurisdiction that issued the number.
+
+The North Carolina shape this table used to list ("1-12 digits") was never implemented: 7- and 12-digit values under a licence label give no finding.
+
+**Not supported, by decision** ([#861](https://github.com/awslabs/ferret-scan/issues/861)). Measured there on 43,367 public OSS text files: a prototype of the shapes above plus India added no finding, and adding the other rows below added 216, every inspected one a false positive.
+
+| left out | why |
+|---|---|
+| bare 7, 10 or 12 digits (BC, AU-WA, NL, AU 10-digit, FR, NC) | no structure or checksum; collides with epoch timestamps, uint32 max and account IDs |
+| 1 letter + 8 digits (MA, VA) | the US passport shape |
+| DE 11 alphanumerics, IT 2 letters + 7 digits + 1 letter, AU-SA 1 letter + 5 digits, CA-NS 5 letters + 9 digits, PL 5/2/4, ES 8 digits + letter | weak shapes; AU-SA's alone added 118 findings (Doxygen `l00005` anchors) |
+| India (state code, RTO, year, serial) | no checksum, so precision would rest on the label alone; needs a cited primary layout source first |
+| non-English labels (`Führerschein`, `permis`, `patente`, `licencia`, `carnet`, `CNH`, ...) | single words collide (patent, building permit, any card, software licence); needs a gate that pairs the word with its jurisdiction |
+| WA `WDL` + 9 alphanumerics | not in this change; it had no corpus hit in #861's broad prototype, so it can be added as a shape later |
 
 ### Context system — THE MOST KEYWORD-DEPENDENT VALIDATOR
-- **Positive keywords** (+30 to +50): `driver`, `license`, `licence`, `dl`, `dmv`, `motor vehicle`, `driving`, `permit`, `state id`, `identification card`, `operator`, `driver's license`, `drivers license`, `driver license`, `dl number`, `license number`, `licence number`
+- **Positive keywords** (+45 for the first, +10 for each further one, at most +20 more): `driver`, `license`, `licence`, `dl`, `dmv`, `motor vehicle`, `driving`, `permit`, `state id`, `identification card`, `operator`, `dl number`, `license number`, `licence number`, and every licence label spelling (next bullet).
+- **Licence label spellings are generated** (`internal/validators/driverslicense/vocabulary.go`): every {`driver`, `drivers`, `driver's`, `driving`} × {`license`, `licence`} × {"", ` number`, ` no`} combination, 24 spellings. The same parts feed the positive keywords, the label-position boost and the anywhere-on-the-line literals, so a spelling is in all three lists or in none ([#861](https://github.com/awslabs/ferret-scan/issues/861)). Before that, the three were written out by hand and had drifted: `drivingLicence:`, `DrivingLicenceNo:` and `driversLicence:` gave no finding, and `Driving licence:` and `Licence No.` scored 75 and 65, while their US twins scored 95.
 - **Negative keywords** (-20 to -35): `ssn`, `social security`, `phone`, `account`, `serial`, `order`, `invoice`, `reference`, `tracking`, `confirmation`
-- **Domain disambiguation** (post-adversarial fix): the word "license" alone is insufficient — it could be a software license, fishing license, gun license. The validator now requires **"driver" OR "dl" OR "dmv" OR "motor vehicle"** as a strong anchor, not just "license."
-- **UUID/GUID exclusion**: patterns that match UUID format are rejected
-- **Three-word forms for camelCase field names**: `drivers license number`, `drivers licence number`, `driver license number`, `driver licence number`, `driving license number`, `driver's license number`. These are not redundant with the shorter keywords, and the reason is worth knowing before editing this list.
+- **Bare `license`/`licence`** opens the gate but never earns the label boost: `License: D1234567` scores 65 where a licence label scores 95, and a negative keyword (`software`, `fishing`, `business`, `key`, ...) lowers it further. A label that names some other licence and ends in `licence number` still earns the boost: `Premises licence number: 12341234` scores 95.
+- **UUID/GUID**: the words `uuid` and `guid` suppress a finding wherever they sit on the line. A UUID-shaped VALUE is not recognised as one: `DL No: ab123456-0000-4000-8000-000000000001` reports `ab123456` as `OH_2L6D`.
+- **Why the suffixed spellings exist**: `internal/validators/kwmatch` matches a keyword's concatenation only as a whole word, so `driversLicenseNumber` needs the three-word keyword, not just `drivers license`. These are not redundant with the shorter keywords, and the reason is worth knowing before editing the vocabulary.
 
 `internal/validators/kwmatch` lets a keyword's spaces match **zero** separators, so a keyword also finds the concatenated and camelCase spellings of itself — but the concatenation must equal the **whole word**. `drivers license` yields `driverslicense` and did find `driversLicense`; append `Number` and the word becomes `driverslicensenumber`, which no two-word keyword can reach. Measured at HEAD, one label per line, with no state name present:
 
@@ -195,6 +213,9 @@ Measured against the binary rather than transcribed — three of the five rows p
 - `Driver's License: D1234567` → 95 (any convention of the label; see above)
 - `DL: D1234567` → 95 (was documented as 90)
 - `License: D1234567` (bare "license") → 65 (was documented as 40)
+- `Driving licence: D1234567` and `Licence No. D1234567` → 95, like `Driver's license:` and `License No.` (75 and 65 before #861)
+- `Driving licence number: WOMBA901010ZZ9AA` → 95 `GB_DVLA`; the same label alone on the line above the value → 85, as for any label above
+- `License key: W1234-12345-12345` → 45 `CA_ON` (`key` is a negative keyword)
 - `D1234567` with no context → **not reported at all** (was documented as 20). The positive-keyword gate refuses a candidate with no DL vocabulary on the line, which is what the design note above describes; there is no low-confidence finding to see.
 - `Reference: D1234567` → 0 (negative keyword suppresses)
 

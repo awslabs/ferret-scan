@@ -44,22 +44,16 @@ func TestCamelCaseLicenceLabelIsFound(t *testing.T) {
 		"drivingLicenseNumber",
 		"driversLicenceNumber",
 		"driverLicenceNumber",
-		"driversLicenseNo", // not expected to match; see the sub-test's own guard
+		// The "No" abbreviation was outside the vocabulary until #861 generated every
+		// {holder} {noun} {"", number, no} spelling; before that this key gave no finding.
+		"driversLicenseNo",
+		"drivingLicenceNo",
 	} {
 		t.Run(label, func(t *testing.T) {
 			content := label + ": " + validDL + "\n"
 			matches, err := NewValidator().ValidateContent(content, "export.json")
 			if err != nil {
 				t.Fatalf("ValidateContent: %v", err)
-			}
-			// "No" is a separate abbreviation the vocabulary does not carry; it is listed here so a
-			// future reader can see the boundary of what was added rather than guess at it.
-			if label == "driversLicenseNo" {
-				if len(matches) > 0 {
-					t.Logf("%q now matches too (%d findings) — the vocabulary grew; fold this into "+
-						"the table above", label, len(matches))
-				}
-				return
 			}
 			if len(matches) == 0 {
 				t.Errorf("%q reported nothing. The label names the value beside it, so the licence "+
