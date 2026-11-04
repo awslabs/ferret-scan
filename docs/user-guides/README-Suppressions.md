@@ -97,9 +97,15 @@ lapsed, the run says so:
 ```
 WARNING: 3 finding(s) are reported because their suppression rule has EXPIRED, oldest expired
 2026-05-28. An expired rule is skipped, so a baseline can stop working without any other sign.
-Remove the expires_at field, regenerate the rules, or run `ferret-scan-suppress --action cleanup`
-to drop them.
+Edit or remove the expires_at field, use the web UI's bulk expiration control, or delete the
+expired rules and regenerate them.
 ```
+
+An expired rule is never removed from the file for you, and re-running `--generate-suppressions` over
+the same file does not renew it: it updates `last_seen_at` and keeps `expires_at`. To bring a lapsed
+rule back, edit or delete its `expires_at`, or select it in the web UI's suppression list and use
+**Make Permanent** or **Renew 30 Days**. To retire it, delete the rule; a later
+`--generate-suppressions` run writes a fresh, disabled rule for the finding, to be reviewed again.
 
 The count is taken at the moment of matching, not by reading the file, because that is the number you
 can act on — three findings in your report that your own rules were meant to suppress, rather than
@@ -150,7 +156,7 @@ rules:
 
   # Auto-generated disabled rule (can be enabled by changing enabled: true)
   - id: "SUP-1703123457"
-    hash: "b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef1234567" # pragma: allowlist secret
+    hash: "b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef12345678" # pragma: allowlist secret
     reason: "Auto-generated suppression rule (disabled by default)"
     enabled: false                    # Disabled - change to true to activate
     created_at: 2023-12-21T16:45:00Z
@@ -161,6 +167,18 @@ rules:
       line_number: "1205"
       confidence: "72.10"
 ```
+
+### Rule keys
+
+A rule may carry only `id`, `hash`, `reason`, `enabled`, `created_by`, `created_at`, `last_seen_at`,
+`expires_at`, `reviewed_by`, `reviewed_at` and `metadata`. A rule with any other key (a misspelled
+`expires_at`, say) is **not applied**, and the run names it with its line on stderr, because applying it
+with the key ignored would turn a lapsed rule into a permanent one
+([#866](https://github.com/awslabs/ferret-scan/issues/866)). The same goes for a `metadata` key spelled
+like a rule key: put free-form annotations under `metadata:` with other names (`ticket: SEC-1234` is
+fine). A file whose `version` is not `"1.0"` applies none of its rules. A `hash` that is not 64
+lower-case hexadecimal digits, and an `id` two rules share, are named too: the first can never match,
+the second makes an id-based edit ambiguous.
 
 ## Usage Examples
 
@@ -178,20 +196,17 @@ ferret-scan --file document.txt --generate-suppressions
 
 ### Managing Suppressions
 
-**List all suppression rules:**
-```bash
-ferret-suppress --action list
-```
+A release ships one binary, `ferret-scan` (`.goreleaser.yml` builds `./cmd` only); there is no
+separate suppression-management command. The rules are a YAML file, so you manage them in an editor or
+in the web UI:
 
-**Remove a specific suppression:**
-```bash
-ferret-suppress --action remove --id SUP-1703123456
-```
-
-**Clean up expired suppressions:**
-```bash
-ferret-suppress --action cleanup
-```
+- **List the rules**: open the suppression file, or start `ferret-scan --web` and open its suppression
+  list, which shows each rule's state, including expired rules and rules the loader does not apply.
+- **Remove a rule**: delete its entry from the file, or use **Remove** (one rule) or **Delete Selected**
+  in the web UI.
+- **Expired rules**: nothing deletes them. Each run names the findings an expired rule would have
+  suppressed (see [An expired rule is now reported](#an-expired-rule-is-now-reported)), and the web UI's
+  **Make Permanent** and **Renew 30 Days** controls change the expiry of the selected rules.
 
 ### Creating Suppressions
 
@@ -239,13 +254,18 @@ Then manually add the suppression rule to your `.ferret-scan-suppressions.yaml` 
 
 ### File Security
 - **Restrictive Permissions**: Suppression files are created with 0600 permissions (owner-only)
-- **Secure Storage**: No sensitive data stored in suppression files
-- **Audit Trail**: Tracks who created/reviewed each suppression and when
+- **No verbatim values**: the file holds digests and metadata, not the matched text; see the note at
+  the top of this page for why a digest of a low-entropy value still deserves care
+- **Timestamps, not an audit trail**: the tool writes `created_at` and keeps `last_seen_at` current, and
+  the web UI fills in `created_by`. `reviewed_by` and `reviewed_at` are yours to fill in: the tool keeps
+  them when it saves the file but never sets or reads them. For a record of who changed a rule and why,
+  keep the file in version control.
 
 ### Expiration Support
 - **Time-Limited**: Suppressions can have expiration dates
-- **Automatic Cleanup**: Expired rules are automatically removed
-- **Review Tracking**: Optional review dates and reviewers
+- **No automatic cleanup**: an expired rule stays in the file and is skipped; each run names the
+  findings it would have suppressed, and removing or renewing it is your decision
+- **Review fields**: `reviewed_by` and `reviewed_at` are free fields for your own process
 
 ## Best Practices
 
@@ -284,10 +304,9 @@ enabled: true
 ```
 
 ### 6. Regular Reviews
-```bash
-# Clean up expired rules monthly
-ferret-suppress --action cleanup
-```
+Give generated rules a lifetime (`--suppression-expires 90d`, or `suppressions.expires_in` in config)
+so that they come up for review, and act on the `EXPIRED` warning when it appears: renew the rules that
+still hold, and delete the rest.
 
 ### 7. Track Finding Activity
 ```bash
@@ -308,14 +327,12 @@ grep "last_seen_at" .ferret-scan-suppressions.yaml
 ### CI/CD Pipeline
 ```bash
 #!/bin/bash
-# Clean up expired suppressions
-ferret-suppress --action cleanup
-
 # Run scan with suppressions
 ferret-scan --file . --recursive --format json --output scan-results.json
 
-# Check if any new findings (exit code 1 if findings found)
-if [ -s scan-results.json ] && [ "$(cat scan-results.json)" != "[]" ]; then
+# Fail the job if any finding was not suppressed. The report is a JSON object, never an empty
+# list, and its stats block counts the findings left after suppression.
+if [ "$(jq '.stats.total_findings' scan-results.json)" != "0" ]; then
     echo "New sensitive data findings detected!"
     exit 1
 fi
@@ -324,13 +341,14 @@ fi
 ### Pre-commit Hook
 ```bash
 #!/bin/bash
-# Run scan on staged files
-git diff --cached --name-only | xargs ferret-scan --file
+# Run scan on staged files. --pre-commit-mode makes findings set the exit code; without it a
+# scan exits 0 whatever it finds.
+git diff --cached --name-only | xargs ferret-scan --pre-commit-mode --file
 
 # If findings detected, show suppression info
 if [ $? -ne 0 ]; then
     echo "To suppress false positives, add rules to .ferret-scan-suppressions.yaml"
-    echo "Use 'ferret-suppress --action list' to manage suppressions"
+    echo "Review and edit the rules in that file, or in the web UI (ferret-scan --web)"
 fi
 ```
 
@@ -372,12 +390,15 @@ Suppression rules include metadata for easier management:
 
 ### Bulk Operations
 ```bash
-# List suppressions for specific file type
-ferret-suppress --action list | grep "finding_type: SSN"
+# Find the rules for one finding type: the line of each rule's metadata.finding_type
+grep -n "finding_type: SSN" .ferret-scan-suppressions.yaml
 
 # Clean up all suppressions older than 1 year
 # (Manual process - edit the YAML file)
 ```
+
+The web UI's suppression list acts on many rules at once: **Enable Selected**, **Disable Selected**,
+**Make Permanent**, **Renew 30 Days** and **Delete Selected**.
 
 ### Custom Suppression Files
 ```bash
