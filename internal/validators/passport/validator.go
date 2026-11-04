@@ -1180,6 +1180,7 @@ const edgeWindow = 64
 type lineContext struct {
 	lineLower   string          // lower-cased full line (computed once per line)
 	inLineCache map[string]bool // memoized "keyword present in lineLower"
+	inWordCache map[string]bool // memoized "keyword present in lineLower as a whole word"
 
 	// columnHeader is the lowercased header cell naming the column this match
 	// sits in, when the document is delimited tabular data and the match is on a
@@ -1257,6 +1258,38 @@ func (c *lineContext) inLine(kw string) bool {
 	return hit
 }
 
+// inLineAsWord reports whether kw occurs in the full lower-cased line with no
+// ASCII word byte immediately before or after it, memoized like inLine. Each
+// occurrence is tested once and the next search starts past it, so the scan is
+// linear in the line.
+func (c *lineContext) inLineAsWord(kw string) bool {
+	if c.inWordCache == nil {
+		c.inWordCache = make(map[string]bool, 16)
+	}
+	if hit, ok := c.inWordCache[kw]; ok {
+		return hit
+	}
+	hit := false
+	if kw != "" && c.inLine(kw) {
+		for from := 0; from <= len(c.lineLower)-len(kw); {
+			i := strings.Index(c.lineLower[from:], kw)
+			if i < 0 {
+				break
+			}
+			i += from
+			end := i + len(kw)
+			if (i == 0 || !isASCIIWordByte(c.lineLower[i-1])) &&
+				(end == len(c.lineLower) || !isASCIIWordByte(c.lineLower[end])) {
+				hit = true
+				break
+			}
+			from = i + 1
+		}
+	}
+	c.inWordCache[kw] = hit
+	return hit
+}
+
 // contains reports whether kw (already lower-case) appears in the lowercased
 // concatenation beforeLower + " " + c.lineLower + " " + afterLower. This is
 // byte-for-byte equivalent to
@@ -1330,12 +1363,20 @@ func (v *Validator) analyzeContext(match string, context detector.ContextInfo, l
 			// Weight keywords by their specificity to passports
 			weight := v.getKeywordWeight(keyword)
 
-			// Give more weight to keywords on the match's own line. The lowered
-			// line is the haystack because the keyword is lowered: testing the
-			// original-case line here meant "Passport" and "PASSPORT" never
-			// earned the 1.5x that "passport" did, so the same sentence scored
-			// lower when its label was capitalised (#888).
-			if lc.inLine(keywordLower) {
+			// Give more weight to keywords on the match's own line.
+			//
+			// The first test is the original one: the lowered keyword in the
+			// original-case line. On its own it meant "Passport" and "PASSPORT"
+			// never earned the 1.5x that "passport" did, so the same sentence
+			// scored lower when its label was capitalised (#888). The second test
+			// grants it to the keyword in any letter case, but only as a whole
+			// word of the lowered line. A bare substring test of the lowered line
+			// would also grant it to "mrz" inside base64 ("...LajVlMRZ8W4t...") and
+			// was measured to report EU-shaped chunks of PGP test keys in
+			// golang.org/x/crypto at 63; a capitalised label is the same word, an
+			// accidental run of letters inside a token is not. The first test is
+			// kept as it was, so no score main computed can fall.
+			if strings.Contains(context.FullLine, keywordLower) || lc.inLineAsWord(keywordLower) {
 				confidenceImpact += weight * 1.5 // Boost for same-line keywords
 			} else {
 				confidenceImpact += weight // Base weight for surrounding context

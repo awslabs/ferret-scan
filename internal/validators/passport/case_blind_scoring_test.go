@@ -98,6 +98,47 @@ func TestAnalyzeContextIsCaseBlind(t *testing.T) {
 	}
 }
 
+// TestSameLineBoostIsForWordsNotRunsOfLetters pins the limit of the case-blind
+// same-line boost. A capitalised keyword is the same word, so it now earns the 1.5x;
+// a run of letters inside a token is not a keyword at all. Granting the boost to any
+// substring of the lowered line reported an EU-shaped chunk of base64 at 63 because
+// "lMRZ8" contains "mrz" (measured on PGP test keys in golang.org/x/crypto). All
+// rows but the last score exactly what main scores: the base64 line stays
+// unreported, and a keyword main matched inside a token in its own lower case keeps
+// the boost it had (without it "ref_mrz_id GK123456" falls to 57 and is lost). The
+// last row is the case-blind grant: "MRZ:" now scores what main gave "mrz:".
+func TestSameLineBoostIsForWordsNotRunsOfLetters(t *testing.T) {
+	v := NewValidator()
+	rows := []struct {
+		line, match  string
+		wantImpact   float64
+		wantReported bool
+	}{
+		{"q8ZxLajVlMRZ8W4tFtT0DeA+JABEBAAEA", "JABEBAAEA", 12, false},
+		{"user_passport_number=GK123456", "GK123456", 40, true},
+		{"mypassportno: GK123456", "GK123456", 40, true},
+		{"ref_mrz_id GK123456", "GK123456", 18, true},
+		{"travel_document_number:GK123456", "GK123456", 18, true},
+		{"MRZ: GK123456", "GK123456", 18, true},
+	}
+	for _, r := range rows {
+		if got := v.AnalyzeContext(r.match, contextFor(r.line, r.match)); got != r.wantImpact {
+			t.Errorf("AnalyzeContext(%q) on %q = %v, want %v", r.match, r.line, got, r.wantImpact)
+		}
+		got, err := v.ValidateContent(r.line+"\n", "/test/word.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent(%q): %v", r.line, err)
+		}
+		reported := false
+		for _, m := range got {
+			reported = reported || m.Text == r.match
+		}
+		if reported != r.wantReported {
+			t.Errorf("%q: reported=%v, want %v", r.line, reported, r.wantReported)
+		}
+	}
+}
+
 // TestLetterBearingNumberScoresLikeItsTwin runs the 15 pairs from #888 through the
 // real scan. Each line is scanned alone, then again with its value replaced by the
 // 9-digit 100000001. The letter-bearing value must be reported, and its context
