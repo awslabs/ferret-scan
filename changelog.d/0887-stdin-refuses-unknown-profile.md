@@ -1,4 +1,4 @@
-### ⚠ Breaking Changes
+### ⚠️ Breaking Changes
 
 - **cli:** `--stdin` with an unknown `--profile`, or with a `--suppression-expires` /
   `suppressions.expires_in` value that does not parse, now exits `1` before reading stdin and writes

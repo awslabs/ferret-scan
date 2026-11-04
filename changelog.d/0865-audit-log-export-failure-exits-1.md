@@ -1,4 +1,4 @@
-### ⚠ Breaking Changes
+### ⚠️ Breaking Changes
 
 - **cli (redaction):** a redaction audit log that cannot be written or validated now fails the run:
   `Error: Failed to export redaction audit log: …` and exit `1`, as for an `--output` that cannot be
