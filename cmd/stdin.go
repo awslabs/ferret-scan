@@ -219,7 +219,17 @@ func runStdinScan(in stdinScanInputs) int {
 	// Use the resolved path, not the raw flag, so suppressions.file in the config
 	// file is honored here too. Reading the flag directly reintroduces exactly the
 	// defect this resolution chain exists to prevent.
-	suppressionManager := suppressions.NewSuppressionManager(finalCfg.suppressionFile)
+	//
+	// The loader's diagnostics (a file that cannot be parsed, rules refused for unknown keys, #866) go
+	// to stderr, which with --enable-redaction and no --output is the findings DOCUMENT: one prose line
+	// ahead of the JSON breaks `2> findings.json`. Same mechanical arm as the provenance note below
+	// (stdinStderrCarriesFindings), applied for the same reason; every other mode keeps the warnings.
+	loaderWarnings := io.Writer(os.Stderr)
+	if stdinStderrCarriesFindings(finalCfg, in.outputFile) {
+		loaderWarnings = io.Discard
+	}
+	suppressionManager := suppressions.NewSuppressionManagerWithOptions(finalCfg.suppressionFile,
+		suppressions.ManagerOptions{Warnings: loaderWarnings})
 
 	// Parse checks list into a []string for ScanContent.
 	//
