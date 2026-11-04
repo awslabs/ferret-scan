@@ -1032,6 +1032,34 @@ var Cases = []Case{
 			"provider directory refreshed at epoch 1761609639\n",
 	},
 	{
+		Name: "medicalid_dea_mbi_alphabet_decoys",
+		Description: "The #858 decoys, which must stay EMPTY. #858 widened DEA_NUMBER to all 18 " +
+			"registrant letters and the '9' business-address form, and MEDICARE_MBI to lowercase, " +
+			"each behind a gate: a newer letter or a '9' needs DEA context (line, label line above " +
+			"or column header), and a lowercase MBI needs a Medicare-specific label. Ungated, " +
+			"lines 1-5 report DEA_NUMBER (patent and passport numbers, a ticket number and a bare " +
+			"value, each with a valid check digit) and lines 8-10 report MEDICARE_MBI (lowercase " +
+			"hex keys beside `coverage` and `cms`, which only score an uppercase MBI, and beside " +
+			"nothing). Line 6 has a letter that is not a registrant type and line 7 a bad check " +
+			"digit, both beside a DEA label; line 11 puts U+212A KELVIN SIGN where an MBI has a K, " +
+			"which an explicit ASCII class never matches. Recall examples (the newer letters, the " +
+			"'9' form and lowercase MBIs beside their labels, camelCase keys, column headers) are " +
+			"unit tests in internal/validators/medicalid, so this case adds no finding to the " +
+			"census.",
+		Checks: []string{"MEDICAL_ID"},
+		Input: "Patent EP1234563 was granted in 2019\n" +
+			"US patent US7654329 cites it\n" +
+			"Passport number: X91234563\n" +
+			"Ticket A97654329 closed\n" +
+			"XR1234563\n" +
+			"DEA registration number: QR1234563\n" +
+			"DEA registration number: XR1234564\n" +
+			"coverage report keys 9ad4ce7fa21 4ce1ad7fa90\n" +
+			"cms asset keys 9ad4ce7fa21 4ce1ad7fa90\n" +
+			"cache keys 9ad4ce7fa21 4ce1ad7fa90\n" +
+			"Medicare MBI: 1A\u212a2DE3FG45\n",
+	},
+	{
 		Name: "context_decoys_original",
 		Description: "Real-context vs decoy-context pairs for the ORIGINAL validators (SSN, " +
 			"PHONE, CREDIT_CARD, EMAIL): the same shaped value framed as PII on one line and " +

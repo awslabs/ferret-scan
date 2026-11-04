@@ -164,8 +164,10 @@ func TestMedicalIDValidator_DEA_Negative(t *testing.T) {
 			content: "DEA: AB1234567",
 		},
 		{
+			// Q is not a DEA registrant letter. This line used X, which IS one (the buprenorphine
+			// prescribing program), so the fixture asserted the #858 bug rather than a negative.
 			name:    "DEA-like with invalid first char",
-			content: "DEA number: XY1234563",
+			content: "DEA number: QY1234563",
 		},
 		{
 			name:    "DEA-like with test and example keywords",
@@ -640,7 +642,10 @@ func TestMedicalIDValidator_DEAChecksum(t *testing.T) {
 	}{
 		{"AB1234563", true},  // Valid DEA checksum: (1+3+5) + 2*(2+4+6) = 9+24=33, 33%10=3=d7
 		{"FC2014354", true},  // Valid: (2+1+3) + 2*(0+4+5) = 6+18=24, no wait let me recalc
-		{"XY1234563", false}, // Invalid first char (X not in ABCDFGM)
+		{"XY1234563", true},  // X is a registrant letter (buprenorphine prescribing program), #858
+		{"QY1234563", false}, // Invalid first char (Q is not a registrant letter)
+		{"B97654329", true},  // '9' second character: a registration at a business address
+		{"B87654329", false}, // a digit other than 9 is not a second character
 		{"AB1234560", false}, // Invalid checksum
 		{"AB123456", false},  // Too short
 	}

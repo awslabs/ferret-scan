@@ -23,25 +23,56 @@ import (
 // residual is documented in THREAT_MODEL.md §4.7.
 const intrinsicValueFloor = 15.0
 
+// deaRegistrantLetters is every first character a DEA registration number can carry: the DEA's
+// registrant-type codes, A-M for practitioners, hospitals, teaching institutions, manufacturers,
+// distributors, researchers, analytical labs, importers, exporters, reverse distributors and
+// mid-level practitioners, P-U for narcotic treatment programs, and X for the buprenorphine
+// prescribing program (the waiver ended in 2023; historical records still carry it). It is the one
+// list reDEA, deaChecksumValid and the help text read, so they cannot disagree about a letter.
+//
+// Until #858 each of those hard-coded only the seven in deaUngatedRegistrantLetters, so 11 of the
+// 18 letters (including X) never matched and a labelled, checksum-valid `XR1234563` went through
+// --enable-redaction in cleartext at exit 0.
+const deaRegistrantLetters = "ABCDEFGHJKLMPRSTUX"
+
+// deaUngatedRegistrantLetters are the seven letters the validator has reported on the value alone
+// since its first commit. A value starting with any other registrant letter, or carrying the
+// business-address '9' as its second character, needs DEA context (classifyDEA). Measured on random
+// decoys with no DEA context on the line, ungated, 79 of 800 patent numbers (EP/US/JP/KR + 7 digits)
+// and 16 of 3,000 passport numbers (a letter + 8 digits) became DEA_NUMBER; with the gate, none do.
+const deaUngatedRegistrantLetters = "ABCDFGM"
+
+// mbiAlpha is the MBI letter set, A-Z without S, L, O, I, B and Z, in BOTH cases. CMS converts a
+// lowercase MBI to uppercase rather than rejecting it, so a lowercase one is the same identifier
+// (#858). The lowercase ranges are spelled out instead of using (?i): RE2 case folding maps 'k' to
+// U+212A KELVIN SIGN, and an identifier class must not match a non-ASCII rune.
+const mbiAlpha = `AC-HJ-KM-NP-RT-Yac-hj-km-np-rt-y`
+
 // Pre-compiled regex patterns for medical identifier detection.
 var (
 	// NPI: exactly 10 digits starting with 1 or 2
 	reNPI = regexp.MustCompile(`\b[12]\d{9}\b`)
 
-	// DEA: 2 chars (first = registration type, second = alpha) + 7 digits
-	reDEA = regexp.MustCompile(`\b[ABCDFGMabcdfgm][A-Za-z]\d{7}\b`)
+	// DEA: a registrant letter, then a letter (the registrant's last-name initial) or '9' (a
+	// registration at a business address), then 7 digits, in either case. Which of these forms
+	// may be reported on the value alone is decided by classifyDEA, not here.
+	reDEA = regexp.MustCompile(`\b[` + deaRegistrantLetters + strings.ToLower(deaRegistrantLetters) +
+		`][A-Za-z9]\d{7}\b`)
 
 	// Medicare Beneficiary Identifier (MBI): 11 chars, specific positional format
 	// Pos1=C(1-9), Pos2=A, Pos3=AN, Pos4=N, Pos5=A, Pos6=AN, Pos7=N, Pos8=A, Pos9=A, Pos10=N, Pos11=N
-	// C = digit 1-9; A = alpha excluding S,L,O,I,B,Z; N = digit 0-9; AN = A or N
-	reMBI = regexp.MustCompile(`\b[1-9][AC-HJ-KM-NP-RT-Y][0-9AC-HJ-KM-NP-RT-Y][0-9][AC-HJ-KM-NP-RT-Y][0-9AC-HJ-KM-NP-RT-Y][0-9][AC-HJ-KM-NP-RT-Y][AC-HJ-KM-NP-RT-Y][0-9][0-9]\b`)
+	// C = digit 1-9; A = alpha excluding S,L,O,I,B,Z; N = digit 0-9; AN = A or N.
+	// Either case matches; a candidate carrying a lowercase letter is gated in classifyMBI.
+	reMBI = regexp.MustCompile(`\b[1-9][` + mbiAlpha + `][0-9` + mbiAlpha + `][0-9][` + mbiAlpha +
+		`][0-9` + mbiAlpha + `][0-9][` + mbiAlpha + `][` + mbiAlpha + `][0-9][0-9]\b`)
 
 	// Medicare cards print the MBI with dashes in a 4-3-4 grouping
 	// (e.g. 1EG4-TE5-MK73). Same positional character rules as reMBI with
 	// dashes at the card positions; the match is normalized (dashes stripped)
 	// and re-validated against reMBI before being reported, and the reported
 	// span is the original dashed text so redaction covers the whole token.
-	reMBIDashed = regexp.MustCompile(`\b[1-9][AC-HJ-KM-NP-RT-Y][0-9AC-HJ-KM-NP-RT-Y][0-9][ -][AC-HJ-KM-NP-RT-Y][0-9AC-HJ-KM-NP-RT-Y][0-9][ -][AC-HJ-KM-NP-RT-Y][AC-HJ-KM-NP-RT-Y][0-9][0-9]\b`)
+	reMBIDashed = regexp.MustCompile(`\b[1-9][` + mbiAlpha + `][0-9` + mbiAlpha + `][0-9][ -][` +
+		mbiAlpha + `][0-9` + mbiAlpha + `][0-9][ -][` + mbiAlpha + `][` + mbiAlpha + `][0-9][0-9]\b`)
 
 	// MRN: 6-10 digits (very generic, requires strong medical context)
 	reMRN = regexp.MustCompile(`\b\d{6,10}\b`)
@@ -65,11 +96,12 @@ func containsKeyword(text, keyword string) bool {
 // spaces match zero separators so "member id" also finds "memberId" — the camelCase spelling
 // JSON and ORM exports use (#372).
 //
-// ONLY the insurance positive gates use it, and that restriction is load-bearing. This
-// package's suppressor "ip address" matched "ipAddress" when the widening was the default,
-// and nonInsuranceKeywordPresent is an unconditional veto, so
+// ONLY positive gates use it (the insurance, medical, MRN, provider, DEA and Medicare lists), and
+// that restriction is load-bearing. This package's suppressor "ip address" matched "ipAddress"
+// when the widening was the default, and nonInsuranceKeywordPresent is an unconditional veto, so
 // {"member_id": "W1234567801", "ipAddress": "10.11.12.13"} lost its finding and was written
-// back with the member ID in cleartext. Suppressors keep containsKeyword.
+// back with the member ID in cleartext. Suppressors, and the hasPhoneContext veto, keep
+// containsKeyword.
 func containsLabel(text, keyword string) bool {
 	return kwmatch.ContainsLabel(text, keyword)
 }
@@ -185,6 +217,7 @@ type medicalLineContext struct {
 	provider   bool // hasProviderContext
 	dea        bool // hasDEAContext
 	medicare   bool // hasMedicareContext
+	mbiLabel   bool // hasMBILabel: the narrow list, the only context that admits a lowercase MBI
 	medical    bool // hasMedicalContext
 	mrnKeyword bool // hasMRNKeyword
 	insKeyword bool // hasInsuranceKeyword
@@ -279,6 +312,7 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 		provider:   v.hasProviderContext(ctxLine),
 		dea:        v.hasDEAContext(ctxLine),
 		medicare:   v.hasMedicareContext(ctxLine),
+		mbiLabel:   v.hasMBILabel(ctxLine),
 		medical:    v.hasMedicalContext(ctxLine),
 		// POSITIVE context reads ctxLine, so a bare label on the line above counts.
 		mrnKeyword: v.hasMRNKeyword(ctxLine),
@@ -478,6 +512,143 @@ func (v *Validator) insuranceContextFor(lc medicalLineContext, off int) bool {
 	return false
 }
 
+// providerContextFor, deaContextFor, medicareContextFor and mbiLabelFor are the per-candidate
+// forms of the line flags: the line (or a field label on the line above) carries the context, or
+// the header of THIS candidate's own column does. They are insuranceContextFor's rule applied to the
+// other subtypes (#858). Without them a CSV export scored its own column by whatever words the row
+// happened to hold: an uppercase MBI in an `mbi` column took the 35-point no-context penalty unless
+// the row happened to say "Part B", and a legacy DEA number in a `dea_number` column took the
+// 30-point one on every data row but the first, whose line above is the header.
+//
+// All four are positive-only, so a header can raise a candidate's evidence and never lower it.
+func (v *Validator) providerContextFor(lc medicalLineContext, off int) bool {
+	if lc.provider {
+		return true
+	}
+	if h := lc.columnHeaderAt(off); h != "" {
+		return v.hasProviderContext(h)
+	}
+	return false
+}
+
+func (v *Validator) deaContextFor(lc medicalLineContext, off int) bool {
+	if lc.dea {
+		return true
+	}
+	if h := lc.columnHeaderAt(off); h != "" {
+		return v.hasDEAContext(h)
+	}
+	return false
+}
+
+func (v *Validator) medicareContextFor(lc medicalLineContext, off int) bool {
+	if lc.medicare {
+		return true
+	}
+	if h := lc.columnHeaderAt(off); h != "" {
+		return v.hasMedicareContext(h)
+	}
+	return false
+}
+
+func (v *Validator) mbiLabelFor(lc medicalLineContext, off int) bool {
+	if lc.mbiLabel {
+		return true
+	}
+	if h := lc.columnHeaderAt(off); h != "" {
+		return v.hasMBILabel(h)
+	}
+	return false
+}
+
+// deaForm says how much evidence a DEA-shaped token needs before it is reported.
+type deaForm int
+
+const (
+	// deaNotValid: not a registrant letter, a second character that is neither a letter nor '9',
+	// a wrong length, or a failed check digit.
+	deaNotValid deaForm = iota
+	// deaOnValue: a deaUngatedRegistrantLetters letter plus a last-name initial, the form the
+	// validator has always reported on the checksum alone. Unchanged by #858.
+	deaOnValue
+	// deaNeedsContext: any other registrant letter, or the '9' business-address form. Each is
+	// reported only where DEA context covers the candidate (deaContextFor).
+	deaNeedsContext
+)
+
+// classifyDEA classifies s by the evidence it needs. It is the context-free half of deaReports,
+// read on its own only by CalculateConfidence, which has no line.
+func classifyDEA(s string) deaForm {
+	if !deaChecksumValid(s) {
+		return deaNotValid
+	}
+	if s[1] == '9' || strings.IndexByte(deaUngatedRegistrantLetters, upperASCII(s[0])) < 0 {
+		return deaNeedsContext
+	}
+	return deaOnValue
+}
+
+// deaReports is THE admission decision for a DEA candidate, and every gate that must agree with
+// evaluateDEA reads it: evaluateDEA itself and the more-specific-subtype veto in
+// evaluateInsuranceID.
+//
+// Sharing it is the point. The veto used to test the SHAPE (reDEA plus the checksum), so widening
+// the shape without the decision would have made the veto drop member IDs evaluateDEA never reports:
+// measured with the widened pattern and the old veto, `Member ID: XR1234563` and
+// `Member ID: HR7654329` went from INSURANCE_MEMBER_ID 80 to no finding at all.
+func (v *Validator) deaReports(s string, lc medicalLineContext, off int) bool {
+	switch classifyDEA(s) {
+	case deaOnValue:
+		return true
+	case deaNeedsContext:
+		return v.deaContextFor(lc, off)
+	default:
+		return false
+	}
+}
+
+// mbiForm says how much evidence an MBI-shaped token needs before it is reported.
+type mbiForm int
+
+const (
+	// mbiNotValid: not an 11-character MBI in the CMS positional format.
+	mbiNotValid mbiForm = iota
+	// mbiOnValue: uppercase, as CMS prints it; reported on the format alone, as before #858.
+	mbiOnValue
+	// mbiNeedsLabel: carries a lowercase letter. Reported only beside a Medicare-specific label
+	// (mbiLabelFor), not the wider hasMedicareContext list. Measured over 200,000 random
+	// 11-character lowercase hex tokens per line shape: gated on that wider list, 146 became
+	// MEDICARE_MBI on "coverage report keys" lines and 153 on "cms asset keys" lines; gated on the
+	// narrow list, 0 do. With no gate at all, 125 did on neutral "cache keys" lines too.
+	mbiNeedsLabel
+)
+
+// classifyMBI classifies compact, an MBI candidate with any card separators removed. It is the
+// context-free half of mbiReports, read on its own only by CalculateConfidence.
+func classifyMBI(compact string) mbiForm {
+	if len(compact) != 11 || !reMBI.MatchString(compact) {
+		return mbiNotValid
+	}
+	if hasLowerASCII(compact) {
+		return mbiNeedsLabel
+	}
+	return mbiOnValue
+}
+
+// mbiReports is THE admission decision for an MBI candidate, shared by evaluateMBI,
+// evaluateDashedMBI and the veto in evaluateInsuranceID for the reason deaReports gives: a
+// shape-only veto would drop `Member ID: 1ac2de3fg45`, which MEDICARE_MBI does not claim.
+func (v *Validator) mbiReports(compact string, lc medicalLineContext, off int) bool {
+	switch classifyMBI(compact) {
+	case mbiOnValue:
+		return true
+	case mbiNeedsLabel:
+		return v.mbiLabelFor(lc, off)
+	default:
+		return false
+	}
+}
+
 // evaluateNPI checks an NPI candidate and returns a match if valid.
 func (v *Validator) evaluateNPI(match, line, lowerLine string, lc medicalLineContext, matchStart int, lineNum int, originalPath string) (detector.Match, bool) {
 	// NPI must pass the NPI-specific Luhn check (prefix 80840)
@@ -533,8 +704,10 @@ func (v *Validator) evaluateNPI(match, line, lowerLine string, lc medicalLineCon
 	contextImpact := lc.lineImpact
 	confidence += contextImpact
 
-	// Without any medical/provider context, suppress heavily
-	if !lc.provider {
+	// Without any medical/provider context, suppress heavily. Provider context only ever scores
+	// here: it never decides whether an NPI is reported.
+	providerCtx := v.providerContextFor(lc, matchStart)
+	if !providerCtx {
 		confidence -= 40
 	}
 
@@ -575,7 +748,7 @@ func (v *Validator) evaluateNPI(match, line, lowerLine string, lc medicalLineCon
 			"validation_checks": map[string]bool{
 				"npi_checksum":      true,
 				"not_phone_context": true,
-				"provider_context":  lc.provider,
+				"provider_context":  providerCtx,
 				"not_test_data":     !lc.testData,
 			},
 		},
@@ -584,8 +757,8 @@ func (v *Validator) evaluateNPI(match, line, lowerLine string, lc medicalLineCon
 
 // evaluateDEA checks a DEA number candidate and returns a match if valid.
 func (v *Validator) evaluateDEA(match, line, lowerLine string, lc medicalLineContext, matchStart int, lineNum int, originalPath string) (detector.Match, bool) {
-	// Validate DEA checksum
-	if !deaChecksumValid(match) {
+	// The checksum, and for the newer registrant letters and the '9' form the DEA context too.
+	if !v.deaReports(match, lc, matchStart) {
 		return detector.Match{}, false
 	}
 
@@ -594,16 +767,39 @@ func (v *Validator) evaluateDEA(match, line, lowerLine string, lc medicalLineCon
 	contextImpact := lc.lineImpact
 	confidence += contextImpact
 
-	// Without prescriber/pharmacy context, reduce confidence
-	if !lc.dea {
+	// Without prescriber/pharmacy context, reduce confidence. A form that needed context to be
+	// reported has it by now, so only the legacy form can take this penalty.
+	deaCtx := v.deaContextFor(lc, matchStart)
+	if !deaCtx {
 		confidence -= 30
 	}
 
 	// Value-intrinsic floor (TM-11) — see evaluateNPI. The DEA checksum is
-	// verified above, so context may demote but not erase.
+	// verified above, so context may demote but not erase. For a form that needs DEA context,
+	// the floor applies once that context has admitted it: the words that admit it are
+	// document content too, which is why such a form is a weaker claim than the legacy one.
 	confidence = clamp(confidence)
 	if confidence <= 0 {
 		confidence = intrinsicValueFloor
+	}
+
+	metadata := map[string]any{
+		"subtype":         "DEA",
+		"checksum_valid":  true,
+		"context_impact":  contextImpact,
+		"registrant_type": string(match[0]),
+		"validation_checks": map[string]bool{
+			"dea_checksum":       true,
+			"prescriber_context": deaCtx,
+			"not_test_data":      !lc.testData,
+		},
+	}
+	// A '9' in second place marks a registration at a business address rather than a last-name
+	// initial, so it is recorded as what it is instead of as last_name_initial "9".
+	if match[1] == '9' {
+		metadata["business_address"] = true
+	} else {
+		metadata["last_name_initial"] = string(match[1])
 	}
 
 	return detector.Match{
@@ -614,30 +810,40 @@ func (v *Validator) evaluateDEA(match, line, lowerLine string, lc medicalLineCon
 		Filename:   originalPath,
 		Validator:  "medicalid",
 		Context:    v.buildContext(match, line, matchStart, lc.posKW, lc.negKW),
-		Metadata: map[string]any{
-			"subtype":           "DEA",
-			"checksum_valid":    true,
-			"context_impact":    contextImpact,
-			"registrant_type":   string(match[0]),
-			"last_name_initial": string(match[1]),
-			"validation_checks": map[string]bool{
-				"dea_checksum":       true,
-				"prescriber_context": lc.dea,
-				"not_test_data":      !lc.testData,
-			},
-		},
+		Metadata:   metadata,
 	}, true
 }
 
-// evaluateMBI checks a Medicare MBI candidate and returns a match if valid.
+// evaluateMBI checks a contiguous Medicare MBI candidate and returns a match if valid.
 func (v *Validator) evaluateMBI(match, line, lowerLine string, lc medicalLineContext, matchStart int, lineNum int, originalPath string) (detector.Match, bool) {
+	return v.reportMBI(match, match, line, lc, matchStart, lineNum, originalPath)
+}
+
+// evaluateDashedMBI checks a card-printed dashed MBI candidate (1EG4-TE5-MK73).
+// The dashes are stripped and the result re-validated against the contiguous
+// MBI rules; scoring is identical to evaluateMBI. The reported Text keeps the
+// original dashed form so redaction masks the token as printed.
+func (v *Validator) evaluateDashedMBI(match, line, lowerLine string, lc medicalLineContext, matchStart int, lineNum int, originalPath string) (detector.Match, bool) {
+	compact := strings.NewReplacer("-", "", " ", "").Replace(match)
+	return v.reportMBI(match, compact, line, lc, matchStart, lineNum, originalPath)
+}
+
+// reportMBI scores one MBI candidate. span is the text as written, which is what Text reports so
+// redaction masks every byte of it; compact is span without its card separators.
+func (v *Validator) reportMBI(span, compact, line string, lc medicalLineContext, matchStart int, lineNum int, originalPath string) (detector.Match, bool) {
+	if !v.mbiReports(compact, lc, matchStart) {
+		return detector.Match{}, false
+	}
+
 	confidence := 75.0 // MBI format is fairly specific
 
 	contextImpact := lc.lineImpact
 	confidence += contextImpact
 
-	// Without medicare/beneficiary context, reduce
-	if !lc.medicare {
+	// Without medicare/beneficiary context, reduce. A lowercase candidate was admitted by a
+	// Medicare label, which is Medicare context, so only an uppercase one can take this penalty.
+	medicareCtx := v.medicareContextFor(lc, matchStart)
+	if !medicareCtx {
 		confidence -= 35
 	}
 
@@ -646,14 +852,14 @@ func (v *Validator) evaluateMBI(match, line, lowerLine string, lc medicalLineCon
 		return detector.Match{}, false
 	}
 
-	return detector.Match{
-		Text:       match,
+	m := detector.Match{
+		Text:       span,
 		LineNumber: lineNum + 1,
 		Type:       "MEDICARE_MBI",
 		Confidence: confidence,
 		Filename:   originalPath,
 		Validator:  "medicalid",
-		Context:    v.buildContext(match, line, matchStart, lc.posKW, lc.negKW),
+		Context:    v.buildContext(span, line, matchStart, lc.posKW, lc.negKW),
 		Metadata: map[string]any{
 			"subtype":        "MBI",
 			"context_impact": contextImpact,
@@ -663,32 +869,17 @@ func (v *Validator) evaluateMBI(match, line, lowerLine string, lc medicalLineCon
 			// prose does not claim a proof the format cannot give.
 			"validation_checks": map[string]bool{
 				"mbi_format":       true,
-				"medicare_context": lc.medicare,
+				"medicare_context": medicareCtx,
 				"not_test_data":    !lc.testData,
 			},
 		},
-	}, true
-}
-
-// evaluateDashedMBI checks a card-printed dashed MBI candidate (1EG4-TE5-MK73).
-// The dashes are stripped and the result re-validated against the contiguous
-// MBI rules; scoring is identical to evaluateMBI. The reported Text keeps the
-// original dashed form so redaction masks the token as printed.
-func (v *Validator) evaluateDashedMBI(match, line, lowerLine string, lc medicalLineContext, matchStart int, lineNum int, originalPath string) (detector.Match, bool) {
-	normalized := strings.NewReplacer("-", "", " ", "").Replace(match)
-	if !reMBI.MatchString(normalized) {
-		return detector.Match{}, false
 	}
-
-	m, ok := v.evaluateMBI(normalized, line, lowerLine, lc, matchStart, lineNum, originalPath)
-	if !ok {
-		return detector.Match{}, false
+	// The canonical form, uppercase and without separators, whenever the text as written differs
+	// from it: every dashed or spaced span, as before, and now every lowercase one (#858). An
+	// uppercase compact MBI is its own canonical form and carries no key, as before.
+	if normalized := strings.ToUpper(compact); normalized != span {
+		m.Metadata["normalized"] = normalized
 	}
-
-	// Report the original dashed span (position and text) for correct redaction.
-	m.Text = match
-	m.Context = v.buildContext(match, line, matchStart, lc.posKW, lc.negKW)
-	m.Metadata["normalized"] = normalized
 	return m, true
 }
 
@@ -821,13 +1012,18 @@ func (v *Validator) evaluateInsuranceID(match, line, lowerLine string, lc medica
 	// Relying on that was fragile: the same accident dropped real member IDs
 	// (the bug this change fixes), and it only ever covered DEAs whose letters
 	// happen to fall in A-F.
-	if reDEA.MatchString(match) && deaChecksumValid(match) {
+	//
+	// The DEA and MBI vetoes ask the subtype's own admission decision (deaReports, mbiReports)
+	// rather than its shape, so they fire only on a value that subtype actually reports (#858).
+	// For the forms reported on the value alone that is the same test as before; for the
+	// context-gated forms it is what keeps `Member ID: XR1234563` an INSURANCE_MEMBER_ID.
+	if v.deaReports(match, lc, matchStart) {
 		return detector.Match{}, false
 	}
 	if reNPI.MatchString(match) && npiLuhnValid(match) {
 		return detector.Match{}, false
 	}
-	if reMBI.MatchString(match) {
+	if v.mbiReports(match, lc, matchStart) {
 		return detector.Match{}, false
 	}
 
@@ -881,16 +1077,19 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 		"has_checksum": false,
 	}
 
-	// Try to determine what type this match is
+	// Try to determine what type this match is. There is no line here, so only the forms the
+	// scan reports on the value alone score as their subtype: a DEA number with a newer registrant
+	// letter or a '9', or an MBI with a lowercase letter, is reported only beside context this
+	// function cannot see, and is scored as the generic case below.
 	if reNPI.MatchString(match) && npiLuhnValid(match) {
 		checks["has_checksum"] = true
 		return 80.0, checks
 	}
-	if reDEA.MatchString(match) && deaChecksumValid(match) {
+	if classifyDEA(match) == deaOnValue {
 		checks["has_checksum"] = true
 		return 85.0, checks
 	}
-	if reMBI.MatchString(match) {
+	if classifyMBI(match) == mbiOnValue {
 		return 75.0, checks
 	}
 
@@ -1071,14 +1270,56 @@ func (v *Validator) hasMedicalContext(lowerLine string) bool {
 	return false
 }
 
+// providerKW, deaKW and medicareContextKW are matched with containsLabel, so the camelCase key a JSON
+// or ORM export writes counts as the label it spells (#858). Each list also carries the
+// concatenated multi-word spellings, because a one-word entry cannot match inside a longer token:
+// "npi" does not match "providernpi", "dea" does not match "deanumber", and "medicare" does not
+// match "medicarebeneficiaryidentifier", each of which is a single word once lowercased. Measured
+// before this: {"deaNumber": "BR1234563"} scored 55 where {"dea_number": ...} scored 95, and
+// {"providerNpi": "1000000004"} 40 where {"provider_npi": ...} scored 100.
+//
+// Widening is safe because all three only ever ADD evidence: they cancel a no-context penalty, and
+// deaKW and mbiLabelKW admit the context-gated forms. hasPhoneContext is a veto and keeps
+// containsKeyword, for the reason containsLabel's own comment records.
+var providerKW = []string{
+	"npi", "provider", "physician", "doctor", "nurse", "practitioner",
+	"clinician", "medical", "healthcare", "hospital", "clinic",
+	"practice", "health plan", "registry",
+	"provider npi", "npi number", "rendering provider", "billing provider", "referring provider",
+}
+
+var deaKW = []string{
+	"dea", "prescriber", "pharmacy", "controlled substance",
+	"narcotic", "schedule", "dispensing", "prescription",
+	"drug enforcement", "registrant",
+	"dea number", "dea registration", "dea registration number", "dea id", "prescriber dea",
+}
+
+// mbiLabelKW are the labels that name a MEDICARE identifier specifically, and the only context
+// that admits an MBI written with a lowercase letter (mbiNeedsLabel). HICN is the legacy Medicare
+// Health Insurance Claim Number (the SSN-based identifier the MBI replaced); it is still a Medicare
+// identifier label and appears on older records and exports.
+var mbiLabelKW = []string{
+	"medicare", "mbi", "hicn", "health insurance claim",
+	"medicare number", "medicare id", "medicare mbi", "mbi number",
+	"medicare beneficiary identifier", "medicare beneficiary id", "medicare beneficiary number",
+}
+
+// medicareContextKW is mbiLabelKW plus words that sit near an MBI without naming one. They
+// raise an uppercase MBI's score and never admit a lowercase one.
+var medicareContextKW = append(append([]string(nil), mbiLabelKW...),
+	"beneficiary", "cms", "medicaid", "enrollment", "coverage", "part a", "part b", "part d",
+	// "Member Identification Number" is the label printed on the physical Medicare card next to
+	// the MBI. Keywords match on whole tokens, so "member id" does not cover it ("identification"
+	// is not the token "id"), and without an entry here the card's own wording scored the MBI at
+	// LOW instead of HIGH. Not in mbiLabelKW: insurance cards print the same words, so
+	// `Member Identification Number: 1ac2de3fg45` stays an INSURANCE_MEMBER_ID.
+	"member identification",
+)
+
 func (v *Validator) hasProviderContext(lowerLine string) bool {
-	providerKW := []string{
-		"npi", "provider", "physician", "doctor", "nurse", "practitioner",
-		"clinician", "medical", "healthcare", "hospital", "clinic",
-		"practice", "health plan", "registry",
-	}
 	for _, kw := range providerKW {
-		if containsKeyword(lowerLine, kw) {
+		if containsLabel(lowerLine, kw) {
 			return true
 		}
 	}
@@ -1099,13 +1340,8 @@ func (v *Validator) hasPhoneContext(lowerLine string) bool {
 }
 
 func (v *Validator) hasDEAContext(lowerLine string) bool {
-	deaKW := []string{
-		"dea", "prescriber", "pharmacy", "controlled substance",
-		"narcotic", "schedule", "dispensing", "prescription",
-		"drug enforcement", "registrant",
-	}
 	for _, kw := range deaKW {
-		if containsKeyword(lowerLine, kw) {
+		if containsLabel(lowerLine, kw) {
 			return true
 		}
 	}
@@ -1113,22 +1349,18 @@ func (v *Validator) hasDEAContext(lowerLine string) bool {
 }
 
 func (v *Validator) hasMedicareContext(lowerLine string) bool {
-	medicareKW := []string{
-		"medicare", "mbi", "beneficiary", "cms", "medicaid",
-		"enrollment", "coverage", "part a", "part b", "part d",
-		// HICN is the legacy Medicare Health Insurance Claim Number (the
-		// SSN-based identifier the MBI replaced); it is still a Medicare
-		// identifier label and appears on older records/exports.
-		"hicn", "health insurance claim",
-		// "Member Identification Number" is the label printed on the physical
-		// Medicare card next to the MBI. Keywords match on whole tokens, so
-		// "member id" does not cover it — "identification" is not the token
-		// "id" — and without an entry here the card's own wording scored the
-		// MBI at LOW instead of HIGH.
-		"member identification",
+	for _, kw := range medicareContextKW {
+		if containsLabel(lowerLine, kw) {
+			return true
+		}
 	}
-	for _, kw := range medicareKW {
-		if containsKeyword(lowerLine, kw) {
+	return false
+}
+
+// hasMBILabel is the narrow Medicare test that gates a lowercase MBI; see mbiLabelKW.
+func (v *Validator) hasMBILabel(lowerLine string) bool {
+	for _, kw := range mbiLabelKW {
+		if containsLabel(lowerLine, kw) {
 			return true
 		}
 	}
@@ -1401,23 +1633,22 @@ func luhnValid(s string) bool {
 }
 
 // deaChecksumValid validates a DEA number checksum.
-// DEA format: 2 letters + 7 digits
+// DEA format: a registrant letter, a letter or '9', then 7 digits.
 // Checksum: (d1+d3+d5) + 2*(d2+d4+d6) -> last digit of sum = d7
+//
+// It validates the FORMAT and the check digit only. Whether a valid value may be reported on its
+// own is classifyDEA's decision.
 func deaChecksumValid(dea string) bool {
 	if len(dea) != 9 {
 		return false
 	}
-	// First char must be registration type
-	first := dea[0]
-	if first != 'A' && first != 'B' && first != 'C' && first != 'D' &&
-		first != 'F' && first != 'G' && first != 'M' &&
-		first != 'a' && first != 'b' && first != 'c' && first != 'd' &&
-		first != 'f' && first != 'g' && first != 'm' {
+	// First char must be a registrant type, in either case.
+	if strings.IndexByte(deaRegistrantLetters, upperASCII(dea[0])) < 0 {
 		return false
 	}
-	// Second char must be alpha
+	// Second char is the registrant's last-name initial, or '9' for a business address.
 	second := dea[1]
-	if !((second >= 'A' && second <= 'Z') || (second >= 'a' && second <= 'z')) {
+	if !((second >= 'A' && second <= 'Z') || (second >= 'a' && second <= 'z') || second == '9') {
 		return false
 	}
 	// Remaining 7 must be digits
@@ -1474,6 +1705,24 @@ func hasUpper(s string) bool {
 		}
 	}
 	return false
+}
+
+// hasLowerASCII reports whether s contains at least one a-z.
+func hasLowerASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 'a' && s[i] <= 'z' {
+			return true
+		}
+	}
+	return false
+}
+
+// upperASCII uppercases one ASCII letter and returns any other byte unchanged.
+func upperASCII(c byte) byte {
+	if c >= 'a' && c <= 'z' {
+		return c - ('a' - 'A')
+	}
+	return c
 }
 
 func isAllUpperOrDigit(s string) bool {

@@ -14,19 +14,19 @@ func (v *Validator) GetCheckInfo() help.CheckInfo {
 
 It identifies five types of medical identifiers:
 - NPI (National Provider Identifier): 10-digit numbers starting with 1 or 2, validated with Luhn checksum
-- DEA (Drug Enforcement Administration) numbers: 2-letter prefix + 7 digits with DEA-specific checksum
+- DEA (Drug Enforcement Administration) numbers: a registrant-type letter, the registrant's last-name initial or 9 (a business address), then 7 digits with the DEA check digit, in either case
 - MRN (Medical Record Number): 6-10 digit institution-specific identifiers, detected only with strong medical context
 - Insurance Member IDs: Alphanumeric 8-20 character strings with insurance/health plan context
-- Medicare Beneficiary Identifier (MBI): 11-character strings with specific positional format
+- Medicare Beneficiary Identifier (MBI): 11-character strings in the CMS positional format, in either case
 
-The validator prioritizes false-positive suppression: digit-only sequences (MRN) require strong medical context keywords, and structurally validated types (NPI, DEA) require checksum validity.`,
+The validator prioritizes false-positive suppression: digit-only sequences (MRN) require strong medical context keywords, and structurally validated types (NPI, DEA) require checksum validity. A DEA number whose first letter is outside ` + deaUngatedRegistrantLetters + `, or whose second character is 9, is reported only beside DEA context (on the line, on a label line above, or in its column header), and a lowercase MBI only beside a Medicare-specific label (medicare, mbi, hicn and their compound keys).`,
 
 		Patterns: []string{
 			"NPI: 10 digits starting with 1 or 2 (Luhn validated)",
-			"DEA: [ABCDFGM][A-Z] + 7 digits (checksum validated)",
+			"DEA: [" + deaRegistrantLetters + "] + a letter or 9 + 7 digits, either case (checksum validated)",
 			"MRN: 6-10 digits (requires medical context keywords)",
 			"Insurance Member ID: 8-20 alphanumeric chars (requires insurance context)",
-			"Medicare MBI: 11 chars in C-A-N-N/A-A-N-A-N-N/A-A-N positional format",
+			"Medicare MBI: 11 chars in the CMS C-A-AN-N-A-AN-N-A-A-N-N positional format, either case",
 		},
 
 		SupportedFormats: []string{

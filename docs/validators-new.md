@@ -206,10 +206,10 @@ Measured against the binary rather than transcribed — three of the five rows p
 | Type | Pattern | Validation |
 |---|---|---|
 | `NPI` | 10 digits starting with 1 or 2 | **Luhn checksum** on "80840" + NPI (CMS standard) |
-| `DEA_NUMBER` | 2 chars + 7 digits | **DEA checksum**: `(d1+d3+d5) + 2*(d2+d4+d6)` last digit = d7; first char in A/B/C/D/F/G/M |
+| `DEA_NUMBER` | A registrant letter, a letter (last-name initial) or `9` (business address), 7 digits; either case | **DEA checksum**: `(d1+d3+d5) + 2*(d2+d4+d6)` last digit = d7; first char one of the 18 registrant letters `ABCDEFGHJKLMPRSTUX`. Only `A/B/C/D/F/G/M` + a letter is reported on the value alone; every other letter and the `9` form need DEA context |
 | `MRN` | 6-10 digits | No structural validation — requires strong medical keywords (most restrictive) |
 | `INSURANCE_MEMBER_ID` | 8-20 alphanumeric | No structural validation — requires insurance keywords |
-| `MEDICARE_MBI` | 11 chars: C-A-N-A-N-A-N-A-N-A-N pattern | Format validation (position-specific char classes) |
+| `MEDICARE_MBI` | 11 chars in the CMS C-A-AN-N-A-AN-N-A-A-N-N format, compact or card-printed 4-3-4 with dashes or spaces; either case | Format validation (position-specific char classes). An MBI carrying a lowercase letter needs a Medicare-specific label |
 
 ### Context system
 - **Positive keywords** (+10 to +25): `medical record`, `mrn`, `patient id`, `member id`, `insurance`, `npi`, `provider`, `medicare`, `medicaid`, `beneficiary`, `subscriber`, `policy number`, `group number`, `dea`, `prescriber`, `pharmacy`, `hospital`, `clinic`, `health plan`
@@ -233,6 +233,15 @@ Two properties of that arm are worth knowing, because they are what keep it from
 - It only ever **adds** context. There is no "this header contradicts" rule, because suppressing a medical identifier on the strength of a column name would be suppression chosen by whoever wrote the file.
 
 Column names are matched as real systems write them — `PATIENT` (Synthea), `PAT_MRN_ID` (Epic Clarity), `MRN` (Cerner), `patient_identifier`. Generic surrogate keys are deliberately **not** matched: the OMOP CDM's `person_id` is not treated as medical context, since a column of that name appears in countless non-clinical schemas and admitting it would make every one of them medical.
+
+The provider, DEA and Medicare context that scores an `NPI`, a `DEA_NUMBER` and a `MEDICARE_MBI` follows the same per-column rule, and matches the camelCase key a JSON or ORM export writes (`providerNpi`, `npiNumber`, `deaNumber`, `medicareBeneficiaryIdentifier`, `mbiNumber`) as well as the snake_case one ([#858](https://github.com/awslabs/ferret-scan/issues/858)). All of it only adds: it cancels a no-context penalty, and admits the two gated forms below. The phone-context veto keeps the stricter separator-required match.
+
+**Two forms are admitted only by context**, because each widens a pattern into shapes that ordinary non-medical values share ([#858](https://github.com/awslabs/ferret-scan/issues/858)):
+
+- A DEA number whose first letter is one of the eleven newer registrant types (`E`, `H`, `J`, `K`, `L` for manufacturers, labs, importers, exporters and reverse distributors; `P`, `R`, `S`, `T`, `U` for narcotic treatment programs; `X` for the buprenorphine prescribing program), or whose second character is the business-address `9`, is reported only where DEA context covers it: on its line, on a field-label line above, or in its column header. Patent numbers (`EP1234563`) and passport numbers (a letter and 8 digits) have the same shape and pass the check digit one time in ten: measured on random decoys with no DEA context, removing the gate turned 79 of 800 patent numbers and 16 of 3,000 passport numbers into `DEA_NUMBER`. With it, none.
+- An MBI written with a lowercase letter (CMS converts one to uppercase rather than rejecting it) is reported only beside a Medicare-specific label: `medicare`, `mbi`, `hicn`, `health insurance claim`, or a compound key such as `medicare_number` or `medicareBeneficiaryIdentifier`. The wider Medicare-adjacent words (`coverage`, `cms`, `enrollment`, `beneficiary`, `medicaid`, `part a/b/d`) still score an uppercase MBI but do not admit a lowercase one: over 200,000 random lowercase hex tokens, they admitted 146 as `MEDICARE_MBI` on `coverage report keys` lines and 153 on `cms asset keys` lines, where the narrow list admits 0. `Member Identification Number`, which insurance cards print too, scores an uppercase MBI but leaves a lowercase value an `INSURANCE_MEMBER_ID`.
+
+The member-ID veto that hands a value to a more specific subtype asks that subtype's own admission decision, not its shape, so it fires only on a value the subtype actually reports: `Member ID: XR1234563` stays an `INSURANCE_MEMBER_ID`, while `Prescriber DEA and member id: XR1234563` is a `DEA_NUMBER`, as its legacy-letter sibling already was.
 
 ### What `--explain` says it checked
 
@@ -269,16 +278,22 @@ digit had in fact been verified ([#537](https://github.com/awslabs/ferret-scan/i
 phone-context exclusion described two principles below was likewise invisible in the output.
 
 ### Confidence curve
+Measured with the CLI, one value per file (`--checks MEDICAL_ID --confidence all`). The two column
+rows are the validator's own score; a CSV file's findings also get the document-level adjustment,
++20 for these files.
+
 - NPI (Luhn valid + "provider" keyword): 90
-- NPI (Luhn valid, no keyword): 60 (structural proof alone)
-- DEA (checksum valid + "pharmacy"): 85
+- NPI (Luhn valid, no keyword): 40 (structural proof alone)
+- DEA (checksum valid + "pharmacy" or "prescriber"): 95
 - DEA (checksum valid, no keyword): 55
-- MRN (digits + "medical record" on the line): 75
+- DEA with a newer registrant letter or a `9` + "DEA number:": 95; the same value with no DEA context: not reported
+- MRN (digits + "medical record" on the line): 90
 - MRN (digits in a column whose header says "mrn"/"medical record number"): 70
 - MRN (digits in a column whose header is generically medical, e.g. "patient"): 45
 - MRN (digits alone): 15 (suppressed)
-- Insurance ID + "member id": 70
-- Medicare MBI (format valid + "medicare"): 80
+- Insurance ID + "member id": 80
+- Medicare MBI (format valid + "medicare"): 85; lowercase, the same 85
+- Medicare MBI (format valid, no keyword): 40; lowercase: not reported
 
 ---
 
