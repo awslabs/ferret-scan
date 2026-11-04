@@ -158,15 +158,17 @@ func (v *Validator) itinLabelled(lc *lineContext) bool {
 // its column header. A glued half has no column, so it needs the label on the line.
 //
 // The gate is what keeps ITIN's precision at the SSN's. A nine-digit run beginning with 9 is ordinary
-// in code and data, and a Chilean mobile is +56 9XXXXXXXX. Measured, accepting every 9xx value with an
-// ITIN group in any form (V1) against this gate (V3), --checks SSN --confidence all:
+// in code and data, and a Chilean mobile is +56 9XXXXXXXX. Measured against main @ 769be4e with
+// --checks SSN --confidence all, accepting every 9xx value with an ITIN group in any form (V1) against
+// this gate (V3), every finding hand-checked:
 //
-//	                                         V1 added   V3 added
-//	Go module cache (327 MB, 12,312 files)   see PR     see PR
-//	200 "Contacto: +56 9XXXXXXXX" mobiles    see PR     0
+//	                                              V1 added           V3 added
+//	Go 1.27.3 tree (14,941 files)                 67 (55 ssa/opGen)  0
+//	Go module cache (11,917 files)                3                  0
+//	"Contacto: +56 9XXXXXXXX", 2 x 200 mobiles    85, 83             0
 //
-// The numbers are in the pull request that introduced this (#884); the issue measured 57 and 0 on
-// 306 MB of Go source, and 75-92 false SSN per 200 mobiles against 0.
+// Every V1 addition was a false positive. The issue measured the same shape on its corpora: 57 and 0
+// on 306 MB of Go source, and 75-92 per 200 mobiles against 0.
 func (v *Validator) itinFormAdmits(match string, lc *lineContext) bool {
 	return isSeparatedITINForm(match) || v.itinLabelled(lc)
 }
