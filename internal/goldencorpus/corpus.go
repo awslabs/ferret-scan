@@ -1099,6 +1099,33 @@ var Cases = []Case{
 			"insurance member id for prescriber: AB1234563\n",
 	},
 	{
+		Name: "medicalid_nhs_chi_label_decoys",
+		Description: "The #859 decoys, which must stay EMPTY. NHS and CHI numbers carry a mod-11 " +
+			"check digit that 9.09% of random 10-digit strings and every numeric ISBN-10 also pass, " +
+			"so NHS_NUMBER and CHI_NUMBER are reported only beside a label bound to the value. " +
+			"Lines 1-5 carry a bare NHS or CHI token, never a label: an ISBN-10, a +44 phone number " +
+			"on an NHS 111 line, a NANP number, Go code naming crypto/tls's `chi`, and a bare CHI. " +
+			"Line 6 has the label after the value. Lines 7-8 are a label line above a +44 phone " +
+			"number, which the country-code rule rejects. Line 9 is the CHI 6-4 grouping under an " +
+			"NHS label, line 10 one group of a longer grouped number, and line 11 a FHIR identifier " +
+			"whose system is not the NHS number. Positive examples (all 17 of the issue's cases, " +
+			"1,000 generated values per population under each binding, the 999-range and repdigit " +
+			"ceilings) are unit tests in internal/validators/medicalid, so this case adds no " +
+			"finding to the census.",
+		Checks: []string{"MEDICAL_ID"},
+		Input: "NHS library ISBN 0306406152\n" +
+			"Call NHS 111 or +44 7700900123 for advice\n" +
+			"NHS 212-555-0142 switchboard\n" +
+			"chi := tls.ClientHelloInfo{ServerName: \"1501000004\"}\n" +
+			"CHI 1501000004 rejected\n" +
+			"Reference 4505577104 for the NHS number form\n" +
+			"NHS number\n" +
+			"+44 7700900123\n" +
+			"NHS number: 150100 0004\n" +
+			"NHS number: 999 111 2227 4444\n" +
+			"{\"system\": \"https://fhir.nhs.uk/Id/ods-organization-code\", \"value\": \"4505577104\"}\n",
+	},
+	{
 		Name: "medical_npi_unix_timestamps",
 		Description: "Unix timestamps in seconds that pass the CMS NPI-Luhn check by chance (#806): " +
 			"1751328000 is 2025-07-01T00:00:00Z and 1761609639 is 2025-10-28T00:00:39Z, and one " +

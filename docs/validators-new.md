@@ -277,8 +277,10 @@ the same evidence available — an MBI has no check digit, so its format *is* th
 | `MEDICARE_MBI` | `mbi_format` (always true) | `medicare_context` | — |
 | `MRN` | `mrn_label` | `medical_context` | `not_an_npi`, `not_other_number_type` |
 | `INSURANCE_MEMBER_ID` | `letters_and_digits` | `insurance_label` | `not_other_id_shape`, `not_a_more_specific_id` |
+| `NHS_NUMBER` | `nhs_checksum` (varies: a failed check digit is reported LOW, not dropped) | `nhs_label` (always true) | `not_reserved_test_range`, `not_repdigit` |
+| `CHI_NUMBER` | `chi_checksum`, `chi_date` (both vary) | `chi_label` (always true) | `not_repdigit` |
 
-All five also record `not_test_data`, which is what drives the `likely_test` verdict rather than the
+All seven also record `not_test_data`, which is what drives the `likely_test` verdict rather than the
 prose — the rationale reports that concept in its own words instead of naming the check.
 
 Two rules govern what may appear here, and both are honesty rules rather than style:
@@ -297,6 +299,44 @@ Before this, medicalid was the one validator that recorded nothing, so its ratio
 at all — "Flagged as an NPI; nearby context raised confidence by 20%" — even though the CMS check
 digit had in fact been verified ([#537](https://github.com/awslabs/ferret-scan/issues/537)). The
 phone-context exclusion described two principles below was likewise invisible in the output.
+
+### UK NHS and Scottish CHI numbers
+
+`NHS_NUMBER` (England, Wales and the Isle of Man; Northern Ireland's Health and Care number shares
+the format) and `CHI_NUMBER` (Scotland's Community Health Index) are 10 digits ending in a mod-11
+check digit; a CHI starts with a DDMMYY date, normally the date of birth
+([#859](https://github.com/awslabs/ferret-scan/issues/859)). Before them no type owned either: a
+labelled NHS number was reported only as a US/CA `PHONE`, whose format-preserving mask keeps the
+last four digits, and a spaced CHI (`150100 0004`) was reported as nothing.
+
+The check digit alone is no evidence: it passes 9.09% of random 10-digit strings and every numeric
+ISBN-10. So a value is reported only when a label is **bound** to it:
+
+- a label or key immediately before it: `NHS number`, `NHS no`, `H&C number`, `health and care
+  number`, `CHI number`, `CHI no`, `community health index`, in any spelling `ContainsLabel`
+  accepts (`nhs_number`, `nhsNumber`, `<chiNumber>`);
+- the header of its own column, including the header line directly above the first data row of a
+  two-column export, which `internal/tabular` deliberately does not treat as a table;
+- a field-label line directly above it;
+- the FHIR identifier system `https://fhir.nhs.uk/Id/nhs-number`, on its line or the line above,
+  for that identifier's `value`;
+- HL7 v2 `^^^NHS^NH` right after it.
+
+A bare `NHS` or `CHI` token never binds: `NHS 111` heads a helpline line, and in Go's sources `chi`
+is a `crypto/tls` variable. The printed forms are 10 unbroken digits, the NHS 3-3-4 grouping with
+one separator throughout, and the CHI 6-4 grouping; a value after `+44` or `0044` is a phone number.
+
+A bound value whose check digit (and, for a CHI, date) holds scores 90 plus the line's context. A
+bound value that fails either is still reported, at 40 or less, with the failed check recorded,
+because the label still says what the number is. NHS England's never-issued range `999 000 0000` to
+`999 999 9999` and every repdigit (all ten pass the check digit) are fixtures that still need
+redacting, so they are capped at 15 with `confidence_ceiling` published, the T2 rule of
+`docs/proposals/CONFIDENCE_CONTRACT.md` §7c.
+
+The two types are additive: `PHONE`, `MRN` and `NPI` findings on the same bytes are unchanged. The
+redactor renders findings on identical bytes as one group that keeps no digit any member would hide
+([#773](https://github.com/awslabs/ferret-scan/issues/773)), so a labelled NHS number is now masked
+in full instead of keeping `PHONE`'s last four digits.
 
 ### Confidence curve
 Measured with the CLI, one value per file (`--checks MEDICAL_ID --confidence all`). The two column

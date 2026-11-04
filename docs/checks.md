@@ -37,6 +37,7 @@ registry yet; the detection itself is unaffected.
 - [AZURE_RESOURCE_ID](#azure_resource_id)
 - [BUSINESS](#business)
 - [CERTIFICATE](#certificate)
+- [CHI_NUMBER](#chi_number)
 - [CLOUD_RESOURCE_ID](#cloud_resource_id)
 - [COMPANY_INFO](#company_info)
 - [CREDIT_CARD](#credit_card)
@@ -84,6 +85,7 @@ registry yet; the detection itself is unaffected.
 - [METADATA](#metadata)
 - [MICROSOFT_365](#microsoft_365)
 - [MRN](#mrn)
+- [NHS_NUMBER](#nhs_number)
 - [NPI](#npi)
 - [OCI_OCID](#oci_ocid)
 - [OTPAUTH_URI](#otpauth_uri)
@@ -272,6 +274,14 @@ An email address was detected in the scanned content. Email addresses can be con
 A potential secret, API key, password, or authentication token was detected in the scanned content. Exposed secrets can lead to unauthorized access and security breaches.
 
 *What to do:* Secrets, API keys, and passwords should never be stored in source code or version control. Remove this secret immediately and rotate it if it has been committed. Use secret management systems like AWS Secrets Manager, HashiCorp Vault, or environment variables for storing sensitive credentials. Implement pre-commit hooks to prevent future secret commits.
+
+## CHI_NUMBER
+
+**Medical Identifier Detected**
+
+A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
+
+*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
 
 ## CLOUD_RESOURCE_ID
 
@@ -642,6 +652,14 @@ An email address was detected in the scanned content. Email addresses can be con
 *What to do:* Email addresses can be considered PII in many regulatory frameworks (GDPR, CCPA, etc.). Consider whether this email address should be present in the code or if it should be stored in a secure configuration system. If this is a test email or example, consider using example.com domain or clearly marking it as test data.
 
 ## MRN
+
+**Medical Identifier Detected**
+
+A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
+
+*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
+
+## NHS_NUMBER
 
 **Medical Identifier Detected**
 

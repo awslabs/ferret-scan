@@ -409,6 +409,9 @@ func (v *Validator) scanLine(ctx stdctx.Context, line string, lineNum int, origi
 		}
 	}
 
+	// UK NHS and Scottish CHI numbers, each bound to its own label (#859). See nhs_chi.go.
+	matches = append(matches, v.scanUKHealthNumbers(ctx, line, prevLine, lc, lineNum, originalPath)...)
+
 	return matches
 }
 
