@@ -518,17 +518,19 @@ func (rm *RedactionManager) AddRedactionResult(originalPath, redactedPath string
 				continue
 			}
 
+			strategy, requested := auditStrategyOf(redactionMapping)
 			contentRedaction := ContentRedaction{
-				ID:           fmt.Sprintf("%s_redaction_%d", documentID, i),
-				TargetType:   targetType,
-				TargetPath:   targetPath,
-				DataType:     redactionMapping.DataType,
-				RedactedText: redactionMapping.RedactedText,
-				Strategy:     redactionMapping.Strategy,
-				Confidence:   detectionConfidence(redactionMapping) / 100.0, // 0-100 -> 0-1
-				Line:         redactionMapping.Position.Line,
-				Placement:    placementOf(redactionMapping),
-				Timestamp:    time.Now(),
+				ID:                fmt.Sprintf("%s_redaction_%d", documentID, i),
+				TargetType:        targetType,
+				TargetPath:        targetPath,
+				DataType:          redactionMapping.DataType,
+				RedactedText:      redactionMapping.RedactedText,
+				Strategy:          strategy,
+				RequestedStrategy: requested,
+				Confidence:        detectionConfidence(redactionMapping) / 100.0, // 0-100 -> 0-1
+				Line:              redactionMapping.Position.Line,
+				Placement:         placementOf(redactionMapping),
+				Timestamp:         time.Now(),
 			}
 			// One entry per overlap group, naming every finding it covered (#773).
 			if types, ok := redactionMapping.Metadata[OverlapMemberTypesKey].([]string); ok && len(types) > 1 {

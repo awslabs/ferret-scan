@@ -120,11 +120,20 @@ type ContentRedaction struct {
 	// DataType is the type of sensitive data that was redacted
 	DataType string `json:"data_type"`
 
-	// RedactedText is the replacement text (for audit purposes)
+	// RedactedText is the text written over the value. Where a format rewritten in place merged the
+	// value with an overlapping one (audio, video), it is that merged span's mask; where the value
+	// occurs more than once, what was written at its first occurrence.
 	RedactedText string `json:"redacted_text"`
 
-	// Strategy is the redaction strategy used, by name
-	Strategy RedactionStrategy `json:"strategy"`
+	// Strategy names the rendering RedactedText is: the strategy the redactor was called with, or
+	// AuditMask where a format rewritten in place wrote a run of '*' instead of a rendering of that
+	// strategy that keeps part of the value (RedactionMapping.Masked).
+	Strategy AuditStrategy `json:"strategy"`
+
+	// RequestedStrategy is the strategy the redactor was called with, present exactly when Strategy
+	// is AuditMask (#865). It is a pointer so that simple, the zero RedactionStrategy, is written
+	// rather than omitted.
+	RequestedStrategy *RedactionStrategy `json:"requested_strategy,omitempty"`
 
 	// Confidence is the detection confidence of the finding, on 0-1: the report's confidence / 100.
 	//
@@ -134,7 +143,8 @@ type ContentRedaction struct {
 	Confidence float64 `json:"confidence"`
 
 	// Line is the 1-based line of the finding, as in the report's line_number. Absent when the
-	// redactor records no position (audio, video and legacy Office do not, yet).
+	// finding has none. Audio, video and legacy Office entries carry it too since #865; they used to
+	// record no position at all.
 	Line int `json:"line,omitempty"`
 
 	// Placement says how a text-family redactor located the value it rewrote. Absent for every other
@@ -148,6 +158,37 @@ type ContentRedaction struct {
 
 	// Timestamp is when this redaction was performed
 	Timestamp time.Time `json:"timestamp"`
+}
+
+// AuditStrategy is a content redaction's strategy as the audit log records it: the name of the
+// strategy whose rendering was written, or AuditMask. It is not a RedactionStrategy because a mask is
+// not one: no run can ask for it, and ParseRedactionStrategy refuses the name.
+type AuditStrategy string
+
+// AuditMask is the strategy of an entry whose value a format rewritten in place at its own byte length
+// (audio, video, legacy Office) overwrote with a run of '*' where the requested strategy's rendering
+// keeps part of it (RedactionMapping.Masked, #865). Those entries used to say format_preserving beside
+// a mask.
+const AuditMask AuditStrategy = "mask"
+
+// auditStrategyOf is the audit strategy of a redaction: AuditMask for a masked one, otherwise the
+// name of the strategy the redactor was called with ("unknown" for a value outside the definition,
+// which Valid rejects so the export fails rather than writing it).
+func auditStrategyOf(m RedactionMapping) (AuditStrategy, *RedactionStrategy) {
+	if m.Masked {
+		requested := m.Strategy
+		return AuditMask, &requested
+	}
+	return AuditStrategy(m.Strategy.String()), nil
+}
+
+// Valid reports whether a is one of the three strategies' names or AuditMask.
+func (a AuditStrategy) Valid() bool {
+	if a == AuditMask {
+		return true
+	}
+	s, err := ParseRedactionStrategy(string(a))
+	return err == nil && s.Valid()
 }
 
 // Placement records how the text-family redactor located a value: Method is its position_method
@@ -345,7 +386,15 @@ func (ri *RedactionAuditLog) Validate() error {
 			return fmt.Errorf("content_redactions[%d].confidence must be between 0 and 1", i)
 		}
 		if !redaction.Strategy.Valid() {
-			return fmt.Errorf("content_redactions[%d].strategy %d is not a redaction strategy", i, int(redaction.Strategy))
+			return fmt.Errorf("content_redactions[%d].strategy %q is not a redaction strategy or %q", i, redaction.Strategy, AuditMask)
+		}
+		// requested_strategy says what a mask stood in for, so it is there exactly when the entry is
+		// a mask, and names a strategy a run can ask for.
+		if (redaction.Strategy == AuditMask) != (redaction.RequestedStrategy != nil) {
+			return fmt.Errorf("content_redactions[%d].requested_strategy must be present exactly when strategy is %q", i, AuditMask)
+		}
+		if redaction.RequestedStrategy != nil && !redaction.RequestedStrategy.Valid() {
+			return fmt.Errorf("content_redactions[%d].requested_strategy %d is not a redaction strategy", i, int(*redaction.RequestedStrategy))
 		}
 	}
 

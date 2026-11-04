@@ -4,6 +4,9 @@
 package legacyole
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,8 +20,8 @@ import (
 // passed, and nothing read the list in production: synthetic was written as a mask and simple as
 // format_preserving, byte-identical to it, on .doc, .xls and .ppt alike.
 //
-// synthetic is refused for an embedded legacy part (see the redactors package's registry tests); a
-// top-level file still takes the mask, as GetSupportedStrategies explains.
+// synthetic is refused: by the redactor itself, before it reads the file (below), and by both
+// dispatchers (the redactors package's registry tests). A top-level file used to take the mask.
 
 // Synthetic values: a reserved-domain address, an unassignable NANP number (exchange 010) and a
 // sequential card serial with its Luhn digit.
@@ -79,6 +82,40 @@ func TestFormatPreservingIsUnchanged(t *testing.T) {
 		}
 		if got != want {
 			t.Errorf("%s format_preserving: main stream = %q, want %q", ext, got, want)
+		}
+	}
+}
+
+// TestSyntheticIsRefusedAndWritesNothing: a top-level .doc, .xls or .ppt asked for synthetic is refused
+// before anything is read or written, with an error naming the strategy and the two this format takes.
+// It used to be written with a same-length mask at exit 0, a rendering no document describes, while
+// the audit log recorded synthetic (#863).
+func TestSyntheticIsRefusedAndWritesNothing(t *testing.T) {
+	for ext, data := range legacyContainers(strategyBody()) {
+		src := writeFixture(t, data, "in"+ext)
+		out := filepath.Join(t.TempDir(), "out"+ext)
+		res, err := NewLegacyOLERedactor(nil, nil).RedactDocument(src, out, strategyMatches(), redactors.RedactionSynthetic)
+		if !errors.Is(err, redactors.ErrStrategyNotSupported) || res != nil {
+			t.Fatalf("%s synthetic: res %v, err %v; want ErrStrategyNotSupported and no result", ext, res, err)
+		}
+		for _, want := range []string{"not synthetic", "simple and format_preserving", "own byte length"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: the refusal %q does not say %q", ext, err, want)
+			}
+		}
+		if _, statErr := os.Stat(out); !os.IsNotExist(statErr) {
+			t.Errorf("%s: an output was written for a refused strategy (%v)", ext, statErr)
+		}
+	}
+}
+
+// A file with nothing to redact is not refused under synthetic: no strategy is applied to it.
+func TestSyntheticWithNothingToRedactIsNotRefused(t *testing.T) {
+	for ext, data := range legacyContainers(strategyBody()) {
+		src := writeFixture(t, data, "in"+ext)
+		out := filepath.Join(t.TempDir(), "out"+ext)
+		if _, err := NewLegacyOLERedactor(nil, nil).RedactDocument(src, out, nil, redactors.RedactionSynthetic); err != nil {
+			t.Errorf("%s: a clean file was refused: %v", ext, err)
 		}
 	}
 }

@@ -99,18 +99,24 @@ func (r *LegacyOLERedactor) GetSupportedTypes() []string {
 // the output contains, so the strategy is declined and the caller can choose
 // another rather than be surprised.
 //
-// Until #863 the declaration was all there was: nothing read it. The embedded
-// dispatcher now enforces it (RedactionManager.RedactorFor), so a .doc inside a
-// .docx asked for synthetic is refused with its container. A top-level file is
-// still written under synthetic with a same-length mask: RedactDocument does not
-// yet refuse it as audio and video do (tagmeta.CheckStrategy), because the golden
-// corpus's overlap-group sink test requires synthetic to succeed on .doc/.xls/.ppt.
-// Adding that call here is the remaining step once the test accepts the refusal.
+// Until #863 the declaration was all there was: nothing read it. Both dispatchers now
+// enforce it (RedactionManager.RedactorFor), and RedactDocument refuses an undeclared
+// strategy itself before reading the file, as audio and video do
+// (redactors.CheckStrategy): a top-level .doc, .xls or .ppt asked for synthetic is
+// refused, disclosed and written nowhere, and a legacy part embedded in a .docx is
+// refused with its container. A top-level file used to be written under synthetic with
+// a same-length mask at exit 0.
 func (r *LegacyOLERedactor) GetSupportedStrategies() []redactors.RedactionStrategy {
 	return []redactors.RedactionStrategy{
 		redactors.RedactionSimple,
 		redactors.RedactionFormatPreserving,
 	}
+}
+
+// ExplainStrategyRefusal is why a strategy left out of GetSupportedStrategies is refused, appended
+// to the refusal wherever it is made (redactors.StrategyRefusalExplainer).
+func (r *LegacyOLERedactor) ExplainStrategyRefusal(s redactors.RedactionStrategy) string {
+	return tagmeta.RefusalReason(s)
 }
 
 // RedactDocument writes a redacted copy of an OLE document to outputPath.
@@ -128,6 +134,12 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 	})
 
 	start := time.Now()
+
+	// Refuse an undeclared strategy before anything is read or written, whichever dispatcher
+	// called. See GetSupportedStrategies.
+	if err := redactors.CheckStrategy(r, strategy, matches); err != nil {
+		return nil, err
+	}
 
 	raw, err := os.ReadFile(originalPath) // #nosec G304 -- path vetted by the router
 	if err != nil {
@@ -196,9 +208,11 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 			continue
 		}
 		repl := u.replacement
-		n := 0
+		n, narrowN := 0, 0
 		for i, s := range layout.streams {
-			n += overwriteInStream(modified, s, logical[i], m.Text, repl)
+			nn, wn := overwriteEachEncoding(modified, s, logical[i], m.Text, repl)
+			n += nn + wn
+			narrowN += nn
 		}
 		if n == 0 {
 			if u.group.IsGroup() {
@@ -217,10 +231,13 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 			})
 			continue
 		}
+		text := writtenText(m.Text, repl, narrowN)
 		mapping := redactors.RedactionMapping{
-			RedactedText: repl,
+			RedactedText: text,
+			Position:     redactors.TextPosition{Line: m.LineNumber},
 			DataType:     m.Type,
 			Strategy:     strategy,
+			Masked:       tagmeta.WrittenAsMask(m.Text, m.Type, text, strategy),
 			Confidence:   m.Confidence,
 			Metadata: map[string]interface{}{
 				"occurrences":     n,
@@ -352,36 +369,57 @@ func legacyWriteUnits(matches []detector.Match, strategy redactors.RedactionStra
 	return units
 }
 
-// overwriteInStream replaces every occurrence of value inside one stream's LOGICAL
+// overwriteEachEncoding replaces every occurrence of value inside one stream's LOGICAL
 // bytes, writing each replacement back through the stream's sector chain, and
-// returns how many it replaced.
+// returns how many it replaced in the 8-bit and in the UTF-16LE encoding, since each
+// is written with a replacement of its own.
 //
 // Both encodings are searched, and each needs a replacement of its own byte width:
 // "José" is 5 bytes as UTF-8 but 8 as UTF-16LE. The logical slice is updated in
 // step with the file so a later match cannot be found in bytes already masked.
-func overwriteInStream(raw []byte, s streamExtent, logical []byte, value, repl string) int {
-	count := 0
-
+func overwriteEachEncoding(raw []byte, s streamExtent, logical []byte, value, repl string) (narrowCount, wideCount int) {
 	narrow := []byte(value)
 	narrowRepl := []byte(repl)
 	if len(narrow) > 0 && len(narrow) == len(narrowRepl) {
-		count += replaceLogical(raw, s, logical, narrow, narrowRepl)
+		narrowCount = replaceLogical(raw, s, logical, narrow, narrowRepl)
 	}
 
 	wide := toUTF16LE(value)
 	if len(wide) == 0 {
-		return count
+		return narrowCount, 0
 	}
-	wideRepl := toUTF16LE(repl)
+	wideCount = replaceLogical(raw, s, logical, wide, wideReplacement(value, repl))
+	return narrowCount, wideCount
+}
+
+// wideReplacement is what overwrites value's UTF-16LE form: repl's own encoding when it has the
+// same width, otherwise a mask of that width. A same-length overwrite is what keeps every sector
+// offset valid, so when the format-preserving replacement does not encode to the same width a mask
+// of the correct width is used instead: "José" is 5 bytes and 4 code units, and its 5-byte mask
+// would be 10 bytes wide.
+func wideReplacement(value, repl string) []byte {
+	wide, wideRepl := toUTF16LE(value), toUTF16LE(repl)
 	if len(wideRepl) != len(wide) {
-		// A same-length overwrite is what keeps every sector offset valid, so when
-		// the format-preserving replacement does not encode to the same width a mask
-		// of the correct width is used instead.
 		wideRepl = bytes.Repeat([]byte{maskByte, 0x00}, len(wide)/2)
 	}
-	count += replaceLogical(raw, s, logical, wide, wideRepl)
+	return wideRepl
+}
 
-	return count
+// writtenText is the text a unit's overwrite left where the value was found: repl in the 8-bit
+// encoding, and, for a value found only as UTF-16LE, what wideReplacement wrote there read back as
+// text, which is a shorter mask when repl does not encode to the value's width. It is what the audit
+// entry records (#865): "José Ramírez" in a UTF-16 property under simple is overwritten with 12
+// '*' code units, not repl's 14 bytes.
+func writtenText(value, repl string, narrowCount int) string {
+	if narrowCount > 0 {
+		return repl
+	}
+	b := wideReplacement(value, repl)
+	units := make([]uint16, len(b)/2)
+	for i := range units {
+		units[i] = uint16(b[2*i]) | uint16(b[2*i+1])<<8
+	}
+	return string(utf16.Decode(units))
 }
 
 // replaceLogical finds every occurrence of pat in a stream's logical bytes and

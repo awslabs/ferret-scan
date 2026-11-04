@@ -175,8 +175,18 @@ func SupportsStrategy(r Redactor, s RedactionStrategy) bool {
 	return false
 }
 
+// StrategyRefusalExplainer is implemented by a redactor whose refusal of a strategy it does not
+// declare has a reason the operator needs beyond the list of strategies it takes: the same-length
+// redactors, whose values are overwritten in place at their own byte length. CheckStrategy appends
+// it, so the refusal reads the same whichever dispatcher made it: the worker pool and the embedded
+// path (RedactorFor), or the redactor's own entry point.
+type StrategyRefusalExplainer interface {
+	ExplainStrategyRefusal(s RedactionStrategy) string
+}
+
 // CheckStrategy returns nil when matches may be handed to r under s, and otherwise an error wrapping
-// ErrStrategyNotSupported that names s and the strategies r declares, so the operator can pick one.
+// ErrStrategyNotSupported that names s and the strategies r declares, so the operator can pick one,
+// followed by r's reason when it gives one (StrategyRefusalExplainer).
 //
 // A dispatch with no matches is never refused. Nothing would be rendered, so no strategy is being
 // applied, and refusing would report a clean or fully suppressed file as unredacted.
@@ -189,8 +199,14 @@ func CheckStrategy(r Redactor, s RedactionStrategy, matches []detector.Match) er
 	for _, d := range declared {
 		names = append(names, d.String())
 	}
-	return fmt.Errorf("%w: %s supports %s, not %s", ErrStrategyNotSupported,
+	err := fmt.Errorf("%w: %s supports %s, not %s", ErrStrategyNotSupported,
 		r.GetName(), strings.Join(names, " and "), s)
+	if e, ok := r.(StrategyRefusalExplainer); ok {
+		if why := e.ExplainStrategyRefusal(s); why != "" {
+			return fmt.Errorf("%w; %s", err, why)
+		}
+	}
+	return err
 }
 
 // RedactorFor selects the redactor for a dispatch of matches under strategy: GetRedactorForFile's

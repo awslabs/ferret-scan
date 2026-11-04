@@ -28,12 +28,15 @@ import (
 type auditDoc struct {
 	FerretVersion     string `json:"ferret_version"`
 	OriginalPath      string `json:"original_path"`
+	RedactedPath      string `json:"redacted_path"`
 	ContentRedactions []struct {
-		DataType   string  `json:"data_type"`
-		Strategy   string  `json:"strategy"`
-		Confidence float64 `json:"confidence"`
-		Line       int     `json:"line"`
-		Placement  *struct {
+		DataType          string  `json:"data_type"`
+		RedactedText      string  `json:"redacted_text"`
+		Strategy          string  `json:"strategy"`
+		RequestedStrategy *string `json:"requested_strategy"`
+		Confidence        float64 `json:"confidence"`
+		Line              int     `json:"line"`
+		Placement         *struct {
 			Method string   `json:"method"`
 			Score  *float64 `json:"score"`
 		} `json:"placement"`

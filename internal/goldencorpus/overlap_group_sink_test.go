@@ -70,6 +70,18 @@ func TestOverlapGroupSinkEveryFormat(t *testing.T) {
 						FilePath: in, OutputDir: filepath.Join(dir, "out"), Strategy: st, Checks: c.checks,
 						Config: config.LoadConfigOrDefault(""), LogWriter: io.Discard,
 					})
+					if st == "synthetic" && legacyOffice(ext) {
+						// Legacy Office is rewritten in place at each value's own byte length, so it does
+						// not offer synthetic, as the redaction guide says: the file is refused, naming the
+						// strategy, and nothing is written (#863). It used to be written with a mask.
+						if err == nil || !strings.Contains(err.Error(), "not synthetic") {
+							t.Fatalf("RedactFile(%s, synthetic) = %v, want a refusal naming synthetic", ext, err)
+						}
+						if found := findRedactedArtifact(t, filepath.Join(dir, "out")); found != "" {
+							t.Fatalf("a refused file was written at %s", found)
+						}
+						return
+					}
 					if err != nil {
 						t.Fatalf("RedactFile: %v", err)
 					}
@@ -94,6 +106,9 @@ func TestOverlapGroupSinkEveryFormat(t *testing.T) {
 		}
 	}
 }
+
+// legacyOffice reports whether ext is one of the legacy compound-file formats.
+func legacyOffice(ext string) bool { return ext == ".doc" || ext == ".xls" || ext == ".ppt" }
 
 // overlapFixture writes the lines in the given format: text, a one-paragraph-per-line .docx, or the
 // main stream of a legacy compound file.

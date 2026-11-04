@@ -169,6 +169,14 @@ type RedactionMapping struct {
 	// Strategy is the redaction strategy used
 	Strategy RedactionStrategy
 
+	// Masked marks a value a format rewritten in place at its own byte length (audio, video, legacy
+	// Office) overwrote with a run of '*' where Strategy's rendering keeps part of it: the
+	// format_preserving rendering did not fit the value's bytes, or the value shared bytes with
+	// another finding and the two were masked as one (tagmeta.WrittenAsMask). The audit log then
+	// records the entry's strategy as "mask" and Strategy as its requested_strategy (#865). Never set
+	// under simple, whose rendering in those formats is that mask.
+	Masked bool
+
 	// Confidence is the confidence score for this specific redaction
 	Confidence float64
 

@@ -29,9 +29,10 @@
 // keeps nothing of the value (tagmeta.SameLengthRendering).
 //
 // Synthetic is declined: it generates a plausible value whose length is unrelated to the
-// original. RedactDocument refuses it before reading the file (tagmeta.CheckStrategy), so the run
-// discloses the file as not redacted. It used to be accepted and written as a mask, which
-// misreported what the output contains (#863).
+// original. The worker pool refuses it before calling the redactor (redactors.RedactorFor), and
+// RedactDocument refuses it again before reading the file (redactors.CheckStrategy), so the run
+// discloses the file as not redacted, with the reason (ExplainStrategyRefusal). It used to be
+// accepted and written as a mask, which misreported what the output contains (#863).
 package audio
 
 import (
@@ -118,6 +119,12 @@ func (r *AudioRedactor) GetSupportedStrategies() []redactors.RedactionStrategy {
 	}
 }
 
+// ExplainStrategyRefusal is why a strategy left out of GetSupportedStrategies is refused, appended to
+// the refusal wherever it is made (redactors.StrategyRefusalExplainer).
+func (r *AudioRedactor) ExplainStrategyRefusal(s redactors.RedactionStrategy) string {
+	return tagmeta.RefusalReason(s)
+}
+
 // RedactDocument writes a redacted copy of an audio file to outputPath.
 func (r *AudioRedactor) RedactDocument(originalPath string, outputPath string, matches []detector.Match, strategy redactors.RedactionStrategy) (*redactors.RedactionResult, error) {
 	var finishTiming func(bool, map[string]interface{})
@@ -136,7 +143,7 @@ func (r *AudioRedactor) RedactDocument(originalPath string, outputPath string, m
 
 	// Refuse an undeclared strategy before anything is read or written, whichever dispatcher
 	// called. See the package comment.
-	if err := tagmeta.CheckStrategy(r, strategy, matches); err != nil {
+	if err := redactors.CheckStrategy(r, strategy, matches); err != nil {
 		return nil, err
 	}
 
@@ -168,7 +175,7 @@ func (r *AudioRedactor) RedactDocument(originalPath string, outputPath string, m
 	// anything. Reported matches overlap — an AUTHOR_INFO field value contains the SSN
 	// reported separately — and a sequential replace loses whichever one it handles second.
 	// See planOverwrites.
-	plan, perMatch := tagmeta.Plan(raw, ranges, matches, strategy)
+	plan, perMatch, written := tagmeta.PlanWritten(raw, ranges, matches, strategy)
 
 	modified := append([]byte(nil), raw...)
 	tagmeta.Apply(modified, plan)
@@ -191,10 +198,14 @@ func (r *AudioRedactor) RedactDocument(originalPath string, outputPath string, m
 			})
 			continue
 		}
+		// What was written, not the match's own rendering: overlapping values are merged into one
+		// masked span (#865).
 		mappings = append(mappings, redactors.RedactionMapping{
-			RedactedText: tagmeta.SameLengthReplacement(m.Text, m.Type, strategy),
+			RedactedText: written[i].Text,
+			Position:     redactors.TextPosition{Line: m.LineNumber},
 			DataType:     m.Type,
 			Strategy:     strategy,
+			Masked:       written[i].Masked,
 			Confidence:   m.Confidence,
 			Metadata: map[string]interface{}{
 				"occurrences":     perMatch[i],
