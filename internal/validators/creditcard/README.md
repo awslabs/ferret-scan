@@ -32,7 +32,7 @@ The validator automatically detects and categorizes the following credit card ty
 - **Luhn Validation**: Uses Luhn algorithm to reduce false positives
 - **Card Type Detection**: Identifies card type based on IIN (Issuer Identification Number) ranges
 - **Context Analysis**: Analyzes surrounding context to improve confidence scoring
-- **Test Pattern Recognition**: Automatically identifies and flags test patterns with low confidence
+- **Test Number Recognition**: Reports test-pattern literals, repeating shapes and the card numbers payment processors publish for their sandboxes at LOW (at most 15), and never drops them
 
 ## Confidence Scoring
 
@@ -60,6 +60,25 @@ metadata, which the document bridge applies again after its context adjustment, 
 classified as tabular or financial cannot lift it back to HIGH. A line with a negative keyword
 (`order id`, `hash`, `test`, ...) is unaffected: it already scores the value at the bottom of LOW.
 
+### Published test numbers are capped at LOW
+
+The card numbers that Adyen, Authorize.net, Braintree, Checkout.com, Square and Stripe print on
+their own sandbox testing pages are listed in `published_test_pans.go`, each block citing its page
+and the date it was read. A listed value is reported at **at most 15 (LOW)** with
+`not_test: false`, wherever it appears: on a `Card number:` line, in a JSON fixture, a CSV row or a
+test constant. It is capped, not dropped, so it is still reported and still redacted, and its
+`confidence_ceiling: 15` stops a document-level adjustment from lifting it. Measured over the 492
+listed values on `Card number:` lines, 386 scored 100 HIGH before this cap and none do now (#883),
+so `--profile precommit` passes a fixture that holds only published test numbers and still blocks
+one that also holds a real-shaped card.
+
+The lookup is an exact match on the value's digits: a card with the same prefix, or with one digit
+changed, keeps its score. Only numbers a processor or card network publishes on its own testing
+page are listed, never numbers that are merely common in tutorials or generator output.
+
+The same published ceiling now holds the test-pattern literals (`4111111111111111`, ...) and
+repeating shapes (`6011111111111117`), which a CSV export used to lift from 15 to 35.
+
 ## Implementation Details
 
 The validator uses an optimized multi-step process:
@@ -78,7 +97,7 @@ The validator uses an optimized multi-step process:
    - Positive keywords: "credit", "card", "payment", "visa", "mastercard"
    - Negative keywords: "account", "id", "serial", "tracking", "reference"
 
-5. **Test Pattern Detection**: Identifies common test patterns and assigns very low confidence scores
+5. **Test Number Detection**: Caps test-pattern literals, repeating shapes and processor-published test numbers at 15 (LOW), and publishes the cap as `confidence_ceiling`
 
 6. **Performance Optimizations**:
    - Early filtering by length and format
@@ -151,13 +170,14 @@ LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH            
 [HIGH  ] creditcard   VISA                  100.00% line     2 4532 0151 1283 0366 document.txt
 [MEDIUM] creditcard   VISA                   75.00% line     3 4532015112830366    document.txt
 [HIGH  ] creditcard   MASTERCARD            100.00% line     4 5425-2334-3010-9903 document.txt
-[HIGH  ] creditcard   AMERICAN_EXPRESS      100.00% line     5 3782-8224-6310-005  document.txt
+[LOW   ] creditcard   AMERICAN_EXPRESS       15.00% line     5 3782-8224-6310-005  document.txt
 [LOW   ] creditcard   VISA                   15.00% line     6 4000-0000-0000-0002 document.txt
 ```
 
 **Key Features:**
 - **Multiple Formats**: Same card detected in dash, space, and no-separator formats
 - **Card Labels**: The no-separator form on line 3 has no card word on its line, so it is held to MEDIUM 75 (see "Bare runs need a card label to reach HIGH")
+- **Test Numbers**: The Amex on line 5 and the Visa on line 6 are numbers payment processors publish for testing, so both are LOW 15 (see "Published test numbers are capped at LOW")
 - **Accurate Typing**: Precise card type identification (VISA, MASTERCARD, etc.)
 - **Confidence Scoring**: High confidence for real cards, low for test patterns
 - **Context Awareness**: Confidence adjusted based on surrounding text
