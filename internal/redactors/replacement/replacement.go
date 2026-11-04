@@ -857,11 +857,21 @@ func syntheticCreditCard(original string) (string, error) {
 	return b.String(), nil
 }
 
+// syntheticSSN writes a value that is neither an SSN nor an ITIN.
+//
+// The areas used to be {000, 666, 900, 999} with any group. 000 and 666 are never issued as anything.
+// The 9xx areas are never an SSN, but they are where the IRS issues ITINs, and the SSN validator now
+// reports an ITIN (#884): a 9xx area with a group in 50-65, 70-88, 90-92 or 94-99 is one. So a 9xx
+// area is now drawn only with a group in 01-49, which no ITIN carries.
 func syntheticSSN(original string) (string, error) {
-	// Use area codes that are permanently invalid per SSA rules
-	areas := []string{"000", "666", "900", "999"}
-	area := areas[secureRandom(len(areas))]
-	group := fmt.Sprintf("%02d", secureRandom(100))
+	var area, group string
+	if secureRandom(2) == 0 {
+		area = []string{"000", "666"}[secureRandom(2)]
+		group = fmt.Sprintf("%02d", secureRandom(100))
+	} else {
+		area = fmt.Sprintf("9%02d", secureRandom(100))
+		group = fmt.Sprintf("%02d", 1+secureRandom(49))
+	}
 	serial := fmt.Sprintf("%04d", secureRandom(10000))
 	syn := area + group + serial
 
