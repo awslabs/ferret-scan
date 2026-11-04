@@ -46,6 +46,47 @@ func TestSingleLongLine_NotQuadratic(t *testing.T) {
 	}
 }
 
+// TestSingleLongLine_NonUSShapes_NotQuadratic is the same guard for the GB and printed Ontario/Quebec
+// shapes (#861): accepted values, gate-rejected values (month 13) and hyphen-joined segments, all on
+// one labelled line, so classifyContiguous and its gates run once per candidate and never rescan it.
+func TestSingleLongLine_NonUSShapes_NotQuadratic(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DoS timing regression in -short mode")
+	}
+
+	const unit = "WOMBA901010ZZ9AA WOMBA913010ZZ9AA WOMBA 901010 ZZ9AA W1234-12345-12345 " +
+		"W1234-123456-12 W1234-12345-12345-0001 "
+	var b strings.Builder
+	b.Grow(36*1024 + len(unit) + 64)
+	b.WriteString("driving licence number ")
+	for b.Len() < 36*1024 {
+		b.WriteString(unit)
+	}
+	content := b.String()
+
+	const ceiling = 2 * time.Second
+	start := time.Now()
+	matches, err := NewValidator().ValidateContent(content, "worstcase.txt")
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("ValidateContent() error = %v", err)
+	}
+	// 4 of the 6 tokens per unit are reportable; a count far below that means the shapes stopped
+	// being exercised and the timing below proves nothing.
+	if units := strings.Count(content, unit); len(matches) < 4*units*9/10 {
+		t.Fatalf("%d matches for %d units, want about %d: the non-US shapes are not being scanned",
+			len(matches), units, 4*units)
+	}
+	if raceEnabled {
+		t.Logf("processed %d-byte single line, %d matches (timing assertion skipped under -race)", len(content), len(matches))
+		return
+	}
+	if elapsed > ceiling {
+		t.Fatalf("ValidateContent on a %d-byte single line took %s, exceeding the %s ceiling (likely an O(n^2) regression)",
+			len(content), elapsed, ceiling)
+	}
+}
+
 // TestSingleLongLine_Cancellable verifies per-match ctx polling interrupts a
 // single pathological line promptly.
 func TestSingleLongLine_Cancellable(t *testing.T) {

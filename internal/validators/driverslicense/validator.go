@@ -45,12 +45,21 @@ var (
 
 	// Composite pattern that matches ANY of the above formats in a single pass.
 	// Used by ValidateContentCtx for the initial line scan; hits are then
-	// classified into the specific state format in classifyMatch. Ordered
+	// classified into the specific format in classifyContiguous. Ordered
 	// longest-first so the regex engine greedily matches the full token
 	// without a shorter prefix stealing the match.
+	//
+	// The first four alternatives are the non-US shapes (shapes.go). They cannot
+	// take a match from a US alternative: each is 15 to 18 characters with no
+	// inner word boundary a US shape could end on, or has a space or hyphen at a
+	// position no US shape has (TestNonUSShapesLeaveUSMatchesAlone).
 	reAnyDL = regexp.MustCompile(
 		`\b(?:` +
-			`[A-Za-z]{2}\d{6}` + // Ohio (2 letters + 6 digits)
+			reGBDVLAAlt + // Great Britain (16, or 18 with the issue number)
+			`|` + reGBDVLASpacedAlt + // Great Britain, printed 5/6/5
+			`|` + reOntarioAlt + // Ontario, printed
+			`|` + reQuebecAlt + // Quebec, printed
+			`|[A-Za-z]{2}\d{6}` + // Ohio (2 letters + 6 digits)
 			`|[A-Za-z]\d{14}` + // New Jersey (1 letter + 14 digits)
 			`|[A-Za-z]\d{13}` + // Wisconsin (1 letter + 13 digits)
 			`|[A-Za-z]\d{12}` + // Florida/Michigan (1 letter + 12 digits)
@@ -221,9 +230,21 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			continue
 		}
 
-		idxMatches := v.regex.FindAllStringIndex(line, -1)
-		sepMatches := v.separatedCandidates(line, idxMatches)
-		if len(idxMatches) == 0 && len(sepMatches) == 0 {
+		// Contiguous candidates are named as they are collected. A non-US shape that fails its gate
+		// is dropped HERE, before the separated pass, so that pass sees exactly the spans it saw
+		// before those shapes existed.
+		var contiguous []candidate
+		var claimed [][]int
+		for _, loc := range v.regex.FindAllStringIndex(line, -1) {
+			format, normalized := v.classifyContiguous(line, loc[0], loc[1])
+			if format == "" {
+				continue
+			}
+			contiguous = append(contiguous, candidate{start: loc[0], end: loc[1], normalized: normalized, format: format})
+			claimed = append(claimed, loc)
+		}
+		sepMatches := v.separatedCandidates(line, claimed)
+		if len(contiguous) == 0 && len(sepMatches) == 0 {
 			continue
 		}
 
@@ -285,10 +306,10 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 		// emit scores one candidate and appends a match if it survives. text is
 		// the span reported (and redacted); classifyText is the separator-free
-		// form used for format classification and structural checks. For
-		// contiguous matches they are the same string.
-		emit := func(spanStart, spanEnd int, text, classifyText string) {
-			format := v.classifyMatch(classifyText)
+		// form used for the structural checks, and format is the shape the
+		// candidate was classified as when it was collected. For contiguous US
+		// matches text and classifyText are the same string.
+		emit := func(spanStart, spanEnd int, text, classifyText, format string) {
 			if format == "" {
 				return
 			}
@@ -386,12 +407,11 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			})
 		}
 
-		for i, loc := range idxMatches {
+		for i, c := range contiguous {
 			if execguard.LineLoopCancelled(ctx, i) {
 				return matches, ctx.Err()
 			}
-			match := line[loc[0]:loc[1]]
-			emit(loc[0], loc[1], match, match)
+			emit(c.start, c.end, line[c.start:c.end], c.normalized, c.format)
 		}
 
 		// Separator-formatted candidates (D123-4567-8901): classified on the
@@ -401,18 +421,19 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			if execguard.LineLoopCancelled(ctx, i) {
 				return matches, ctx.Err()
 			}
-			emit(sc.start, sc.end, line[sc.start:sc.end], sc.normalized)
+			emit(sc.start, sc.end, line[sc.start:sc.end], sc.normalized, sc.format)
 		}
 	}
 
 	return matches, nil
 }
 
-// sepCandidate is a separator-formatted DL candidate: the original span on the
-// line plus its normalized (separator-stripped) form.
-type sepCandidate struct {
+// candidate is a DL candidate: the original span on the line, its normalized
+// (separator-stripped) form and the format it was classified as.
+type candidate struct {
 	start, end int
 	normalized string
+	format     string
 }
 
 // separatedCandidates finds separator-formatted DL candidates (D123-4567-8901,
@@ -424,8 +445,8 @@ type sepCandidate struct {
 // 8 digits = TX), and ZIP+4 (5-4 → 9 digits = NY). Everything here is one
 // regex pass plus O(candidate length) work per candidate, preserving the
 // O(line length) per-line bound.
-func (v *Validator) separatedCandidates(line string, contiguousLocs [][]int) []sepCandidate {
-	var out []sepCandidate
+func (v *Validator) separatedCandidates(line string, contiguousLocs [][]int) []candidate {
+	var out []candidate
 	for _, loc := range reSeparatedDL.FindAllStringIndex(line, -1) {
 		if overlapsSpans(contiguousLocs, loc[0], loc[1]) {
 			continue
@@ -445,11 +466,14 @@ func (v *Validator) separatedCandidates(line string, contiguousLocs [][]int) []s
 			}
 			return r
 		}, text)
-		if v.classifyMatch(normalized) == "" {
+		// US state formats only: the non-US shapes have fixed separator positions of their own and
+		// are matched as printed by reAnyDL, never by stripping arbitrary separators.
+		format := v.classifyMatch(normalized)
+		if format == "" {
 			continue
 		}
 
-		out = append(out, sepCandidate{start: loc[0], end: loc[1], normalized: normalized})
+		out = append(out, candidate{start: loc[0], end: loc[1], normalized: normalized, format: format})
 	}
 	return out
 }

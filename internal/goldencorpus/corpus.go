@@ -1160,6 +1160,30 @@ var Cases = []Case{
 			"passport 123456789 sample data\n",
 	},
 	{
+		Name: "driverslicense_gb_ontario_quebec_decoys",
+		Description: "Near misses of the non-US licence shapes added for #861, each under a licence " +
+			"label, which must stay EMPTY. A GB DVLA driver number encodes surname, birth date and " +
+			"sex and has no published check algorithm, so its layout gate is all that stands between " +
+			"a random 16-character token and a HIGH finding: lines 1-5 are GB-shaped with month 13, " +
+			"month 63, day 32, a digit inside the surname and initials 9Q. Lines 6-7 are the printed " +
+			"Ontario groups as one segment of a longer hyphenated token. Line 8 puts a valid GB number " +
+			"in front of a (sample) aside, line 9 is a 5x5 product key on a licence line, and line 10 " +
+			"a longer word that merely contains the new driving-licence label. The positives (12 GB " +
+			"display variants, printed Ontario and Quebec, the British label spellings) are unit tests " +
+			"in internal/validators/driverslicense, so this case adds no finding to the census.",
+		Checks: []string{"DRIVERS_LICENSE"},
+		Input: "Driving licence number: WOMBA913010ZZ9AA\n" +
+			"Driving licence number: WOMBA963010ZZ9AA\n" +
+			"Driving licence number: WOMBA901320ZZ9AA\n" +
+			"Driving licence number: WOM9A901010ZZ9AA\n" +
+			"Driving licence number: WOMBA9010109Q9AA\n" +
+			"Driving licence number: W1234-12345-12345-0001\n" +
+			"Driving licence number: X1-W1234-12345-12345\n" +
+			"Driving licence number: WOMBA901010ZZ9AA (sample)\n" +
+			"Licence key: ABCDE-FGHIJ-KLMNO-PQRST-UVWXY\n" +
+			"drivinglicencenumbers: D1234567\n",
+	},
+	{
 		Name: "passport_label_above_value",
 		Description: "The cross-line shape: a label on its own line with the value on the next, which " +
 			"is how a form, a config block and every CSV export are written. PASSPORT is " +

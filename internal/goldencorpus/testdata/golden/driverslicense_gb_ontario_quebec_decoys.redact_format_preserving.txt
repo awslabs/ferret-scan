@@ -1,0 +1,12 @@
+=== REDACTED ===
+Driving licence number: WOMBA913010ZZ9AA
+Driving licence number: WOMBA963010ZZ9AA
+Driving licence number: WOMBA901320ZZ9AA
+Driving licence number: WOM9A901010ZZ9AA
+Driving licence number: WOMBA9010109Q9AA
+Driving licence number: W1234-12345-12345-0001
+Driving licence number: X1-W1234-12345-12345
+Driving licence number: WOMBA901010ZZ9AA (sample)
+Licence key: ABCDE-FGHIJ-KLMNO-PQRST-UVWXY
+drivinglicencenumbers: D1234567
+=== FINDINGS (sorted) ===
