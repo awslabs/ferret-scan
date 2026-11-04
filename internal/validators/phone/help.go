@@ -7,6 +7,10 @@ import "github.com/awslabs/ferret-scan/v2/internal/help"
 
 // GetCheckInfo returns standardized information about the phone check
 func (v *Validator) GetCheckInfo() help.CheckInfo {
+	positive := make([]string, 0, len(phoneEvidenceTokens)+len(phoneEvidencePhrases))
+	positive = append(positive, phoneEvidenceTokens...)
+	positive = append(positive, phoneEvidencePhrases...)
+
 	return help.CheckInfo{
 		Name:             "PHONE",
 		ShortDescription: "Detects phone numbers in various international formats",
@@ -14,7 +18,7 @@ func (v *Validator) GetCheckInfo() help.CheckInfo {
 
 It supports US/Canada, UK, European, and international phone number formats with various separators (spaces, dashes, dots, parentheses). The validator performs validation checks including length verification, test number detection, and sequential/repeating pattern analysis.
 
-The check recognizes country codes, validates format consistency, and uses contextual keywords to improve accuracy. It handles both domestic and international number formats while filtering out common test numbers and placeholder patterns.`,
+Confidence comes from phone evidence on the match's line: each phone word (phone, tel, mobile, fax, call, ...) or phrase (phone number, contact no, direct line, ...) adds 15, as do a phone label on the value ("Office: ..."), a phone column header in a CSV or TSV, and a formatted toll-free area code; a match with none loses 20, and each negative word (test, example, serial, ...) costs 35. Words count only as whole words outside the number, in any case. The adjustment stays between -80 and +40. A match nothing corroborates (and not written in the + form) never scores above 85, and a reserved fictional number (555-0100 to 555-0199) never above 15, in any document. A ten-digit number the North American plan cannot assign (area or exchange code starting 0 or 1, or an N11 area code) is still reported, without the US/Canada label or the country bonus.`,
 
 		Patterns: []string{
 			"US/Canada: (555) 123-4567, 555-123-4567, 5551234567",
@@ -45,11 +49,11 @@ The check recognizes country codes, validates format consistency, and uses conte
 			{Name: "Valid Digits", Description: "Must contain valid phone characters", Weight: 9},
 			{Name: "Not Sequential", Description: "Must not be sequential digits", Weight: 14},
 			{Name: "Not Repeating", Description: "Must not have excessive repeating digits", Weight: 14},
-			{Name: "Valid Country", Description: "Must match country format rules", Weight: 5},
+			{Name: "Valid Country", Description: "+5 when the number fits its country's plan; 0 for a ten-digit number the North American plan cannot assign; -10 for any other misfit", Weight: 5},
 			{Name: "Not Timestamp", Description: "Must not match timestamp patterns", Weight: 8},
 		},
 
-		PositiveKeywords: v.positiveKeywords,
+		PositiveKeywords: positive,
 		NegativeKeywords: v.negativeKeywords,
 
 		Examples: []string{
