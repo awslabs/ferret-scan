@@ -269,18 +269,26 @@ func TestITINScoresOnTheSSNCurve(t *testing.T) {
 // TestITINKeywordsDoNotMoveAnSSN: the ITIN's labels are read only for an ITIN candidate. An SSN on a
 // line that mentions an ITIN or a W-7 scores what it scores with neutral words in their place, which
 // is what main does (main has no such keywords).
+//
+// Each line carries an SSN keyword and a negative one, so the control scores between the caps (80 or
+// 65) and a stray +25 would show. A line at 100, or one capped for having no SSN keyword, would pass
+// this test even if the SSN read the ITIN's keywords; measured, the first version of this test did.
 func TestITINKeywordsDoNotMoveAnSSN(t *testing.T) {
 	v := NewValidator()
 	for _, tc := range [][2]string{
-		{"ITIN pending, SSN: 130-07-5728", "ABCD pending, SSN: 130-07-5728"},
-		{"Form W-7 attached 130-07-5728", "Form Q-7 attached 130-07-5728"},
+		{"ITIN SSN case 130075728", "ABCD SSN case 130075728"},
+		{"W-7 SSN case 130075728", "Q-7 SSN case 130075728"},
 		// "Corporate" keeps the SSN's own keywords on the line (taxpayer, identification number)
 		// and removes only the ITIN's long-form label.
-		{"Individual Taxpayer Identification Number 130075728", "Corporate Taxpayer Identification Number 130075728"},
-		{"itin 130 07 5728", "abcd 130 07 5728"},
+		{"Individual Taxpayer Identification Number test 130075728",
+			"Corporate Taxpayer Identification Number test 130075728"},
 	} {
 		a := scanAll(t, v, tc[0], "record.txt")
 		b := scanAll(t, v, tc[1], "record.txt")
+		if len(b) != 1 || b[0].Confidence >= 100 || b[0].Confidence <= 60 {
+			t.Fatalf("control %q gave %s; it must score strictly between the caps to test anything",
+				tc[1], describeMatches(b))
+		}
 		if describeMatches(a) != describeMatches(b) {
 			t.Errorf("%q gave %s but %q gave %s; an ITIN keyword moved an SSN", tc[0], describeMatches(a),
 				tc[1], describeMatches(b))
