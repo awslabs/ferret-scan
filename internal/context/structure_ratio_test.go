@@ -70,8 +70,9 @@ func TestDetectStructureIgnoresLayout(t *testing.T) {
 
 	// Controls. A sample of nothing but comments and blank lines has no structure. Tab-indented
 	// source whose blank lines separate its blocks types as it did: the other shares still count blank
-	// lines, because the TSV pattern counts indentation tabs and the blank lines are what keep such a
-	// file under the threshold (3 of 12 lines here, 3 of 9 without the blank lines).
+	// lines. Until #849 the TSV pattern counted indentation tabs, and the blank lines were what kept such
+	// a file under the threshold (3 of 12 lines here, 3 of 9 without them); indentation now separates no
+	// fields, so it is Unknown either way (TestDelimitedRowsAreFieldsNotLayout).
 	for _, c := range []struct{ name, content, wantType string }{
 		{"comments and blank lines only", "# just a comment\n\n; another\n// and another\n\n", "Unknown"},
 		{"tab-indented source with blank lines", "if ready {\n\t\tstart()\n\t}\n\nif done {\n\t\tstop()\n\t}\n\n" +
