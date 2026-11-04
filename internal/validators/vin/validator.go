@@ -172,6 +172,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 	var matches []detector.Match
 	lines := strings.Split(content, "\n")
+	// Label lookups for candidates on the optional-check-digit path (#860); lazy, see labels.go.
+	labels := labelContext{content: content, lines: lines}
 
 	for lineNum, line := range lines {
 		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
@@ -202,6 +204,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// the line, so it is hoisted here.
 		posInLine := keywordPresence(lineLower, v.positiveKeywords)
 		negInLine := keywordPresence(lineLower, v.negativeKeywords)
+		labels.reset(lineNum, line, lineLower, locs[0][0])
 
 		for _, loc := range locs {
 			start, end := loc[0], loc[1]
@@ -222,17 +225,22 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				continue
 			}
 
-			// Check-digit gate. The ISO 3779 position-9 check digit is mandatory
-			// ONLY for North American VINs (WMI region 1-5); manufacturers in
-			// the rest of the world are not required to encode it, so a huge
-			// share of genuine EU/Asian VINs legitimately "fail" this checksum.
-			// Hard-rejecting on failure therefore dropped most non-NA VINs —
-			// including ones whose WMI is in our own knownWMIs table (WVW, WAU,
-			// ZFF, ...). We now only hard-reject when the check digit is
-			// REQUIRED (NA region). For non-NA VINs we keep the candidate but
-			// require a recognized WMI as corroboration so we don't start
-			// surfacing arbitrary 17-char alphanumeric tokens (hashes, base32);
-			// the check-digit status is carried into confidence scoring below.
+			// Check-digit gate. The ISO 3779 position-9 check digit is
+			// compulsory only in the regions checkDigitRequired names (North
+			// America and China); manufacturers elsewhere are not required to
+			// encode it, so a large share of genuine EU/Asian VINs legitimately
+			// "fail" this checksum. A failure is therefore a hard reject only
+			// where the check digit is compulsory. Elsewhere the candidate needs
+			// other evidence before it is kept, so arbitrary 17-character tokens
+			// (hashes, base32, IDs) do not surface:
+			//
+			//   - a WMI in knownWMIs (unchanged), or
+			//   - a VIN label beside it, as its column header or on the line
+			//     above, and a VIN-like shape (labels.go, #860). Without this a
+			//     VIN whose WMI the table lacks was dropped before its context
+			//     was scored, so not even `VIN: x` reported it.
+			//
+			// The check-digit status is carried into confidence scoring below.
 			//
 			// A passing check digit is not enough on its own for a digit run
 			// (see isDigitRun). Any 17-character token passes it by coincidence
@@ -241,12 +249,16 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			// p1762292269161789, a 17-digit timestamp, a numeric ID. Each of
 			// those that passed was scored as a VIN at 90 before context (#803).
 			checkDigitOK := v.checkDigitValid(upper)
+			needsLabel := false
 			if !checkDigitOK {
-				if v.isNorthAmericanVIN(upper) {
-					continue // NA VIN with a bad check digit is genuinely invalid
+				if v.checkDigitRequired(upper) {
+					continue // a compulsory check digit failed: not a valid VIN
 				}
 				if v.detectManufacturer(upper) == "" {
-					continue // no check digit AND no known WMI -> not enough signal
+					if !plausibleUncheckedVIN(match) {
+						continue
+					}
+					needsLabel = true // only a VIN label can vouch for it now
 				}
 			} else if v.isDigitRun(upper) {
 				continue // a coincidental check digit is the only VIN-like signal
@@ -256,6 +268,10 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				continue
 			}
 
+			if needsLabel && !labels.vouches(start, end) {
+				continue // no check digit, no known WMI and no label: not enough signal
+			}
+
 			// --- Passed all gates: score confidence ---
 
 			confidence, checks := v.calculateConfidence(upper, checkDigitOK)
@@ -263,6 +279,14 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			contextInfo := v.buildContextAt(line, start, end)
 			contextImpact, posFound, negFound := v.analyzeContextHoisted(
 				line, lineLower, start, end, posInLine, negInLine)
+			if needsLabel {
+				// The label that admitted the candidate is context, within the
+				// same cap (see labelBoost).
+				contextImpact += labelBoost
+				if contextImpact > 50 {
+					contextImpact = 50
+				}
+			}
 			confidence += contextImpact
 
 			contextInfo.PositiveKeywords = posFound
@@ -322,9 +346,10 @@ func (v *Validator) CalculateConfidence(vin string) (float64, map[string]bool) {
 
 // calculateConfidence scores a VIN given the already-computed check-digit
 // result. A valid check digit is a strong signal (+20); an invalid one is only
-// reached here for non-North-American VINs with a recognized WMI (the scan
-// gate rejects NA VINs and unknown-WMI VINs that fail the check digit), so we
-// neither add nor heavily penalize — the known WMI below carries the weight.
+// reached here for a VIN whose region does not require it (the scan gate rejects
+// the rest), so we neither add nor heavily penalize. Either the known WMI below
+// carries the weight, or a VIN label admitted the candidate and the scan path
+// adds labelBoost to its context impact (labels.go).
 func (v *Validator) calculateConfidence(vin string, checkDigitOK bool) (float64, map[string]bool) {
 	checks := map[string]bool{
 		"format":        true,
@@ -361,16 +386,26 @@ func (v *Validator) calculateConfidence(vin string, checkDigitOK bool) (float64,
 	return confidence, checks
 }
 
-// isNorthAmericanVIN reports whether the VIN's WMI region (first character)
-// designates North America (1-5), where the ISO 3779 position-9 check digit is
-// mandatory. For these VINs a failed check digit means the VIN is invalid; for
-// all other regions the check digit is optional and a failure is not
-// disqualifying on its own.
-func (v *Validator) isNorthAmericanVIN(vin string) bool {
+// checkDigitRequired reports whether the VIN's region, its first character in
+// the ISO 3780 region chart, makes the position-9 check digit compulsory: North
+// America (1-5 and 7, the second US block) and China (H and L). For these VINs a
+// failed check digit means the VIN is invalid; for every other region the check
+// digit is optional and a failure is not disqualifying on its own.
+//
+// The test is on the first character only, so the New Zealand WMIs in 7A-7E are
+// strict as well, a documented limit: they were not reported without a check
+// digit before either. The previous isNorthAmericanVIN tested 1-5 only, so a
+// widening of the optional path built on it would have admitted every
+// 7F-7Z and L WMI with a wrong check digit (146 of the WMIs in the public list).
+func (v *Validator) checkDigitRequired(vin string) bool {
 	if len(vin) == 0 {
 		return false
 	}
-	return vin[0] >= '1' && vin[0] <= '5'
+	switch c := vin[0]; {
+	case c >= '1' && c <= '5', c == '7', c == 'H', c == 'L':
+		return true
+	}
+	return false
 }
 
 // minDigitRunDigits is the digit count from which a 17-character candidate can
