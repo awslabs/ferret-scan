@@ -252,8 +252,9 @@ type typeDisplay struct {
 // reading the code. The vendor path already renders these correctly.
 var typeDisplays = map[string]typeDisplay{
 	// Initialisms read letter by letter, so the article follows the letter's sound.
-	"SSN":                 {"SSN", "an"}, // ess-ess-en
-	"VIN":                 {"VIN", "a"},  // said as a word, "vin"
+	"SSN":                 {"SSN", "an"},  // ess-ess-en
+	"ITIN":                {"ITIN", "an"}, // said "eye-tin"
+	"VIN":                 {"VIN", "a"},   // said as a word, "vin"
 	"IBAN":                {"IBAN", "an"},
 	"MRN":                 {"MRN", "an"},           // em-ar-en
 	"NHS_NUMBER":          {"NHS number", "an"},    // en-aitch-ess

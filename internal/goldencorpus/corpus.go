@@ -135,6 +135,29 @@ var Cases = []Case{
 			"[Portfolio](https://vimeo.com/291135150)\n",
 	},
 	{
+		Name: "ssn_itin_decoys",
+		Description: "The #884 decoys, which must stay EMPTY: 9xx values the ITIN lane must decline. " +
+			"Lines 1-3 are the SSA advertising block 987-65-4320..4329 (bare, under SSN:, under ITIN:), whose " +
+			"group 65 is an ITIN group, so lifting the area veto without an explicit drop reported " +
+			"'SSN: 987-65-4325' at 90; line 4 is the 9xx repdigit; lines 5-7 are groups 93 (an ATIN), 40 and " +
+			"89, none issued as an ITIN; line 8 has serial 0000; line 9 is a bare nine-digit 9xx run with no " +
+			"ITIN label and line 10 a Chilean mobile, +56 9XXXXXXXX, both kept out by the form gate (accepting " +
+			"any 9xx form reported 75-92 false findings per 200 mobiles). Positive controls (separated and " +
+			"labelled ITINs) are unit tests in internal/validators/ssn, so this case adds no finding to the " +
+			"census.",
+		Checks: []string{"SSN"},
+		Input: "Advertising: 987-65-4320 987-65-4325 987-65-4329\n" +
+			"SSN: 987-65-4325\n" +
+			"ITIN: 987-65-4321\n" +
+			"ITIN: 999-99-9999\n" +
+			"ITIN: 912-93-3456\n" +
+			"ITIN: 912-40-3456\n" +
+			"ITIN: 912-89-3456\n" +
+			"ITIN: 912-70-0000\n" +
+			"Order reference 912703456\n" +
+			"Contacto: +56 912703456\n",
+	},
+	{
 		Name:        "creditcard_brands",
 		Description: "Luhn-valid cards across brands; locks brand classification in Match.Type.",
 		Checks:      []string{"CREDIT_CARD"},
