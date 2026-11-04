@@ -55,6 +55,12 @@ type RedactionManager struct {
 	// a counter through — the same reason FileRouter owns the read side's copy. See
 	// RedactEmbedded in embedded.go.
 	embeddedDepth embeddedDepthState
+
+	// syntheticScope is the synthetic strategy's memory for this manager's lifetime: one
+	// replacement per value across every file and every redactor it dispatches to, embedded
+	// parts included (#886). RegisterRedactor hands it to each redactor that writes
+	// synthetic values.
+	syntheticScope SyntheticScope
 }
 
 // RedactionManagerConfig contains configuration for the redaction manager
@@ -256,6 +262,22 @@ func NewRedactionManagerWithConfig(outputManager *OutputStructureManager, observ
 		auditLogManager: auditLogManager,
 		config:          config,
 		stats:           stats,
+		syntheticScope:  NewSyntheticScope(),
+	}
+}
+
+// SetSyntheticScope replaces the manager's synthetic scope and hands the new one to every
+// registered redactor that writes synthetic values. It exists for tests, which pass
+// NewSeededSyntheticScope to make a synthetic run reproducible; a manager already has a scope
+// of its own from construction.
+func (rm *RedactionManager) SetSyntheticScope(scope SyntheticScope) {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+	rm.syntheticScope = scope
+	for _, r := range rm.redactors {
+		if u, ok := r.(SyntheticScopeUser); ok {
+			u.SetSyntheticScope(scope)
+		}
 	}
 }
 
@@ -282,6 +304,12 @@ func (rm *RedactionManager) RegisterRedactor(redactor Redactor) error {
 		}
 
 		rm.redactors[normalizedType] = redactor
+	}
+
+	// One synthetic scope for every redactor this manager dispatches to, so a value is given one
+	// replacement whichever file and whichever format it is found in (#886).
+	if u, ok := redactor.(SyntheticScopeUser); ok {
+		u.SetSyntheticScope(rm.syntheticScope)
 	}
 
 	// Initialize stats for this redactor

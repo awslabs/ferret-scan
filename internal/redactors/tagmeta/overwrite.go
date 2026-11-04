@@ -467,8 +467,9 @@ func SameLengthReplacement(original, dataType string, strategy redactors.Redacti
 // synthetic no longer arrives here with a value to render.
 func SameLengthRendering(original, dataType string, strategy redactors.RedactionStrategy) replacement.Rendering {
 	if strategy == redactors.RedactionFormatPreserving {
-		fp := replacement.Render(original, dataType, redactors.RedactionFormatPreserving)
-		if len(fp.Text) == len(original) && fp.Text != original {
+		// No synthetic scope: format_preserving draws nothing, so it cannot fail.
+		fp, err := replacement.Render(original, dataType, redactors.RedactionFormatPreserving, nil)
+		if err == nil && len(fp.Text) == len(original) && fp.Text != original {
 			return fp
 		}
 	}
@@ -480,8 +481,8 @@ func SameLengthRendering(original, dataType string, strategy redactors.Redaction
 // fits the union's length and differs from it; everything else, simple included, is masked whole.
 func SameLengthGroupRendering(g redactors.OverlapGroup, matches []detector.Match, strategy redactors.RedactionStrategy) replacement.Rendering {
 	if strategy == redactors.RedactionFormatPreserving {
-		fp := replacement.RenderGroup(g, matches, redactors.RedactionFormatPreserving)
-		if len(fp.Text) == len(g.Text) && fp.Text != g.Text {
+		fp, err := replacement.RenderGroup(g, matches, redactors.RedactionFormatPreserving, nil)
+		if err == nil && len(fp.Text) == len(g.Text) && fp.Text != g.Text {
 			return fp
 		}
 	}

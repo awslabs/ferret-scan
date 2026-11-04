@@ -4,6 +4,7 @@
 package rtf
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -43,25 +44,29 @@ type edit struct {
 // refusing the file: the caller still runs the byte-substitution path, and the residue check at the
 // sink is what turns anything genuinely unremovable into a loud failure. Guessing at a partial mapping
 // would leave part of a value behind while reporting success.
+//
+// scope is the synthetic strategy's memory for the run, the one the verbatim pass drew from, so a split
+// occurrence is written as the same value as the contiguous ones. A replacement that cannot be generated
+// is returned as the error, with nothing written.
 func redactViaSpans(src string, matches []detector.Match,
-	strategy redactors.RedactionStrategy) (out string, handled map[string]bool) {
+	strategy redactors.RedactionStrategy, scope redactors.SyntheticScope) (out string, handled map[string]bool, err error) {
 
 	handled = map[string]bool{}
 	if len(matches) == 0 {
-		return src, handled
+		return src, handled, nil
 	}
 
 	// Extraction and spans are derived from the bytes being edited, not passed in. That is what lets
 	// this compose AFTER the inner redactor has already rewritten the verbatim occurrences: offsets
 	// taken against the original file would be stale by exactly the length change of every
 	// substitution already applied.
-	tc, err := rtfextract.ExtractFromBytes("redact.rtf", []byte(src))
-	if err != nil || tc == nil || tc.NotRTF {
-		return src, handled
+	tc, xerr := rtfextract.ExtractFromBytes("redact.rtf", []byte(src))
+	if xerr != nil || tc == nil || tc.NotRTF {
+		return src, handled, nil
 	}
 	text, spans := tc.Text, tc.Spans
 	if len(spans) == 0 {
-		return src, handled
+		return src, handled, nil
 	}
 
 	var edits []edit
@@ -83,7 +88,10 @@ func redactViaSpans(src string, matches []detector.Match,
 			if ranges == nil {
 				continue // not fully mapped; the caller's other paths deal with it
 			}
-			with := replacement.Generate(m.Text, m.Type, strategy)
+			with, gerr := replacement.Generate(m.Text, m.Type, strategy, scope)
+			if gerr != nil {
+				return src, map[string]bool{}, fmt.Errorf("generating a replacement for a %s value: %w", m.Type, gerr)
+			}
 			for i, r := range ranges {
 				e := edit{start: r[0], end: r[1]}
 				if i == 0 {
@@ -95,7 +103,7 @@ func redactViaSpans(src string, matches []detector.Match,
 		}
 	}
 	if len(edits) == 0 {
-		return src, handled
+		return src, handled, nil
 	}
 
 	// Apply right-to-left so earlier offsets stay valid, and drop any edit that overlaps one already
@@ -122,5 +130,5 @@ func redactViaSpans(src string, matches []detector.Match,
 		last = e.end
 	}
 	b.WriteString(src[last:])
-	return b.String(), handled
+	return b.String(), handled, nil
 }

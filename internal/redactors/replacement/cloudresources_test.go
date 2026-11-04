@@ -53,7 +53,7 @@ func TestCloudResources_NoLeakAcrossStrategies(t *testing.T) {
 	for _, st := range allStrategies {
 		for _, tc := range cloudResourceCases {
 			t.Run(st.name+"/"+tc.dataType+"/"+tc.original, func(t *testing.T) {
-				got := Generate(tc.original, tc.dataType, st.strategy)
+				got := gen(t, tc.original, tc.dataType, st.strategy)
 				if got == "" {
 					t.Fatalf("Generate returned empty for %q (%s, %s)", tc.original, tc.dataType, st.name)
 				}
@@ -75,7 +75,7 @@ func TestCloudResources_NoLeakAcrossStrategies(t *testing.T) {
 // types fall to the generic "[<TYPE>-REDACTED]" placeholder.
 func TestCloudResources_SimplePlaceholder(t *testing.T) {
 	for _, tc := range cloudResourceCases {
-		got := Generate(tc.original, tc.dataType, redactors.RedactionSimple)
+		got := gen(t, tc.original, tc.dataType, redactors.RedactionSimple)
 		want := "[" + tc.dataType + "-REDACTED]"
 		if got != want {
 			t.Errorf("simple redaction of %s = %q, want %q", tc.dataType, got, want)
@@ -88,7 +88,7 @@ func TestCloudResources_SimplePlaceholder(t *testing.T) {
 // same byte length (no provider-specific structure is preserved).
 func TestCloudResources_FormatPreservingMasksAndKeepsLength(t *testing.T) {
 	for _, tc := range cloudResourceCases {
-		got := Generate(tc.original, tc.dataType, redactors.RedactionFormatPreserving)
+		got := gen(t, tc.original, tc.dataType, redactors.RedactionFormatPreserving)
 		if len(got) != len(tc.original) {
 			t.Errorf("format_preserving %s: length %d != original %d", tc.dataType, len(got), len(tc.original))
 		}
@@ -104,7 +104,7 @@ func TestCloudResources_FormatPreservingMasksAndKeepsLength(t *testing.T) {
 func TestCloudResources_SyntheticIsLengthMatchedToken(t *testing.T) {
 	const alphaNum = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	for _, tc := range cloudResourceCases {
-		got := Generate(tc.original, tc.dataType, redactors.RedactionSynthetic)
+		got := gen(t, tc.original, tc.dataType, redactors.RedactionSynthetic)
 		if len(got) != len(tc.original) {
 			t.Errorf("synthetic %s: length %d != original %d (expected length-matched)", tc.dataType, len(got), len(tc.original))
 		}

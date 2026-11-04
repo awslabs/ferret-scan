@@ -26,18 +26,18 @@ var emailProviderTypes = []string{
 func TestEveryEmailTypeRendersAsAnEmail(t *testing.T) {
 	const addr = "zz.synthetic.0004@outlook.com"
 	for _, typ := range emailProviderTypes {
-		if got := Generate(addr, typ, redactors.RedactionSimple); got != "[EMAIL-REDACTED]" {
+		if got := gen(t, addr, typ, redactors.RedactionSimple); got != "[EMAIL-REDACTED]" {
 			t.Errorf("simple %s = %q, want [EMAIL-REDACTED]: the placeholder must not name the provider", typ, got)
 		}
-		if got := Generate(addr, typ, redactors.RedactionFormatPreserving); got != "z****************@outlook.com" {
+		if got := gen(t, addr, typ, redactors.RedactionFormatPreserving); got != "z****************@outlook.com" {
 			t.Errorf("format_preserving %s = %q, want the first character and the domain kept", typ, got)
 		}
-		got := Generate(addr, typ, redactors.RedactionSynthetic)
+		got := gen(t, addr, typ, redactors.RedactionSynthetic)
 		if !strings.HasSuffix(got, "@example.com") || strings.Contains(got, "zz.synthetic") {
 			t.Errorf("synthetic %s = %q, want a random local part at example.com", typ, got)
 		}
 		// Kept counts letters and digits: the first character and the domain's ten ("outlookcom").
-		if r := Render(addr, typ, redactors.RedactionFormatPreserving); r.Kept() != 1+len("outlookcom") {
+		if r := rend(t, addr, typ, redactors.RedactionFormatPreserving); r.Kept() != 1+len("outlookcom") {
 			t.Errorf("format_preserving %s keeps %d value bytes, want %d (first character and domain)",
 				typ, r.Kept(), 1+len("outlookcom"))
 		}
@@ -49,23 +49,23 @@ func TestGitHubRendersByWhatTheValueIs(t *testing.T) {
 	const addr = "zz.synthetic.0019@github.com"
 	const profile = "https://github.com/zz-synthetic-0002"
 
-	if got := Generate(addr, "GITHUB", redactors.RedactionSimple); got != "[EMAIL-REDACTED]" {
+	if got := gen(t, addr, "GITHUB", redactors.RedactionSimple); got != "[EMAIL-REDACTED]" {
 		t.Errorf("simple, address = %q", got)
 	}
-	if got := Generate(addr, "GITHUB", redactors.RedactionFormatPreserving); got != "z****************@github.com" {
+	if got := gen(t, addr, "GITHUB", redactors.RedactionFormatPreserving); got != "z****************@github.com" {
 		t.Errorf("format_preserving, address = %q", got)
 	}
-	if got := Generate(addr, "GITHUB", redactors.RedactionSynthetic); !strings.HasSuffix(got, "@example.com") {
+	if got := gen(t, addr, "GITHUB", redactors.RedactionSynthetic); !strings.HasSuffix(got, "@example.com") {
 		t.Errorf("synthetic, address = %q: an address at github.com must stay an address, not become a profile URL", got)
 	}
 
-	if got := Generate(profile, "GITHUB", redactors.RedactionSimple); got != "[SOCIAL-MEDIA-REDACTED]" {
+	if got := gen(t, profile, "GITHUB", redactors.RedactionSimple); got != "[SOCIAL-MEDIA-REDACTED]" {
 		t.Errorf("simple, profile = %q", got)
 	}
-	if got := Generate(profile, "GITHUB", redactors.RedactionFormatPreserving); got != strings.Repeat("*", len(profile)) {
+	if got := gen(t, profile, "GITHUB", redactors.RedactionFormatPreserving); got != strings.Repeat("*", len(profile)) {
 		t.Errorf("format_preserving, profile = %q: a profile is masked whole, as before", got)
 	}
-	got := Generate(profile, "GITHUB", redactors.RedactionSynthetic)
+	got := gen(t, profile, "GITHUB", redactors.RedactionSynthetic)
 	if !strings.HasPrefix(got, "https://github.com/") || strings.Contains(got, "@") || strings.Contains(got, "zz-synthetic") {
 		t.Errorf("synthetic, profile = %q, want a fake profile URL on github.com", got)
 	}
@@ -83,13 +83,13 @@ func TestEverySocialMediaTypeRendersAsAProfile(t *testing.T) {
 		{"REDDIT", "https://www.reddit.com/user/zz-synthetic", "https://www.reddit.com/user/"},
 		{"SOCIAL_MEDIA", "https://www.linkedin.com/in/zz-synthetic-0003", "https://www.linkedin.com/in/"},
 	} {
-		if got := Generate(c.url, c.typ, redactors.RedactionSimple); got != "[SOCIAL-MEDIA-REDACTED]" {
+		if got := gen(t, c.url, c.typ, redactors.RedactionSimple); got != "[SOCIAL-MEDIA-REDACTED]" {
 			t.Errorf("simple %s = %q, want [SOCIAL-MEDIA-REDACTED]: the placeholder must not name the platform", c.typ, got)
 		}
-		if got := Generate(c.url, c.typ, redactors.RedactionSynthetic); !strings.HasPrefix(got, c.host) || strings.Contains(got, "zz") {
+		if got := gen(t, c.url, c.typ, redactors.RedactionSynthetic); !strings.HasPrefix(got, c.host) || strings.Contains(got, "zz") {
 			t.Errorf("synthetic %s = %q, want a fake profile under %s", c.typ, got, c.host)
 		}
-		if got := Generate(c.url, c.typ, redactors.RedactionFormatPreserving); got != strings.Repeat("*", len(c.url)) {
+		if got := gen(t, c.url, c.typ, redactors.RedactionFormatPreserving); got != strings.Repeat("*", len(c.url)) {
 			t.Errorf("format_preserving %s = %q, want the mask it always was", c.typ, got)
 		}
 	}
@@ -98,7 +98,7 @@ func TestEverySocialMediaTypeRendersAsAProfile(t *testing.T) {
 		if typ == "GITHUB" {
 			continue
 		}
-		if got := Generate("@zz_synthetic_handle", typ, redactors.RedactionSynthetic); !strings.HasPrefix(got, "@") || strings.Contains(got, "zz_synthetic") {
+		if got := gen(t, "@zz_synthetic_handle", typ, redactors.RedactionSynthetic); !strings.HasPrefix(got, "@") || strings.Contains(got, "zz_synthetic") {
 			t.Errorf("synthetic %s handle = %q, want a fake handle", typ, got)
 		}
 	}
@@ -107,7 +107,7 @@ func TestEverySocialMediaTypeRendersAsAProfile(t *testing.T) {
 // Decoys: what must NOT change.
 func TestFamiliesLeaveEverythingElseAlone(t *testing.T) {
 	// The metadata validator reports an address in document properties as EMAIL; it renders as before.
-	if got := Generate("zz.synthetic.0004@outlook.com", "EMAIL", redactors.RedactionFormatPreserving); got != "z****************@outlook.com" {
+	if got := gen(t, "zz.synthetic.0004@outlook.com", "EMAIL", redactors.RedactionFormatPreserving); got != "z****************@outlook.com" {
 		t.Errorf("metadata EMAIL = %q", got)
 	}
 	// Secrets keep their typed simple markers; only the dead SECRETS arm is gone.
@@ -132,7 +132,7 @@ func TestFamiliesLeaveEverythingElseAlone(t *testing.T) {
 		}
 	}
 	// A provider-named type that is not an address (a SLACK_TOKEN is not SLACK) stays a secret.
-	if got := Generate("xoxb-123456789012-123456789012-abcdefghijklmnopqrstuvwx", "SLACK_TOKEN", redactors.RedactionSynthetic); !strings.HasPrefix(got, "xoxb-") {
+	if got := gen(t, "xoxb-123456789012-123456789012-abcdefghijklmnopqrstuvwx", "SLACK_TOKEN", redactors.RedactionSynthetic); !strings.HasPrefix(got, "xoxb-") {
 		t.Errorf("synthetic SLACK_TOKEN = %q", got)
 	}
 }
@@ -162,11 +162,11 @@ func TestGroupPlaceholderFollowsTheFamily(t *testing.T) {
 	if len(groups) != 1 || !groups[0].IsGroup() {
 		t.Fatalf("fixture did not form one group: %+v", groups)
 	}
-	if got := RenderGroup(groups[0], ms, redactors.RedactionSimple).Text; got != "[EMAIL-REDACTED]" {
+	if got := rendGroup(t, groups[0], ms, redactors.RedactionSimple).Text; got != "[EMAIL-REDACTED]" {
 		t.Errorf("simple group = %q", got)
 	}
 	// Both members now keep the first character and the domain, so the group may too.
-	if got := RenderGroup(groups[0], ms, redactors.RedactionFormatPreserving).Text; got != "z****************@outlook.com" {
+	if got := rendGroup(t, groups[0], ms, redactors.RedactionFormatPreserving).Text; got != "z****************@outlook.com" {
 		t.Errorf("format_preserving group = %q", got)
 	}
 }

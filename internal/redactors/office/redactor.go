@@ -55,6 +55,17 @@ type OfficeRedactor struct {
 	// is nil and an embedded part holds a reported value, that is DISCLOSED rather
 	// than passed over — see redactEmbeddedParts.
 	embeddedRedactor redactors.EmbeddedRedactor
+
+	// scope is the synthetic strategy's memory: the RedactionManager's, handed over at
+	// registration, so a value gets one replacement in every part, every package and every
+	// other file of the run (#886). nil makes synthetic refuse.
+	scope redactors.SyntheticScope
+}
+
+// SetSyntheticScope sets the scope synthetic replacements are drawn from
+// (redactors.SyntheticScopeUser).
+func (or *OfficeRedactor) SetSyntheticScope(scope redactors.SyntheticScope) {
+	or.scope = scope
 }
 
 // OfficeDocumentType represents the type of Office document
@@ -927,7 +938,10 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 	// "[US_STREET_ADDRESS-REDACTED], Boise". A contained member still collapses into the widest one,
 	// which is what the overlap pass has always done here. See redactors.ResolveOverlaps (#773).
 	groups := redactors.ResolveOverlaps(matches)
-	units := officeWriteUnits(groups, matches, strategy)
+	units, err := officeWriteUnits(groups, matches, strategy, or.scope)
+	if err != nil {
+		return nil, nil, err
+	}
 	unitMatches := make([]detector.Match, len(units))
 	for i := range units {
 		unitMatches[i] = units[i].match
@@ -1001,7 +1015,9 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 	// cross-run rewrite runs before the per-token replacer, so a member recorded here on its own could
 	// be rewritten across two runs before its group's union is offered at all -- stranding the rest of
 	// the union exactly as before. The residue guard in RedactDocument still checks every member.
-	or.recordCoverageForRemainingParts(modifiedContents, unitMatches, strategy, pending)
+	if err := or.recordCoverageForRemainingParts(modifiedContents, unitMatches, strategy, pending); err != nil {
+		return nil, nil, err
+	}
 
 	if err := or.applyPendingRedactions(modifiedContents, pending, docType); err != nil {
 		return nil, nil, err
@@ -1030,11 +1046,19 @@ type officeWriteUnit struct {
 // value's bytes (replacement.Rendering.Kept), then a group's over a single match's, then the
 // representative rule (higher confidence, then Type), then the replacement text -- nothing that
 // depends on input order. A value no group touches keeps first-write-wins, so its bytes do not change.
-func officeWriteUnits(groups []redactors.OverlapGroup, matches []detector.Match, strategy redactors.RedactionStrategy) []officeWriteUnit {
+//
+// Synthetic renderings come from scope, so every unit carrying one value -- in this package or any
+// other file of the run -- carries the same replacement (#886). A rendering that cannot be produced
+// refuses the document.
+func officeWriteUnits(groups []redactors.OverlapGroup, matches []detector.Match, strategy redactors.RedactionStrategy, scope redactors.SyntheticScope) ([]officeWriteUnit, error) {
 	units := make([]officeWriteUnit, 0, len(groups))
 	renderings := make([]replacement.Rendering, 0, len(groups))
 	for _, g := range groups {
-		r := replacement.RenderGroup(g, matches, strategy)
+		r, err := replacement.RenderGroup(g, matches, strategy, scope)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate a replacement for %d finding(s) (types %s): %w",
+				len(g.Members), strings.Join(g.MemberTypes(matches), ", "), err)
+		}
 		units = append(units, officeWriteUnit{match: g.Unit(matches), replacement: r.Text, group: g})
 		renderings = append(renderings, r)
 	}
@@ -1079,7 +1103,7 @@ func officeWriteUnits(groups []redactors.OverlapGroup, matches []detector.Match,
 			units[i].replacement = units[c.best].replacement
 		}
 	}
-	return units
+	return units, nil
 }
 
 // partReplacements is the set of value -> replacement rewrites pending for one part.
@@ -1727,6 +1751,20 @@ func (or *OfficeRedactor) recordSplitRunValue(zipContents *OfficeZipContents, ma
 	return names
 }
 
+// writtenFor is the replacement part will be written with for value: the one partReplacements
+// recorded, first write wins. The audit mapping takes it from here rather than from the unit that
+// asked, so redacted_text is bytes the output holds (#886). The audit used to report each match's own
+// draw: under synthetic, 3 of 8 entries of a .docx named a value the file did not contain. fallback
+// is returned only when nothing was recorded, which the callers rule out.
+func writtenFor(pending map[string]*partReplacements, part, value, fallback string) string {
+	if pr := pending[part]; pr != nil {
+		if w, ok := pr.repl[value]; ok {
+			return w
+		}
+	}
+	return fallback
+}
+
 // splitRunMapping builds the audit mapping for a value located in the run-joined view.
 //
 // position_method names the view that found it, because the offsets a caller would otherwise assume are
@@ -1784,7 +1822,7 @@ func (or *OfficeRedactor) redactMatch(zipContents *OfficeZipContents, extractedT
 		// no document offset from here.
 		if runJoined != nil {
 			if names := or.recordSplitRunValue(zipContents, match, replacement, pending, runJoined, docType); len(names) > 0 {
-				return or.splitRunMapping(match, replacement, strategy, names, docType)
+				return or.splitRunMapping(match, writtenFor(pending, names[0], match.Text, replacement), strategy, names, docType)
 			}
 		}
 		return nil, fmt.Errorf("match text not found in extracted content")
@@ -1817,9 +1855,11 @@ func (or *OfficeRedactor) redactMatch(zipContents *OfficeZipContents, extractedT
 		pr.add(match.Text, replacement)
 	}
 
-	// Create redaction mapping
+	// Create redaction mapping. Its replacement is the one the first part will be WRITTEN with,
+	// which partReplacements.add settles first-write-wins per value -- not necessarily this
+	// unit's, when another unit carrying the same text was recorded first.
 	mapping := redactors.RedactionMapping{
-		RedactedText: replacement,
+		RedactedText: writtenFor(pending, officePosition.FileName, match.Text, replacement),
 		Position: redactors.TextPosition{
 			Line:      match.LineNumber,
 			StartChar: matchPos,
@@ -1935,10 +1975,10 @@ func (or *OfficeRedactor) repackageOfficeDocument(contents *OfficeZipContents, o
 	return nil
 }
 
-// generateReplacement generates a replacement string based on the redaction strategy
-// generateReplacement delegates to the shared replacement package.
+// generateReplacement delegates to the shared replacement package, drawing synthetic values from
+// the redactor's scope.
 func (or *OfficeRedactor) generateReplacement(originalText, dataType string, strategy redactors.RedactionStrategy) (string, error) {
-	return replacement.Generate(originalText, dataType, strategy), nil
+	return replacement.Generate(originalText, dataType, strategy, or.scope)
 }
 
 // calculateOverallConfidence calculates the overall confidence for the redaction

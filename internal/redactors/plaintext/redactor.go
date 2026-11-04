@@ -39,6 +39,17 @@ type PlainTextRedactor struct {
 
 	// fallbackToSimple controls whether to fall back to simple text replacement on correlation failure
 	fallbackToSimple bool
+
+	// scope is the synthetic strategy's memory for RedactDocument and RedactContent: the
+	// RedactionManager's, handed over at registration, so one value gets one replacement in every
+	// file of a run (#886). nil makes those two refuse synthetic. RedactString does not read it.
+	scope redactors.SyntheticScope
+}
+
+// SetSyntheticScope sets the scope RedactDocument and RedactContent draw synthetic values from
+// (redactors.SyntheticScopeUser).
+func (ptr *PlainTextRedactor) SetSyntheticScope(scope redactors.SyntheticScope) {
+	ptr.scope = scope
 }
 
 // NewPlainTextRedactor creates a new PlainTextRedactor
@@ -141,7 +152,7 @@ func (ptr *PlainTextRedactor) RedactDocument(originalPath string, outputPath str
 	}
 
 	// Perform redaction
-	redactedText, redactionMap, err := ptr.redactText(originalText, matches, strategy)
+	redactedText, redactionMap, err := ptr.redactText(originalText, matches, strategy, ptr.scope)
 	if err != nil {
 		return nil, fmt.Errorf("failed to redact text: %w", err)
 	}
@@ -189,8 +200,9 @@ func (ptr *PlainTextRedactor) RedactDocument(originalPath string, outputPath str
 	}, nil
 }
 
-// redactText performs the actual text redaction based on matches and strategy
-func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector.Match, strategy redactors.RedactionStrategy) (string, []redactors.RedactionMapping, error) {
+// redactText performs the actual text redaction based on matches and strategy. scope is the
+// synthetic strategy's memory for the invocation this text belongs to.
+func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector.Match, strategy redactors.RedactionStrategy, scope redactors.SyntheticScope) (string, []redactors.RedactionMapping, error) {
 	if len(matches) == 0 {
 		return originalText, []redactors.RedactionMapping{}, nil
 	}
@@ -231,7 +243,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 	// file held. See redactors.ResolveOverlaps for what groups and replacement.RenderGroup for how a
 	// group renders (#773).
 	groups := redactors.ResolveOverlaps(matches)
-	units, err := ptr.writeUnits(groups, matches, strategy)
+	units, err := ptr.writeUnits(groups, matches, strategy, scope)
 	if err != nil {
 		return "", nil, err
 	}
@@ -476,7 +488,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 	// OTP secrets — survived inside 29 files this redactor reported as successfully redacted.
 	swept, sweptValues, sweepErr := redactverify.SweepRemaining(redactedText, sweepMatches,
 		func(m detector.Match) (string, error) {
-			return ptr.generateReplacement(m.Text, m.Type, strategy)
+			return ptr.generateReplacement(m.Text, m.Type, strategy, scope)
 		})
 	if sweepErr != nil {
 		return "", nil, fmt.Errorf("completeness sweep: %w", sweepErr)
@@ -496,8 +508,8 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 }
 
 // generateReplacement delegates to the shared replacement package.
-func (ptr *PlainTextRedactor) generateReplacement(originalText, dataType string, strategy redactors.RedactionStrategy) (string, error) {
-	return replacement.Generate(originalText, dataType, strategy), nil
+func (ptr *PlainTextRedactor) generateReplacement(originalText, dataType string, strategy redactors.RedactionStrategy, scope redactors.SyntheticScope) (string, error) {
+	return replacement.Generate(originalText, dataType, strategy, scope)
 }
 
 // Helper methods
@@ -521,14 +533,19 @@ type writeUnit struct {
 // 12 elements, pdqsort above. Which of PASSPORT or SSN was written therefore changed when the file
 // grew from 12 findings to 13. Groups no longer contain ties between their members, and the
 // remaining keys cannot tie because two units never share a first member.
-func (ptr *PlainTextRedactor) writeUnits(groups []redactors.OverlapGroup, matches []detector.Match, strategy redactors.RedactionStrategy) ([]writeUnit, error) {
+func (ptr *PlainTextRedactor) writeUnits(groups []redactors.OverlapGroup, matches []detector.Match, strategy redactors.RedactionStrategy, scope redactors.SyntheticScope) ([]writeUnit, error) {
 	units := make([]writeUnit, 0, len(groups))
 	for _, g := range groups {
 		u := writeUnit{match: g.Unit(matches), group: g}
 		if g.IsGroup() {
-			u.replacement = replacement.RenderGroup(g, matches, strategy).Text
+			r, err := replacement.RenderGroup(g, matches, strategy, scope)
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate replacement for an overlapping group of %d findings (types %s): %w",
+					len(g.Members), strings.Join(g.MemberTypes(matches), ", "), err)
+			}
+			u.replacement = r.Text
 		} else {
-			r, err := ptr.generateReplacement(u.match.Text, u.match.Type, strategy)
+			r, err := ptr.generateReplacement(u.match.Text, u.match.Type, strategy, scope)
 			if err != nil {
 				return nil, fmt.Errorf("failed to generate replacement for %s: %w", u.match.Type, err)
 			}
@@ -668,8 +685,19 @@ func (ptr *PlainTextRedactor) GetComponentName() string {
 // supported; the strategy parameter is passed through to the same internal
 // redactText routine that RedactDocument and RedactContent use, so there is
 // only one redaction code path to maintain.
+//
+// ONE CALL IS ONE INVOCATION for the synthetic strategy: every call draws from a scope of its own,
+// so a value gets one replacement throughout the content and an unrelated replacement in the next
+// call (#886). That is the lifetime --stdin, pkg/scan.RedactText and each pkg/redact Request need,
+// and it is why the scope is created here rather than kept on the redactor: pkg/redact's Engine
+// shares one redactor between all its callers, and a scope that outlived the call would give two
+// tenants' equal values the same fake, linking them.
 func (ptr *PlainTextRedactor) RedactString(content string, matches []detector.Match, strategy redactors.RedactionStrategy) (string, []redactors.RedactionMapping, error) {
-	return ptr.redactText(content, matches, strategy)
+	var scope redactors.SyntheticScope
+	if strategy == redactors.RedactionSynthetic {
+		scope = redactors.NewSyntheticScope()
+	}
+	return ptr.redactText(content, matches, strategy, scope)
 }
 
 // readFileHead returns up to n leading bytes of the file at path — enough
@@ -708,7 +736,7 @@ func (ptr *PlainTextRedactor) RedactContent(content *preprocessors.ProcessedCont
 	originalText := content.Text
 
 	// Perform redaction using the same logic as RedactDocument
-	redactedText, redactionMap, err := ptr.redactText(originalText, matches, strategy)
+	redactedText, redactionMap, err := ptr.redactText(originalText, matches, strategy, ptr.scope)
 	if err != nil {
 		return nil, fmt.Errorf("failed to redact text: %w", err)
 	}

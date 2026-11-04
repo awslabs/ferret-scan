@@ -67,7 +67,7 @@ Masks the sensitive portion while keeping separators, length, and structure inta
 4916338506082832  →  ************2832   (last 4 visible; BIN masked)
 372-84-1951       →  ***-**-1951        (last 4 digits visible)
 john@acme.com     →  j***@acme.com      (first char + domain visible)
-312-867-4201      →  312-***-4201       (area code + last 4 visible)
+312-867-4201      →  ***-***-4201       (last 4 visible)
 192.168.14.52     →  192.168.*.*        (first two octets visible)
 ```
 
@@ -76,24 +76,43 @@ john@acme.com     →  j***@acme.com      (first char + domain visible)
 Replaces sensitive data with realistic-looking but entirely fake values of the same type. Useful for test data generation or when documents need to remain parseable.
 
 ```
-4916338506082832  →  4111356762812018   (valid Luhn, test prefix)
+4916338506082832  →  4916207338150467   (issuer prefix kept, Luhn check deliberately wrong)
 372-84-1951       →  000-61-4899        (invalid area code, same format)
-john@acme.com     →  lgdeakpe@example.com
-Michael Torres    →  Regan Dubois       (from real name database)
+john@acme.com     →  lgde@example.com
+Michael Torres    →  Regan Dubois       (from the name database)
+Torres, Michael   →  Dubois, Regan      (the same person, written the same way)
 AKIAIOSFODNN7...  →  AKIAHXC4HGD897XZ  (same AKIA prefix)
 ghp_16C7e42F...   →  ghp_ab3pMN5XQuRE  (same ghp_ prefix)
 ```
+
+**One value, one fake, for the whole run.** Every occurrence of a value gets the same replacement, in
+every file and every format of one run: an SSN written four times in a `.txt`, again in a `.csv` and in
+a `.docx` header is one fake SSN everywhere, so a join on the redacted data finds the rows it found on
+the original. Two different values never share a fake. Spellings the format treats as the same value
+share one, each written in its own shape: `234-56-0001`, `234 56 0001` and `234560001` keep their
+separators; `(312) 555-0142`, `312.555.0142` and `+1 312 555 0142` are one line; an email address is
+one address in any letter case; `Michael Torres`, `MICHAEL TORRES` and `Torres, Michael` are one person
+(a title such as `Dr.` is kept and is not part of the name). A second run draws new fakes. `--stdin`, a
+`pkg/scan` call and each `pkg/redact` request are a run of their own: a library caller never shares
+fakes with another caller. A run that would need more distinct fakes of one type than the generator
+can produce (single-word names have 5,301; a value of one or two characters with no generator of its
+own, 62 or 3,844) refuses the file that needs the next one, rather than reuse a fake or write a
+placeholder: the refusal is reported like any other (`files_not_redacted`, exit 3 with
+`--fail-on-incomplete`). The generic `INTELLECTUAL_PROPERTY` notices described below are the one
+replacement two values may share. Up to v2.5.5 every occurrence was drawn independently, so one SSN
+became four different SSNs; and an email address with a local part shorter than four characters now
+gets a four-character one.
 
 ## Validator × Strategy Support
 
 | Validator | `simple` | `format_preserving` | `synthetic` |
 |-----------|:--------:|:-------------------:|:-----------:|
-| CREDIT_CARD | ✅ | ✅ Last 4 visible | ✅ Valid Luhn number |
+| CREDIT_CARD | ✅ | ✅ Last 4 visible | ✅ Issuer prefix kept, Luhn-invalid |
 | SSN | ✅ | ✅ Last 4 visible | ✅ Invalid area code |
 | EMAIL | ✅ | ✅ First char + domain | ✅ Random user@example.com |
-| PHONE | ✅ | ✅ Area code + last 4 | ✅ Same format |
+| PHONE | ✅ | ✅ Last 4 visible | ✅ Same format, 555 exchange |
 | PERSON_NAME | ✅ | ✅ Asterisk mask | ✅ Real name from database |
-| IP_ADDRESS | ✅ | ✅ First two octets | ✅ Private range (192.168.x.x) |
+| IP_ADDRESS | ✅ | ✅ First two octets | ✅ Private range (RFC 1918) |
 | SECRETS | ✅ | ✅ Asterisk mask | ✅ Format-matching fake token |
 | PASSPORT | ✅ | ✅ Asterisk mask | ✅ Same country format |
 | SOCIAL_MEDIA | ✅ | ✅ Asterisk mask | ✅ Fake profile URL |
@@ -363,7 +382,14 @@ The `synthetic` strategy is type-aware for secrets:
 | JWT | Structurally valid fake (real header/payload, random signature) |
 | Generic secret | Same-length random hex or alphanumeric |
 
-Person names are drawn from the same database used for detection (~5,200 first names, ~2,100 last names), so synthetic names look realistic.
+Person names are drawn from the same database used for detection (5,301 first names, 2,333 last names), so synthetic names look realistic.
+
+A synthetic IP address is a private (RFC 1918) address. The first one drawn for a value is in
+`192.168.0.0/16`, as before; when that address is already another value's, the next draw is from all
+17,891,328 addresses of `10.0.0.0/8`, `172.16.0.0/12` and `192.168.0.0/16`, so a log with more than
+65,536 addresses is not refused. A replacement for an `INTELLECTUAL_PROPERTY` copyright line,
+trademark or confidentiality label is a generic notice (`© 2013 Redacted Corporation. All rights
+reserved.`, `CONFIDENTIAL`) and two of them may share one; a patent number gets a number of its own.
 
 ## Configuration File
 
@@ -380,7 +406,7 @@ redaction:
 
 The strategies themselves take no options: `simple` writes per-type markers like
 `[SSN-REDACTED]`, `format_preserving` keeps the value's length and separators, and
-`synthetic` generates a realistic replacement with `crypto/rand`.
+`synthetic` draws a realistic replacement from `crypto/rand`, one per value for the whole run.
 
 ## Audit Log
 
@@ -482,6 +508,10 @@ ferret-scan --enable-redaction \
   --checks EMAIL,CREDIT_CARD,SSN,PERSON_NAME \
   --recursive ./exports/
 ```
+
+Every file of the run shares one fake per value, so a customer's SSN or email that joins
+`customers.csv` to `orders.csv` still joins them in `./synthetic-data`. Redact the files that must
+join in ONE run: a second run draws different fakes.
 
 Redact for compliance archiving (simple, with audit log):
 
