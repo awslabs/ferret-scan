@@ -9,7 +9,7 @@ import "github.com/awslabs/ferret-scan/v2/internal/help"
 func (v *Validator) GetCheckInfo() help.CheckInfo {
 	return help.CheckInfo{
 		Name:             "MEDICAL_ID",
-		ShortDescription: "Detects medical identifiers (NPI, DEA, MRN, Insurance IDs, Medicare MBI)",
+		ShortDescription: "Detects medical identifiers (NPI, DEA, MRN, Insurance IDs, Medicare MBI, UK NHS and Scottish CHI numbers)",
 		DetailedDescription: `The MEDICAL_ID check detects medical and healthcare identifiers in documents and text files using pattern matching, checksum validation, and contextual analysis.
 
 It identifies five types of medical identifiers:
@@ -35,11 +35,14 @@ The validator prioritizes false-positive suppression: digit-only sequences (MRN)
 			"Medical Record Numbers (institution-specific)",
 			"Health insurance member/subscriber IDs",
 			"Medicare Beneficiary Identifiers (MBI, post-2018 format)",
+			"UK NHS numbers (England, Wales, Isle of Man; Northern Ireland H&C numbers): 10 digits or 3-3-4, mod-11 check digit, reported only beside a label bound to the value (NHS number, nhs_number, a column header, the FHIR system, HL7 ^^^NHS^NH)",
+			"Scottish CHI numbers: DDMMYY + 4 digits or 6-4, mod-11 check digit and a real date, reported only beside a label bound to the value (CHI number, chi_number, a column header)",
 		},
 
 		ConfidenceFactors: []help.ConfidenceFactor{
 			{Name: "Checksum (NPI)", Description: "Luhn checksum validation for NPI numbers", Weight: 30},
 			{Name: "Checksum (DEA)", Description: "DEA-specific checksum validation", Weight: 35},
+			{Name: "Checksum (NHS/CHI)", Description: "Mod-11 check digit, plus a real DDMMYY date for a CHI; the NHS test range 999 and repdigits are capped at 15", Weight: 30},
 			{Name: "Format (MBI)", Description: "Positional character-class format validation", Weight: 25},
 			{Name: "Context Keywords", Description: "Medical/healthcare keywords nearby", Weight: 20},
 			{Name: "Negative Context", Description: "Non-medical keywords suppress confidence", Weight: 15},
