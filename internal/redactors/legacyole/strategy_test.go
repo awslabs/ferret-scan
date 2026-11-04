@@ -82,4 +82,3 @@ func TestFormatPreservingIsUnchanged(t *testing.T) {
 		}
 	}
 }
-
