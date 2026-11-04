@@ -29,6 +29,9 @@ type RuleRestore struct {
 // its id or its hash already exists: putting it back would then duplicate a decision rather than undo
 // a deletion. The file is saved once, and only when something was restored.
 func (sm *SuppressionManager) RestoreSuppressions(items []RuleRestore) (restored int, refused []string, err error) {
+	if sm.loadErr != nil {
+		return 0, nil, sm.loadErr
+	}
 	if sm.config == nil {
 		sm.config = &SuppressionConfig{Version: "1.0", Rules: []SuppressionRule{}}
 	}
