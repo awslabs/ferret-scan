@@ -255,7 +255,9 @@ func TestVINValidator_MetadataFields(t *testing.T) {
 // America); EU/Asian manufacturers commonly do not encode it, so genuine VINs
 // from WVW/WAU/ZFF (all in knownWMIs) were being hard-rejected. We assert those
 // are now detected, while VINs that fail the check digit WITHOUT a corroborating
-// signal (NA region, or unknown WMI) remain rejected so we add no false positives.
+// signal (NA region, or an unknown WMI with no VIN label) remain rejected so we
+// add no false positives. The VIN-label path for unknown WMIs (#860) is tested in
+// optional_check_digit_test.go.
 func TestVINValidator_NonNorthAmericanCheckDigit(t *testing.T) {
 	validator := NewValidator()
 

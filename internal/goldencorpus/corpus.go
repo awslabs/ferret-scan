@@ -1210,6 +1210,38 @@ var Cases = []Case{
 			"user id 80351110224678917 joined the server\n",
 	},
 	{
+		Name: "vin_optional_check_digit_decoys",
+		Description: "Labelled 17-character tokens with no valid ISO 3779 check digit and a WMI outside " +
+			"knownWMIs, which must stay EMPTY (#860). Outside North America and China the check digit " +
+			"is optional, so such a VIN is now reported when a VIN label sits beside it, heads its " +
+			"column or stands on the line above; each line here is what that rule must still refuse. " +
+			"Lines 1-3 are China (`L`, `H`) and the second US block (`7`), where the check digit is " +
+			"compulsory: a widening keyed on the old 1-5 test admitted all three. Lines 4-8 fail a shape " +
+			"guard a label cannot override: first character 0 (no region), all hex, all digits, mixed " +
+			"case, and a label word that is itself 17 VIN-legal letters. Line 9 is the French word for " +
+			"wine, under a label line that vouches only for a value beginning its line; line 10 is a " +
+			"token whose label belongs to the value after it, line 11 a token a byte window would lend " +
+			"the `VIN:` label to, and lines 12-15 a prose line and a lowercase `vin` above a token. The " +
+			"positives (every label placement, the CSV column, the scores) are unit tests in " +
+			"internal/validators/vin, so this case adds no finding to the census.",
+		Checks: []string{"VIN"},
+		Input: "VIN: LSVZZZ5NZRA000502\n" +
+			"VIN: HZZZZZ5NZRA000504\n" +
+			"VIN: 7FAZZZ5NZRA000503\n" +
+			"vin=0VGZZZ5NZRA000502\n" +
+			"VIN: 9f2a9c81d4e7b6a05\n" +
+			"VIN: 80351110224678918\n" +
+			"VIN: WvGzzZ5nZrA000502\n" +
+			"FAHRGESTELLNUMMER (VIN)\n" +
+			"Commande de vin REF7TX29KD4M8PL2V\n" +
+			"ref REF7TX29KD4M8PL2V VIN: pending\n" +
+			"VIN: pending, ref REF7TX29KD4M8PL2V\n" +
+			"Please send me the VIN tomorrow\n" +
+			"REF7TX29KD4M8PL2V\n" +
+			"vin\n" +
+			"REF7TX29KD4M8PL2V\n",
+	},
+	{
 		Name: "passport_mrz_line2_check_digits",
 		Description: "A complete ICAO 9303 TD3 machine-readable zone: line 1 (the holder's NAME) " +
 			"followed by line 2 (the passport NUMBER, date of birth, sex, expiry and personal " +
