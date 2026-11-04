@@ -5,14 +5,17 @@ package suppressions
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/explain"
@@ -100,6 +103,8 @@ type SuppressionManager struct {
 	// generatedExpirySpec is the lifetime given to newly generated rules; the zero value means none.
 	// A spec rather than a duration so an absolute date is expressible (#696).
 	generatedExpirySpec ExpirySpec
+	// lastGeneration counts what the last GenerateSuppressionRules call did (#885).
+	lastGeneration GenerationReport
 
 	// lapsed records the findings a lapsed rule left in the report. It has its own lock, deliberately
 	// not indexMu, because IsSuppressed runs on worker goroutines as well as the report path.
@@ -321,9 +326,39 @@ const (
 	hashVersionNoConfidenceContextless     hashVersion = 3
 	hashVersionLegacyConfidenceContextless hashVersion = 4
 
+	// hashVersionTrimmedEdges is hashVersionNoConfidence with the whitespace at the outer edges
+	// left out: BeforeText's leading whitespace, AfterText's trailing whitespace and Text's
+	// whitespace at both ends.
+	//
+	// The windows are cut from the raw line, so near a line edge they held the indentation, a
+	// trailing space or a CRLF file's `\r`, and the intellectual-property span swallows trailing
+	// whitespace and `\r` into Text. An edit that touched none of the finding, converting a file to
+	// CRLF, re-indenting it or adding a trailing space, changed its identity and un-suppressed it:
+	// measured on 39 of this repository's files, LF rules suppressed 86 of 581 findings after a
+	// CRLF conversion and 113 of 581 after re-indenting (#885). The windows stay, trimmed only at
+	// their outer edges, because they are what tells two occurrences on one line apart. For a
+	// finding with no whitespace at those edges this formula equals hashVersionNoConfidence, so
+	// most rules written by the older formula are already rules of this one.
+	hashVersionTrimmedEdges hashVersion = 5
+
 	// hashVersionCurrent is what new rules are written with.
-	hashVersionCurrent = hashVersionNoConfidence
+	hashVersionCurrent = hashVersionTrimmedEdges
 )
+
+// trimsEdges reports whether this formula leaves out the whitespace at the outer edges of the
+// context windows and of the value.
+func (v hashVersion) trimsEdges() bool {
+	return v == hashVersionTrimmedEdges
+}
+
+// hasEdgeWhitespace reports whether hashVersionTrimmedEdges trims anything from match, that is,
+// whether its hash can differ from hashVersionNoConfidence's.
+func hasEdgeWhitespace(match detector.Match) bool {
+	before, after := match.Context.BeforeText, match.Context.AfterText
+	return strings.TrimLeftFunc(before, unicode.IsSpace) != before ||
+		strings.TrimRightFunc(after, unicode.IsSpace) != after ||
+		strings.TrimSpace(match.Text) != match.Text
+}
 
 // includesConfidence reports whether this formula folds Confidence into the
 // identity. Only the two legacy formulas do.
@@ -388,7 +423,7 @@ func (sm *SuppressionManager) findingHashVersion(match detector.Match, version h
 	components = append(components,
 		fullLine,
 		filepath.Base(match.Filename), // Use basename to avoid path sensitivity
-		fmt.Sprintf("%d", match.LineNumber),
+		strconv.Itoa(match.LineNumber),
 	)
 
 	// Context contributes to IDENTITY, digested so the composite stays a bounded length and the
@@ -397,40 +432,66 @@ func (sm *SuppressionManager) findingHashVersion(match detector.Match, version h
 	// the same finding on a teammate's machine. It cannot be dropped or salted — the file is
 	// committed, so any salt travels with it — which is precisely why the two INFORMATIONAL copies
 	// of these digests were removed from rule metadata instead (#673).
-	contextHash := sm.hashSensitiveData(ctx.BeforeText + ctx.AfterText)
+	before, after, text := ctx.BeforeText, ctx.AfterText, match.Text
+	if version.trimsEdges() {
+		// Only the OUTER edges: whitespace inside a window or inside the value is still identity.
+		before = strings.TrimLeftFunc(before, unicode.IsSpace)
+		after = strings.TrimRightFunc(after, unicode.IsSpace)
+		text = strings.TrimSpace(text)
+	}
+	contextHash := sm.hashSensitiveData(before + after)
 	components = append(components, contextHash)
 
 	// Likewise a component of identity, not a privacy measure.
-	matchHash := sm.hashSensitiveData(match.Text)
+	matchHash := sm.hashSensitiveData(text)
 	components = append(components, matchHash)
 
-	// Create final hash
+	// Create final hash. hex.EncodeToString writes what fmt's %x does for a [32]byte, without the
+	// reflection: this runs several times per finding.
 	composite := strings.Join(components, "|")
 	hash := sha256.Sum256([]byte(composite))
-	return fmt.Sprintf("%x", hash)
+	return hex.EncodeToString(hash[:])
 }
 
 // findingHashCandidates returns every hash a finding could legitimately be recorded
-// under, current formula first.
+// under, current formula first, each once.
 //
 // Matching accepts any of them so an existing rule file keeps working untouched, while
-// newly written rules use only the current formula and stop being confidence-sensitive.
-// A rule file therefore migrates as it is regenerated rather than needing a conversion
-// step, and an operator who never regenerates loses nothing.
+// newly written rules use only the current formula. A rule file therefore migrates as it
+// is regenerated rather than needing a conversion step, and an operator who never
+// regenerates loses nothing.
 //
 // For the validators in contextlessHashValidators the empty-context variants of both
-// formulas are candidates too, because those validators used to emit findings with no
-// context and rules were written against those hashes.
+// older formulas are candidates too, because those validators used to emit findings
+// with no context and rules were written against those hashes.
+//
+// The two older formulas digest the windows raw, so a rule they wrote in an LF file did
+// not match the same finding in a CRLF copy, nor the other way round. They are also
+// computed for the finding as it reads with the other line ending (otherLineEnding),
+// which covers both directions; the current formula needs no such variant.
 func (sm *SuppressionManager) findingHashCandidates(match detector.Match) []string {
-	candidates := []string{
-		sm.findingHashVersion(match, hashVersionNoConfidence),
-		sm.findingHashVersion(match, hashVersionLegacyConfidence),
+	candidates := make([]string, 0, 8)
+	add := func(h string) {
+		for _, c := range candidates {
+			if c == h {
+				return
+			}
+		}
+		candidates = append(candidates, h)
 	}
+	add(sm.findingHashVersion(match, hashVersionCurrent))
+	if hasEdgeWhitespace(match) {
+		// Otherwise v2 digests exactly what the current formula does, and is the same hash.
+		add(sm.findingHashVersion(match, hashVersionNoConfidence))
+	}
+	add(sm.findingHashVersion(match, hashVersionLegacyConfidence))
 	if contextlessHashValidators[match.Validator] {
-		candidates = append(candidates,
-			sm.findingHashVersion(match, hashVersionNoConfidenceContextless),
-			sm.findingHashVersion(match, hashVersionLegacyConfidenceContextless),
-		)
+		add(sm.findingHashVersion(match, hashVersionNoConfidenceContextless))
+		add(sm.findingHashVersion(match, hashVersionLegacyConfidenceContextless))
+	}
+	for _, variant := range otherLineEnding(match) {
+		add(sm.findingHashVersion(variant, hashVersionNoConfidence))
+		add(sm.findingHashVersion(variant, hashVersionLegacyConfidence))
 	}
 	return candidates
 }
@@ -466,7 +527,7 @@ func (sm *SuppressionManager) hashSensitiveData(data string) string {
 		return ""
 	}
 	hash := sha256.Sum256([]byte(data))
-	return fmt.Sprintf("%x", hash)[:16] // Use first 16 chars for brevity
+	return hex.EncodeToString(hash[:8]) // the first 16 hex chars, for brevity
 }
 
 // IsSuppressed checks if a finding should be suppressed.
@@ -475,11 +536,6 @@ func (sm *SuppressionManager) IsSuppressed(match detector.Match) (bool, *Suppres
 	if !sm.enabled || sm.config == nil {
 		return false, nil
 	}
-
-	// Every hash this finding could be recorded under: the current formula, plus the
-	// legacy confidence-sensitive one so an existing rule file keeps suppressing
-	// without being regenerated.
-	candidates := sm.findingHashCandidates(match)
 
 	// Lazy build for tests/callers that mutate sm.config.Rules without going through saveConfig.
 	// Built under the write lock and re-checked, since another caller may have built it in between;
@@ -495,6 +551,15 @@ func (sm *SuppressionManager) IsSuppressed(match detector.Match) (bool, *Suppres
 		sm.indexMu.Unlock()
 		sm.indexMu.RLock()
 	}
+	if len(sm.rulesByHash) == 0 {
+		// No rule can match, so skip hashing the finding, which is nearly all of this call's cost
+		// and is paid for every finding of every scan, with or without a suppression file.
+		sm.indexMu.RUnlock()
+		return false, nil
+	}
+	// Every hash this finding could be recorded under: the current formula, plus every older one
+	// (#247, #885) so an existing rule file keeps suppressing without being regenerated.
+	candidates := sm.findingHashCandidates(match)
 	rule, lapsedAt := sm.matchLocked(candidates)
 	sm.indexMu.RUnlock()
 
@@ -770,6 +835,7 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 
 	addedCount := 0
 	updatedCount := 0
+	migrated := make(map[int]bool)
 	now := time.Now()
 
 	// Find max ID once
@@ -786,12 +852,11 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 	for _, match := range matches {
 		findingHash := sm.generateFindingHash(match)
 
-		// Check if already exists under EITHER formula. A rule file written before
-		// confidence left the hash records the legacy hash, and treating that as
-		// absent would append a duplicate rule for a finding the operator has already
-		// ruled on — the file would grow a second entry per finding on every
-		// regeneration. Refreshing last_seen_at on the legacy rule instead lets the
-		// file carry forward untouched; it migrates only when a rule is genuinely new.
+		// Check if already exists under ANY formula. A rule file written by an older
+		// formula records an older hash, and treating that as absent would append a
+		// duplicate rule for a finding the operator has already ruled on — the file
+		// would grow a second entry per finding on every regeneration. The matched
+		// rule is refreshed instead, and rewritten to the current formula.
 		matchedIdx := -1
 		for _, candidate := range sm.findingHashCandidates(match) {
 			if idx, exists := existingHashes[candidate]; exists {
@@ -802,8 +867,18 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 		if idx := matchedIdx; idx >= 0 {
 			// Update last_seen_at for existing rule. Written through the live
 			// slice so it survives any reallocation caused by the appends below.
-			sm.config.Rules[idx].LastSeenAt = &now
+			rule := &sm.config.Rules[idx]
+			rule.LastSeenAt = &now
 			updatedCount++
+			// A rule matched by an older formula is rewritten to the current one, here and only
+			// here: an explicit write, by the run that just saw its finding. Its other fields stay.
+			// The current formula is tried first, so a rule that differs from findingHash matched
+			// through an older one. A rule the loader refused (#866) is left as it is (#885).
+			if rule.Hash != findingHash && rule.NotApplied == "" && !migrated[idx] {
+				rule.Hash = findingHash
+				existingHashes[findingHash] = idx
+				migrated[idx] = true
+			}
 			continue
 		}
 
@@ -845,9 +920,14 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 		addedCount++
 	}
 
+	// Recorded only once the file holds it: a save that fails leaves the zero report.
+	sm.lastGeneration = GenerationReport{}
 	if addedCount > 0 || updatedCount > 0 {
-		return sm.saveConfig()
+		if err := sm.saveConfig(); err != nil {
+			return err
+		}
 	}
+	sm.lastGeneration = GenerationReport{Added: addedCount, Refreshed: updatedCount, Migrated: len(migrated)}
 	return nil
 }
 

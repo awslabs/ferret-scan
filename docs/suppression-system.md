@@ -14,18 +14,51 @@ The suppression system provides a robust mechanism for reducing false positives 
 - **Privacy Protection**: Sensitive data is hashed before storage in suppression rules
 
 ### Hash Generation Algorithm
+New rules are written with formula **v5**:
 ```
-Hash Components:
-- Finding Type (e.g., "EMAIL", "CREDIT_CARD")
-- Confidence Level (formatted to 2 decimal places)
-- Full Line Content (trimmed)
+Hash Components (v5):
+- Finding Type (e.g., "EMAIL", "VISA")
+- Full Line Content (trimmed; at most the first 8192 bytes)
 - Filename (basename only for path independence)
 - Line Number
-- Context Hash (SHA-256 of before/after text, first 16 chars)
-- Match Text Hash (SHA-256 of sensitive text, first 16 chars)
+- Context Hash: SHA-256 of the before-window with its leading whitespace removed followed by the
+  after-window with its trailing whitespace removed, first 16 hex chars ("" when both are empty)
+- Match Text Hash: SHA-256 of the matched text with its surrounding whitespace removed, first 16 hex chars
 
-Final Hash = SHA-256(Type|Confidence|FullLine|Filename|LineNumber|ContextHash|MatchHash)
+Final Hash = SHA-256(Type|FullLine|Filename|LineNumber|ContextHash|MatchHash)
 ```
+
+The windows are the text just before and after the value on its line (50 bytes for most validators).
+They stay in the identity because they tell two occurrences of one value on one line apart; only
+their outer edges are trimmed, so whitespace inside a window or inside the value still counts.
+
+A rule's hash is compared with every formula an earlier version wrote, so existing files keep working:
+
+| formula | written by | what it digests differently |
+|---|---|---|
+| v5 | this version | (above) |
+| v2 | v2.3.0 to v2.5.x | the windows and the value raw, edge whitespace and `\r` included |
+| v1 | before v2.3.0 | v2 with the confidence (`%.2f`) as the second component (#247) |
+| v2 / v1 without context | `secrets`, `PERSON_NAME` and `cloud_resources` rules written before v2.3.1, when those validators recorded no context | an empty line and empty windows |
+| v2 / v1 with the other line ending | (never written) | the finding as it reads in an LF copy of a CRLF file, or the reverse |
+
+What is and is not identity:
+
+- **Line endings, indentation and trailing whitespace are not.** Converting a file between LF and CRLF,
+  re-indenting it or adding a trailing space leaves a v5 rule matching. A v2 or v1 rule still matches
+  across an LF/CRLF conversion, through the other-line-ending candidates, but stays sensitive to
+  indentation and trailing whitespace until it is migrated. Measured on 39 of this repository's files
+  (581 findings): rules a v2.5 binary generated on the LF copy suppressed 86 findings of the CRLF copy
+  and 113 of a re-indented copy. Read by this version, the same rules suppress all 581 of the CRLF copy
+  and 253 of the re-indented one; once migrated, or when written by this version, all 581 of each
+  (#885).
+- **The line number and the file's basename are.** A line inserted above a finding, or a renamed file,
+  stops its rule matching; regenerate the rules.
+- **Migration** happens only at an explicit write: `--generate-suppressions` rewrites a rule it matched
+  through an older formula to v5 and changes nothing else in it (id, reason, `enabled`, dates and
+  metadata stay). Scanning never rewrites a rule. A binary older than this one does not read v5, so a
+  migrated rule whose finding has whitespace or a `\r` at a window edge stops matching there; for any
+  other finding v5 and v2 are the same hash.
 
 ### Filename Consistency
 - **Original Filename Preservation**: Web UI uploads maintain original filenames throughout processing
@@ -200,8 +233,9 @@ that did not exist, or could not be parsed, is written fresh.
 
 2. **Hash Mismatches**
    - Confirm filename normalization (basename only)
-   - Verify confidence level formatting (2 decimal places)
-   - Check for whitespace differences in full line content
+   - A line inserted or removed above the finding changes its line number, which is part of the identity
+   - Line endings and whitespace at the line's edges are not, for rules written or migrated by this
+     version (see [Hash Generation Algorithm](#hash-generation-algorithm))
 
 3. **Performance Issues**
    - Clean up expired suppression rules periodically

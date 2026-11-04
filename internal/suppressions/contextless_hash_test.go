@@ -91,17 +91,32 @@ func TestExistingRulesSurviveContextRecording(t *testing.T) {
 func TestContextlessVariantsAreScopedToTheAffectedValidators(t *testing.T) {
 	sm := ruleManager()
 
+	// The same finding from an affected and an unaffected validator: the affected one has
+	// exactly the two contextless formulas more. (Both also carry the other-line-ending
+	// variants of the older formulas, #885; those keep the context.)
 	affected := contextlessFinding("secrets", "AWS_ACCESS_KEY", "AKIAIOSFODNN7EXAMPLE")
-	if got, want := len(sm.findingHashCandidates(withContext(affected))), 4; got != want {
-		t.Errorf("affected validator: %d hash candidates, want %d", got, want)
+	unaffected := affected
+	unaffected.Validator = "creditcard"
+	contextless := []string{
+		sm.findingHashVersion(affected, hashVersionNoConfidenceContextless),
+		sm.findingHashVersion(affected, hashVersionLegacyConfidenceContextless),
 	}
-
-	// A validator that always recorded context has no pre-existing contextless
-	// rules, so it keeps exactly the two candidates it had.
-	unaffected := contextlessFinding("creditcard", "VISA", "4111-1111-1111-1111")
-	if got, want := len(sm.findingHashCandidates(withContext(unaffected))), 2; got != want {
-		t.Errorf("unaffected validator: %d hash candidates, want %d", got, want)
+	a := sm.findingHashCandidates(withContext(affected))
+	u := sm.findingHashCandidates(withContext(unaffected))
+	if len(a) != len(u)+2 {
+		t.Errorf("affected validator: %d hash candidates, unaffected: %d; want exactly the two contextless formulas more", len(a), len(u))
 	}
+	for _, h := range contextless {
+		if !containsHash(a, h) {
+			t.Errorf("affected validator: contextless candidate %s missing", h)
+		}
+		// A validator that always recorded context has no pre-existing contextless
+		// rules, so it is offered none.
+		if containsHash(u, h) {
+			t.Errorf("unaffected validator: offered the contextless candidate %s", h)
+		}
+	}
+	unaffected = contextlessFinding("creditcard", "VISA", "4111-1111-1111-1111")
 
 	// And the loosening does not leak: a contextful finding from an unaffected
 	// validator is not suppressed by a rule recorded against its context-free form.
@@ -124,7 +139,7 @@ func TestNewRulesAreWrittenWithContext(t *testing.T) {
 	finding := withContext(contextlessFinding("secrets", "AWS_ACCESS_KEY", "AKIAIOSFODNN7EXAMPLE"))
 
 	written := sm.generateFindingHash(finding)
-	if want := sm.findingHashVersion(finding, hashVersionNoConfidence); written != want {
+	if want := sm.findingHashVersion(finding, hashVersionCurrent); written != want {
 		t.Errorf("generateFindingHash = %s, want the current formula %s", written, want)
 	}
 	for _, legacy := range []hashVersion{
