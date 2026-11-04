@@ -138,6 +138,36 @@ func (rim *RedactionAuditLogManager) AddContentRedaction(documentID string, reda
 	return nil
 }
 
+// AddMetadataRedaction adds a metadata redaction to the specified document's audit log.
+func (rim *RedactionAuditLogManager) AddMetadataRedaction(documentID string, redaction MetadataRedaction) error {
+	rim.mutex.Lock()
+	defer rim.mutex.Unlock()
+
+	auditLog, exists := rim.auditLogs[documentID]
+	if !exists {
+		return fmt.Errorf("no audit log found for document ID %s", documentID)
+	}
+
+	auditLog.AddMetadataRedaction(redaction)
+	return nil
+}
+
+// SetRunSummary records, in the specified document's summary, the strategy the run asked for and
+// how long the redactor took. The counts and data types are kept by the Add methods.
+func (rim *RedactionAuditLogManager) SetRunSummary(documentID string, strategy RedactionStrategy, processingTime time.Duration) error {
+	rim.mutex.Lock()
+	defer rim.mutex.Unlock()
+
+	auditLog, exists := rim.auditLogs[documentID]
+	if !exists {
+		return fmt.Errorf("no audit log found for document ID %s", documentID)
+	}
+
+	auditLog.RedactionSummary.Strategy = strategy
+	auditLog.RedactionSummary.ProcessingTimeMs = float64(processingTime) / float64(time.Millisecond)
+	return nil
+}
+
 // ExportAllAuditLogs exports all redaction audit logs to a combined JSON format
 func (rim *RedactionAuditLogManager) ExportAllAuditLogs() ([]byte, error) {
 	rim.mutex.RLock()

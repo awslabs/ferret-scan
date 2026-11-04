@@ -358,31 +358,81 @@ The strategies themselves take no options: `simple` writes per-type markers like
 
 When `--redaction-audit-log` is specified, a JSON file is written with details of every redaction performed — useful for compliance reporting.
 
+The file is an envelope around one audit log per redacted document, keyed `doc_1`, `doc_2`, … in
+the order the documents finished. Abridged from a real run (`--file sample.txt
+--redaction-audit-log audit.json`, default strategy, a build stamped `2.5.3`):
+
 ```json
 {
-  "document_id": "sample.csv",
-  "original_file_hash": "29ee9f67da87f7c8284a0c2cda4c78f51184aaeda87e6023be9abf01819dcbf9",
-  "redacted_file_hash": "7d3f1a0c5b9e2d84f61ac0e7b2358d94ee1c0f6ab84d2379ce50b8a1f3c47e02",
-  "redactions": [
-    {
-      "data_type": "CREDIT_CARD",
-      "strategy": "format_preserving",
-      "line": 2,
-      "confidence": 1.0
+  "export_timestamp": "2026-11-04T15:17:20.288620904Z",
+  "ferret_version": "2.5.3",
+  "total_documents": 1,
+  "audit_logs": {
+    "doc_1": {
+      "document_id": "doc_1",
+      "redaction_timestamp": "2026-11-04T15:17:20.288520023Z",
+      "ferret_version": "2.5.3",
+      "original_path": "in/sample.txt",
+      "redacted_path": "out/in/sample.txt",
+      "original_file_hash": "67c295283d0f2e491a97b9e88224642b3efbe67be883f4ea6fbc63a64109b2f6",
+      "redacted_file_hash": "0ff62e94c8703daf133e3f4983d10c0c32aa28a2f50e911ccffe739618627c95",
+      "redaction_summary": {
+        "total_redactions": 4,
+        "data_types": ["MASTERCARD", "PHONE", "VISA", "BUSINESS"],
+        "strategy": "format_preserving",
+        "processing_time_ms": 0.878075,
+        "successful_redactions": 4,
+        "failed_redactions": 0
+      },
+      "content_redactions": [
+        {
+          "id": "doc_1_redaction_1",
+          "target_type": "parent_document",
+          "data_type": "PHONE",
+          "redacted_text": "(***) ***-0199",
+          "strategy": "format_preserving",
+          "confidence": 1,
+          "line": 4,
+          "placement": { "method": "position_correlation", "score": 0.95 },
+          "timestamp": "2026-11-04T15:17:20.288603674Z"
+        }
+      ],
+      "metadata_redactions": []
     }
-  ]
+  }
 }
 ```
+
+| Field | Meaning |
+|---|---|
+| `ferret_version` (both levels) | the build's version, as `--version` and SARIF report it |
+| `redaction_summary.strategy` | the strategy the run asked for, by name: `simple`, `format_preserving` or `synthetic` |
+| `redaction_summary.processing_time_ms` | how long the redactor took on this document, in milliseconds |
+| `total_redactions`, `successful_redactions` | the number of entries in `content_redactions` plus `metadata_redactions`; always equal |
+| `failed_redactions` | always `0`: a document is logged only after its redacted copy was written and checked to hold none of its reported values. A document that could not be redacted has no entry; the run reports it under `redaction incomplete` instead |
+| `content_redactions[].strategy` | the strategy the redactor was called with, by name |
+| `content_redactions[].confidence` | the finding's detection confidence on 0–1: the report's `confidence` / 100 |
+| `content_redactions[].line` | the finding's `line_number`; absent where the redactor records no position (audio, video and legacy Office today) |
+| `content_redactions[].placement` | text files only (and SVG and RTF): how the value was located — `method` `position_correlation` or `simple_text_search`, and `score`, the 0–1 placement score, lower for a fuzzy or corrected position |
+| `content_redactions[].target_type`, `target_path` | `parent_document`, or `embedded_media` with the part's name inside the container (`word/media/image1.jpeg`) |
+| `content_redactions[].member_types` | for one write covering an overlapping group of findings, every member's type |
+| `metadata_redactions[]` | metadata **removed** rather than rewritten: one entry per EXIF field an image redaction dropped (`field` is the EXIF name; a PNG's ancillary chunks are one entry, `png_ancillary_chunks`), `action` `removed`, `redacted_value` `null` |
+
+Up to v2.5.5 this log wrote `ferret_version` as the literal `v1.0.0`; left `strategy` and
+`processing_time` at `0` in every summary, and `0` reads as `simple`; wrote each entry's strategy as
+an integer; logged text-file findings at their placement score (`0.0095` for findings the report
+scored 15 to 100) and every image metadata removal as an `IMAGE_METADATA` content redaction at
+`0.01`, with `metadata_redactions` always empty; and dropped the line and the embedded part's name.
 
 The two hashes let a reviewer confirm the log describes the artifact in front of them rather than
 some other run. **They are never equal for a file the log reports as redacted** — a replacement
 byte-identical to the bytes it replaces is not a redaction, so it is recorded under its own cause and
-does not appear in `redactions`.
+does not appear in `content_redactions`.
 
 That distinction is not hypothetical. Re-scanning a redacted file is a normal way to verify a
 redaction, and `format_preserving` masks a generic secret with a run of `*` of the same length — so a
 value that was *already* a run of `*` used to be "redacted" into itself, producing an output identical
-to its input, a `redactions` entry, and two equal hashes. The mask is no longer reported as a secret
+to its input, a `content_redactions` entry, and two equal hashes. The mask is no longer reported as a secret
 in the first place (it cannot contain one), and the identity replacement is refused as a second,
 independent guard.
 

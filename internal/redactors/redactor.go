@@ -43,6 +43,28 @@ func (rs RedactionStrategy) String() string {
 // config schema's agreement test and the CLI help all derive from one list.
 var RedactionStrategyNames = []string{"simple", "format_preserving", "synthetic"}
 
+// MarshalText writes the strategy as its name, which is how the audit log records
+// it (#865). It used to be serialised as its int, undocumented, so 0 read as simple:
+// every redaction_summary held "strategy": 0 because nothing set it, and a
+// format_preserving run was logged as the strongest strategy. A value outside the
+// definition has no name and fails the marshal, so it cannot be written as one.
+func (rs RedactionStrategy) MarshalText() ([]byte, error) {
+	if !rs.Valid() {
+		return nil, fmt.Errorf("redaction strategy %d is not one of %s", int(rs), strings.Join(RedactionStrategyNames, ", "))
+	}
+	return []byte(rs.String()), nil
+}
+
+// UnmarshalText reads a strategy name exactly as ParseRedactionStrategy does.
+func (rs *RedactionStrategy) UnmarshalText(text []byte) error {
+	s, err := ParseRedactionStrategy(string(text))
+	if err != nil {
+		return err
+	}
+	*rs = s
+	return nil
+}
+
 // Valid reports whether rs is one of the three defined strategies. A
 // RedactionStrategy is an int, so a caller can hold a value outside the
 // definition (a cast, a zero-filled struct from another package); every

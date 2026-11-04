@@ -54,31 +54,34 @@ type RedactionAuditLog struct {
 	// ContentRedactions contains audit information about content redactions performed
 	ContentRedactions []ContentRedaction `json:"content_redactions"`
 
-	// MetadataRedactions contains audit information about metadata redactions performed
+	// MetadataRedactions lists metadata removed rather than rewritten: one entry per EXIF field an
+	// image redaction dropped, or one for a PNG's ancillary chunks (#865). These used to be written
+	// as content redactions of type IMAGE_METADATA at a constant confidence, and this was always [].
 	MetadataRedactions []MetadataRedaction `json:"metadata_redactions"`
-
-	// RedactionConfig contains the configuration used for redaction
-	RedactionConfig *RedactionConfigSnapshot `json:"redaction_config,omitempty"`
 }
 
 // RedactionSummary contains summary statistics about redactions performed
 type RedactionSummary struct {
-	// TotalRedactions is the total number of redactions performed
+	// TotalRedactions is the number of entries in content_redactions and metadata_redactions.
 	TotalRedactions int `json:"total_redactions"`
 
 	// DataTypes is a list of data types that were redacted
 	DataTypes []string `json:"data_types"`
 
-	// Strategy is the redaction strategy used
+	// Strategy is the strategy the run asked the redactors for, by name ("simple",
+	// "format_preserving", "synthetic"). It used to be left unset, which serialised as 0.
 	Strategy RedactionStrategy `json:"strategy"`
 
-	// ProcessingTime is the time taken to perform redaction
-	ProcessingTime time.Duration `json:"processing_time"`
+	// ProcessingTimeMs is how long the redactor took on this document, in milliseconds. It replaces
+	// processing_time, a unit-less duration that nothing set and so always read 0.
+	ProcessingTimeMs float64 `json:"processing_time_ms"`
 
-	// SuccessfulRedactions is the number of successful redactions
+	// SuccessfulRedactions equals TotalRedactions: an entry is recorded only for a document whose
+	// redacted copy was written and verified to hold none of its reported values.
 	SuccessfulRedactions int `json:"successful_redactions"`
 
-	// FailedRedactions is the number of failed redactions
+	// FailedRedactions is 0 by construction, for the same reason. A document that could not be
+	// redacted has no audit entry; the run reports it as not redacted instead.
 	FailedRedactions int `json:"failed_redactions"`
 }
 
@@ -120,11 +123,23 @@ type ContentRedaction struct {
 	// RedactedText is the replacement text (for audit purposes)
 	RedactedText string `json:"redacted_text"`
 
-	// Strategy is the redaction strategy used
+	// Strategy is the redaction strategy used, by name
 	Strategy RedactionStrategy `json:"strategy"`
 
-	// Confidence is the confidence level of the detection
+	// Confidence is the detection confidence of the finding, on 0-1: the report's confidence / 100.
+	//
+	// For a text-family file (plaintext, and SVG and RTF, which delegate to it) this used to be the
+	// position correlator's placement score instead (0.95 / 100 = 0.0095 for every exact match,
+	// whatever the finding scored). That score is now Placement.Score.
 	Confidence float64 `json:"confidence"`
+
+	// Line is the 1-based line of the finding, as in the report's line_number. Absent when the
+	// redactor records no position (audio, video and legacy Office do not, yet).
+	Line int `json:"line,omitempty"`
+
+	// Placement says how a text-family redactor located the value it rewrote. Absent for every other
+	// redactor, which locates a value by searching for it.
+	Placement *Placement `json:"placement,omitempty"`
 
 	// MemberTypes names, one entry per finding and sorted, every finding this one write covered when
 	// it redacted an overlap group: findings on one line whose values shared bytes, written once over
@@ -133,6 +148,15 @@ type ContentRedaction struct {
 
 	// Timestamp is when this redaction was performed
 	Timestamp time.Time `json:"timestamp"`
+}
+
+// Placement records how the text-family redactor located a value: Method is its position_method
+// ("position_correlation" when the correlator placed it, "simple_text_search" when it fell back to
+// searching) and Score is the 0-1 placement score the redactor computed, already reduced when the
+// position had to be corrected. It is the only record of a fuzzy or relocated match (#519).
+type Placement struct {
+	Method string   `json:"method"`
+	Score  *float64 `json:"score,omitempty"`
 }
 
 // MetadataRedaction represents audit information for a metadata redaction operation
@@ -154,21 +178,6 @@ type MetadataRedaction struct {
 
 	// Timestamp is when this redaction was performed
 	Timestamp time.Time `json:"timestamp"`
-}
-
-// RedactionConfigSnapshot contains a snapshot of the redaction configuration
-type RedactionConfigSnapshot struct {
-	// DefaultStrategy is the default redaction strategy used
-	DefaultStrategy string `json:"default_strategy"`
-
-	// DocumentTypeSettings contains the document type settings used
-	DocumentTypeSettings map[string]interface{} `json:"document_type_settings"`
-
-	// DataTypeSettings contains the data type settings used
-	DataTypeSettings map[string]interface{} `json:"data_type_settings"`
-
-	// PositionCorrelationSettings contains the position correlation settings
-	PositionCorrelationSettings map[string]interface{} `json:"position_correlation_settings"`
 }
 
 // NewRedactionAuditLog creates a new RedactionAuditLog
@@ -230,6 +239,22 @@ func (ri *RedactionAuditLog) AddMetadataRedaction(redaction MetadataRedaction) {
 	// Update summary statistics
 	ri.RedactionSummary.TotalRedactions++
 	ri.RedactionSummary.SuccessfulRedactions++
+	if !containsString(ri.RedactionSummary.DataTypes, metadataDataType) {
+		ri.RedactionSummary.DataTypes = append(ri.RedactionSummary.DataTypes, metadataDataType)
+	}
+}
+
+// metadataDataType is the data type a metadata removal counts under in the summary's data_types,
+// as it did when removals were recorded as content redactions.
+const metadataDataType = "IMAGE_METADATA"
+
+func containsString(list []string, s string) bool {
+	for _, have := range list {
+		if have == s {
+			return true
+		}
+	}
+	return false
 }
 
 // SetRedactionSummary sets the redaction summary information
@@ -245,11 +270,6 @@ func (ri *RedactionAuditLog) SetOriginalFileHash(hash string) {
 // SetRedactedFileHash sets the verification hash for the redacted document
 func (ri *RedactionAuditLog) SetRedactedFileHash(hash string) {
 	ri.RedactedFileHash = hash
-}
-
-// SetRedactionConfig sets the redaction configuration snapshot
-func (ri *RedactionAuditLog) SetRedactionConfig(config *RedactionConfigSnapshot) {
-	ri.RedactionConfig = config
 }
 
 // generateRedactionID generates a unique ID for a redaction
@@ -309,6 +329,10 @@ func (ri *RedactionAuditLog) Validate() error {
 		return fmt.Errorf("redaction_timestamp cannot be zero")
 	}
 
+	if !ri.RedactionSummary.Strategy.Valid() {
+		return fmt.Errorf("redaction_summary.strategy %d is not a redaction strategy", int(ri.RedactionSummary.Strategy))
+	}
+
 	// Validate content redactions
 	for i, redaction := range ri.ContentRedactions {
 		if redaction.ID == "" {
@@ -319,6 +343,9 @@ func (ri *RedactionAuditLog) Validate() error {
 		}
 		if redaction.Confidence < 0 || redaction.Confidence > 1 {
 			return fmt.Errorf("content_redactions[%d].confidence must be between 0 and 1", i)
+		}
+		if !redaction.Strategy.Valid() {
+			return fmt.Errorf("content_redactions[%d].strategy %d is not a redaction strategy", i, int(redaction.Strategy))
 		}
 	}
 
