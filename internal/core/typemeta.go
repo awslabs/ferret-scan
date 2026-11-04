@@ -267,6 +267,7 @@ var knownDetectionTypes = []string{
 	"AWS_SECRET_ACCESS_KEY", // generic SARIF copy today
 	"AZURE_RESOURCE_ID",     // generic SARIF copy today
 	"BUSINESS",              // generic SARIF copy today
+	"CHI_NUMBER",            // MEDICAL_ID sub-type (#859)
 	"CREDIT_CARD",
 	"DATE_OF_BIRTH", // generic SARIF copy today
 	"DEA_NUMBER",    // generic SARIF copy today
@@ -296,6 +297,7 @@ var knownDetectionTypes = []string{
 	"MASTERCARD",   // generic SARIF copy today
 	"MEDICARE_MBI", // generic SARIF copy today
 	"MRN",          // generic SARIF copy today
+	"NHS_NUMBER",   // MEDICAL_ID sub-type (#859)
 	"NPI",          // generic SARIF copy today
 	"OCI_OCID",     // generic SARIF copy today
 	"OTPAUTH_URI",  // generic SARIF copy today

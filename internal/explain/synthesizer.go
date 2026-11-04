@@ -256,6 +256,8 @@ var typeDisplays = map[string]typeDisplay{
 	"VIN":                 {"VIN", "a"},  // said as a word, "vin"
 	"IBAN":                {"IBAN", "an"},
 	"MRN":                 {"MRN", "an"},           // em-ar-en
+	"NHS_NUMBER":          {"NHS number", "an"},    // en-aitch-ess
+	"CHI_NUMBER":          {"CHI number", "a"},     // said "kye"
 	"NPI":                 {"NPI", "an"},           // en-pee-eye
 	"GPS":                 {"GPS coordinate", "a"}, // jee-pee-ess
 	"IP_ADDRESS":          {"IP address", "an"},    // eye-pee

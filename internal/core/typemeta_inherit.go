@@ -151,10 +151,12 @@ var typeParent = map[string]string{
 	"SWIFT_BIC":       "BANK_ACCOUNT",
 	"US_BANK_ACCOUNT": "BANK_ACCOUNT",
 
+	"CHI_NUMBER":          "MEDICAL_ID",
 	"DEA_NUMBER":          "MEDICAL_ID",
 	"INSURANCE_MEMBER_ID": "MEDICAL_ID",
 	"MEDICARE_MBI":        "MEDICAL_ID",
 	"MRN":                 "MEDICAL_ID",
+	"NHS_NUMBER":          "MEDICAL_ID",
 	"NPI":                 "MEDICAL_ID",
 
 	"PO_BOX":              "PHYSICAL_ADDRESS",
