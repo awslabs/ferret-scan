@@ -52,7 +52,7 @@ Detection → Filename Normalization → Suppression Check → Confidence Filter
 version: "1.0"
 rules:
   - id: SUP-00000001
-    hash: d7cba2ce6b8361659c919a5dffc28886cb490a9e8f63aa04437207b701297282
+    hash: d7cba2ce6b8361659c919a5dffc28886cb490a9e8f63aa04437207b701297282 # pragma: allowlist secret
     reason: "False positive - test data"
     enabled: true
     created_by: "web-ui"
@@ -63,9 +63,54 @@ rules:
       filename: "test-file.txt"
       line_number: "5"
       confidence: "85.00"
-      context_hash: "a1b2c3d4e5f6g7h8"
-      match_text_hash: "h8g7f6e5d4c3b2a1"
+      ticket: "SEC-1234"   # free-form: any key that is not a rule key
 ```
+
+### Keys
+
+The file has two top-level keys, `version` and `rules`. A rule has these eleven keys and no others:
+
+| key | meaning |
+|---|---|
+| `id` | the rule's name, `SUP-` and eight digits; the web UI edits, disables and removes rules by it, so it must be unique |
+| `hash` | the finding identity the rule matches: 64 lower-case hexadecimal digits, compared exactly |
+| `reason` | why the finding is accepted |
+| `enabled` | `true` to suppress; generated rules start `false` |
+| `created_by`, `created_at` | who and when |
+| `last_seen_at` | refreshed by `--generate-suppressions` each time the finding is seen again |
+| `expires_at` | optional; after it the rule is skipped and the run warns that its findings are reported |
+| `reviewed_by`, `reviewed_at` | optional review record |
+| `metadata` | free-form string annotations, never interpreted |
+
+### Rule Validation
+
+A rule's keys constrain a suppressor, so the loader does not ignore one it does not know (#866). It
+reads the file strictly and names every problem on stderr, with its line, whatever `--quiet` or
+pre-commit mode say:
+
+| in the file | effect |
+|---|---|
+| a rule key this version does not recognise (`expries_at`, `enabeld`, `pattern`, …) | the rule is **not applied** |
+| a `metadata` key that reuses a rule key's name (`metadata.expires_at`) | the rule is **not applied** |
+| `version` other than `"1.0"` (a missing version is accepted) | **no rule** is applied |
+| a top-level key other than `version` and `rules` | named and ignored; with no `rules:` key the file loads 0 rules |
+| a missing, non-hex or upper-case `hash` | named; the rule loads but can never match |
+| an `id` two rules share | named; both rules apply |
+| a YAML syntax error | the whole file is treated as empty, as before |
+
+A rule that is not applied stays in the file and in the web UI's list; its finding is reported until
+the key is fixed. Refusing is deliberate: an ignored misspelling of `expires_at` used to turn a lapsed
+rule into a permanent one, so a warning alone would have left the finding hidden. To keep a custom
+note on a rule, put it under `metadata:` with a name that is not a rule key. The check is also
+available as `suppressions.CheckSuppressionFile` for code that wants the verdict without loading.
+
+### Saving
+
+Every writer (`--generate-suppressions` and every web UI action) saves by patching the file it loaded:
+a field is rewritten only when its value changed, new rules are appended, and a removed rule takes its
+own lines with it. Comments, key order, unknown keys and untouched rules are kept byte for byte, so
+regenerating a committed baseline changes only `last_seen_at` lines and appends the new rules. A file
+that did not exist, or could not be parsed, is written fresh.
 
 ## Web UI Integration
 
@@ -139,8 +184,10 @@ rules:
 
 ### Access Control
 - **File Permissions**: Configuration directory restricted to user access only
-- **Rule Validation**: Suppression rules validated before application
-- **Expiration Enforcement**: Expired rules automatically ignored
+- **Rule Validation**: a rule with a key the loader does not recognise, or a file of another version,
+  is not applied and is named on stderr (see [Rule Validation](#rule-validation))
+- **Expiration Enforcement**: an expired rule is skipped, and the run warns how many findings it left
+  in the report
 
 ## Troubleshooting
 
@@ -199,5 +246,6 @@ Generated rules **do not expire** by default; they last until removed or disable
 Rules previously expired one week after generation unconditionally, which made a committed baseline
 inert a week later without any indication — `IsSuppressed` skips an expired rule silently. A run in
 which an expired rule would otherwise have matched now warns, with the count and the oldest expiry
-date (#696).
+date (#696). The count is of findings: one finding is counted once however many times it is matched
+(redaction and the report both ask), and not at all when another, live rule still suppresses it (#866).
 
