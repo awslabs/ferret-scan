@@ -931,9 +931,15 @@ func (ws *WebServer) runFullCLIScan(ctx context.Context, filePath, originalFilen
 	// Rewrite each match's filename to the original upload name so hashes
 	// computed against the upload identity (rather than the temp path) match
 	// any existing suppression rules.
-	safeFilename := ws.sanitizeFilenameForDisplay(originalFilename)
+	//
+	// The RAW name, not sanitizeFilenameForDisplay's copy. The hash folds in the file's basename, and
+	// the display copy strips < > " ' & and control characters, so a file named q&a.txt was hashed as
+	// qa.txt: a rule the CLI generated for it suppressed 0 of 2 findings here, and a rule created here
+	// suppressed 0 of 2 on the CLI (#866). Stripping is for display, and the browser already escapes
+	// every filename it renders (escapeHtml / escapeAttr in app.js), so the raw name is what the
+	// matches carry; the diagnostics above keep the display copy.
 	for i := range result.Matches {
-		result.Matches[i].Filename = safeFilename
+		result.Matches[i].Filename = originalFilename
 		// Metadata carries paths too, and renaming only Filename left them behind: a .docx
 		// whose finding came from its properties shipped
 		// metadata.original_file = "/var/folders/…/T/ferret_upload_…docx" straight to the
@@ -1289,11 +1295,11 @@ type suppressionRequest struct {
 	IDs         []string         `json:"ids"`
 	Findings    []map[string]any `json:"findings"`
 	FindingData map[string]any   `json:"finding_data"`
-	// ExpiresAt is the new expiration for bulk-update-expiration. A pointer
-	// lets JSON `null` clear the field (making the rule permanent); an
-	// omitted key leaves the pointer nil too, which the handler treats the
-	// same way. An ISO-8601 string becomes a concrete time.
-	ExpiresAt *string `json:"expires_at,omitempty"`
+	// ExpiresAt is absent, null or an RFC 3339 time, and each endpoint says what absent means: edit
+	// keeps the rule's expiry, create and bulk-update-expiration give none.
+	ExpiresAt optionalTime `json:"expires_at"`
+	// Rules are whole rules to put back, for the undo of a delete (bulk-create).
+	Rules []restoredRule `json:"rules"`
 }
 
 // suppressionEndpoint wraps a handler with shared boilerplate: method
@@ -1335,6 +1341,11 @@ func (ws *WebServer) suppressionEndpoint(method string, decode bool,
 
 		payload, err := fn(req, mgr)
 		if err != nil {
+			var se *statusError
+			if errors.As(err, &se) {
+				ws.sendErrorWithStatus(w, se.msg, se.status)
+				return
+			}
 			ws.sendError(w, err.Error())
 			return
 		}
@@ -1362,9 +1373,16 @@ func (ws *WebServer) handleSuppressions(w http.ResponseWriter, r *http.Request) 
 }
 
 // handleSuppressionsCreate creates a new suppression rule (POST /suppressions/create).
+//
+// expires_at is honoured: absent or null means the rule does not expire, an RFC 3339 time sets the
+// expiry, anything else is a 400. It used to be ignored, so the add dialog's one-week default — which
+// #696 had removed everywhere else — reached the request and was dropped on the floor.
 func (ws *WebServer) handleSuppressionsCreate(w http.ResponseWriter, r *http.Request) {
 	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
-		if err := mgr.CreateSuppressionFromFinding(req.Hash, req.Reason, req.FindingData); err != nil {
+		if req.ExpiresAt.Err != nil {
+			return nil, badRequest(req.ExpiresAt.Err)
+		}
+		if err := mgr.CreateSuppressionFromFindingWithExpiration(req.Hash, req.Reason, req.FindingData, req.ExpiresAt.Value); err != nil {
 			return nil, fmt.Errorf("Failed to create suppression rule: %v", err)
 		}
 		return successMessage("Suppression rule created successfully"), nil
@@ -1372,9 +1390,27 @@ func (ws *WebServer) handleSuppressionsCreate(w http.ResponseWriter, r *http.Req
 }
 
 // handleSuppressionsEdit edits an existing suppression rule (POST /suppressions/edit).
+//
+// expires_at is three-way: absent keeps the rule's expiry, null clears it, an RFC 3339 time sets it,
+// and anything else is a 400 that leaves the file untouched. The handler used to pass nil whatever the
+// request said, so every edit — including one that only changed the reason, and the undo of an edit —
+// made the rule permanent (#866).
 func (ws *WebServer) handleSuppressionsEdit(w http.ResponseWriter, r *http.Request) {
 	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
-		if err := mgr.EditSuppression(req.ID, req.Reason, req.CreatedBy, req.Enabled, nil); err != nil {
+		if req.ExpiresAt.Err != nil {
+			return nil, badRequest(req.ExpiresAt.Err)
+		}
+		if err := requireUniqueIDs(mgr, req.ID); err != nil {
+			return nil, err
+		}
+		var expiry *time.Time
+		if existing, ok := ruleWithID(mgr, req.ID); ok {
+			expiry = existing.ExpiresAt
+		}
+		if req.ExpiresAt.Set {
+			expiry = req.ExpiresAt.Value
+		}
+		if err := mgr.EditSuppression(req.ID, req.Reason, req.CreatedBy, req.Enabled, expiry); err != nil {
 			return nil, fmt.Errorf("Failed to edit suppression rule: %v", err)
 		}
 		return successMessage("Suppression rule updated successfully"), nil
@@ -1384,6 +1420,9 @@ func (ws *WebServer) handleSuppressionsEdit(w http.ResponseWriter, r *http.Reque
 // handleSuppressionsRemove removes a suppression rule (POST /suppressions/remove).
 func (ws *WebServer) handleSuppressionsRemove(w http.ResponseWriter, r *http.Request) {
 	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		if err := requireUniqueIDs(mgr, req.ID); err != nil {
+			return nil, err
+		}
 		if err := mgr.RemoveSuppression(req.ID); err != nil {
 			return nil, fmt.Errorf("Failed to remove suppression rule: %v", err)
 		}
@@ -1394,6 +1433,9 @@ func (ws *WebServer) handleSuppressionsRemove(w http.ResponseWriter, r *http.Req
 // handleSuppressionsEnable enables a suppression rule (POST /suppressions/enable).
 func (ws *WebServer) handleSuppressionsEnable(w http.ResponseWriter, r *http.Request) {
 	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		if err := requireUniqueIDs(mgr, req.ID); err != nil {
+			return nil, err
+		}
 		// Look up the existing rule so we preserve its reason/createdBy/expiry
 		// when flipping enabled→true.
 		for _, rule := range mgr.ListSuppressions() {
@@ -1411,6 +1453,9 @@ func (ws *WebServer) handleSuppressionsEnable(w http.ResponseWriter, r *http.Req
 // handleSuppressionsDisable disables a suppression rule (POST /suppressions/disable).
 func (ws *WebServer) handleSuppressionsDisable(w http.ResponseWriter, r *http.Request) {
 	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		if err := requireUniqueIDs(mgr, req.ID); err != nil {
+			return nil, err
+		}
 		if err := mgr.DisableSuppressionByID(req.ID); err != nil {
 			return nil, fmt.Errorf("Failed to disable suppression rule: %v", err)
 		}
@@ -1421,6 +1466,9 @@ func (ws *WebServer) handleSuppressionsDisable(w http.ResponseWriter, r *http.Re
 // handleSuppressionsBulkEnable enables multiple suppression rules (POST /suppressions/bulk-enable).
 func (ws *WebServer) handleSuppressionsBulkEnable(w http.ResponseWriter, r *http.Request) {
 	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		if err := requireUniqueIDs(mgr, req.IDs...); err != nil {
+			return nil, err
+		}
 		rules := mgr.ListSuppressions()
 		for _, id := range req.IDs {
 			for _, rule := range rules {
@@ -1439,6 +1487,9 @@ func (ws *WebServer) handleSuppressionsBulkEnable(w http.ResponseWriter, r *http
 // handleSuppressionsBulkDisable disables multiple suppression rules (POST /suppressions/bulk-disable).
 func (ws *WebServer) handleSuppressionsBulkDisable(w http.ResponseWriter, r *http.Request) {
 	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		if err := requireUniqueIDs(mgr, req.IDs...); err != nil {
+			return nil, err
+		}
 		for _, id := range req.IDs {
 			if err := mgr.DisableSuppressionByID(id); err != nil {
 				return nil, fmt.Errorf("Failed to disable suppression rule %s: %v", id, err)
@@ -1451,6 +1502,9 @@ func (ws *WebServer) handleSuppressionsBulkDisable(w http.ResponseWriter, r *htt
 // handleSuppressionsBulkDelete deletes multiple suppression rules (POST /suppressions/bulk-delete).
 func (ws *WebServer) handleSuppressionsBulkDelete(w http.ResponseWriter, r *http.Request) {
 	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		if err := requireUniqueIDs(mgr, req.IDs...); err != nil {
+			return nil, err
+		}
 		for _, id := range req.IDs {
 			if err := mgr.RemoveSuppression(id); err != nil {
 				return nil, fmt.Errorf("Failed to delete suppression rule %s: %v", id, err)
@@ -1478,15 +1532,15 @@ func (ws *WebServer) handleSuppressionsBulkUpdateExpiration(w http.ResponseWrite
 		if len(req.IDs) == 0 {
 			return nil, fmt.Errorf("no suppression IDs supplied")
 		}
-
-		var newExpiry *time.Time
-		if req.ExpiresAt != nil && *req.ExpiresAt != "" {
-			t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
-			if err != nil {
-				return nil, fmt.Errorf("invalid expires_at: %v (expected RFC3339)", err)
-			}
-			newExpiry = &t
+		if req.ExpiresAt.Err != nil {
+			return nil, badRequest(req.ExpiresAt.Err)
 		}
+		if err := requireUniqueIDs(mgr, req.IDs...); err != nil {
+			return nil, err
+		}
+
+		// Omitted and null both mean permanent here: that is this endpoint's documented contract.
+		newExpiry := req.ExpiresAt.Value
 
 		// Build a quick lookup so we preserve each rule's current fields.
 		// ListSuppressions is cheap (already in memory) so one pass is fine
@@ -1511,15 +1565,45 @@ func (ws *WebServer) handleSuppressionsBulkUpdateExpiration(w http.ResponseWrite
 }
 
 // handleSuppressionsBulkCreate creates multiple suppression rules (POST /suppressions/bulk-create).
-// Failures on individual findings are skipped silently so the bulk import
-// is forgiving — that matches the prior behavior.
+//
+// Two bodies: {"rules": [...]} puts back whole rules (the undo of a delete, which must restore the
+// rule as it was, not a new one), and {"findings": [...]} creates rules from findings. Either way the
+// response counts what happened — {created, failed} — and success is false when nothing of a non-empty
+// request was created. Failures used to be skipped silently and success reported regardless, so an
+// undo-delete restored 0 rules while the UI said it had restored them (#866).
 func (ws *WebServer) handleSuppressionsBulkCreate(w http.ResponseWriter, r *http.Request) {
 	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		requested := len(req.Rules) + len(req.Findings)
+		created := 0
+		failed := []string{}
+
+		if len(req.Rules) > 0 {
+			items := make([]suppressions.RuleRestore, len(req.Rules))
+			for i, rr := range req.Rules {
+				items[i] = suppressions.RuleRestore{Rule: rr.SuppressionRule, Position: -1}
+				if rr.Position != nil {
+					items[i].Position = *rr.Position
+				}
+			}
+			restored, refused, err := mgr.RestoreSuppressions(items)
+			if err != nil {
+				return nil, fmt.Errorf("Failed to restore suppression rules: %v", err)
+			}
+			created += restored
+			failed = append(failed, refused...)
+		}
 		for _, finding := range req.Findings {
 			hash, _ := finding["hash"].(string)
-			_ = mgr.CreateSuppressionFromFinding(hash, req.Reason, finding)
+			if err := mgr.CreateSuppressionFromFinding(hash, req.Reason, finding); err != nil {
+				failed = append(failed, err.Error())
+				continue
+			}
+			created++
 		}
-		return successMessage("Suppression rules created successfully"), nil
+
+		success := created > 0 || requested == 0
+		message := fmt.Sprintf("Created %d of %d suppression rule(s)", created, requested)
+		return map[string]any{"success": success, "message": message, "created": created, "failed": failed}, nil
 	})(w, r)
 }
 

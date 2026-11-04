@@ -1278,7 +1278,14 @@ function displaySuppressions(rules) {
                 }
             }
 
-            const statusBadge = isExpired ?
+            // A rule the loader refused (a key it does not recognise, a metadata key named like a
+            // rule key, a file of another version) suppresses nothing whatever `enabled` says; the
+            // server names why in NotApplied (#866).
+            const notApplied = rule.NotApplied || rule.not_applied;
+
+            const statusBadge = notApplied ?
+                `<span title="${escapeAttr(notApplied)}" style="background: #5f6b7a; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">NOT APPLIED</span>` :
+                isExpired ?
                 '<span style="background: #ff9900; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">EXPIRED</span>' :
                 isEnabled ?
                     '<span style="background: #eafaf1; color: #037f0c; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">ENABLED</span>' :
@@ -1331,8 +1338,10 @@ function closeRemoveSuppressionModal() {
 async function confirmRemoveSuppression() {
     const id = document.getElementById('removeSuppressionId').value;
 
-    // Capture rule data before deletion for undo
-    const rule = allSuppressionRules.find(r => (r.ID || r.id) === id);
+    // Capture rule data before deletion for undo: the whole rule, and where it sat in the file
+    // (allSuppressionRules is in file order), so the undo can put it back as it was.
+    const position = allSuppressionRules.findIndex(r => (r.ID || r.id) === id);
+    const rule = allSuppressionRules[position];
     if (!rule) {
         showAlert('Rule not found', 'error');
         return;
@@ -1347,7 +1356,7 @@ async function confirmRemoveSuppression() {
 
         const data = await response.json();
         if (data.success) {
-            trackOperation('delete', { rules: [rule] });
+            trackOperation('delete', { rules: [rule], positions: [position] });
             showAlert('Suppression rule removed successfully', 'success');
             closeRemoveSuppressionModal();
             loadSuppressions();
@@ -1571,6 +1580,10 @@ function showEditSuppressionModal(id) {
     } else {
         document.getElementById('editSuppressionExpiresAt').value = '';
     }
+    // Remembered so the submit can tell an untouched date from a changed one. The input holds
+    // minutes only, so re-sending an untouched value would move the expiry by up to a minute.
+    const expiresInput = document.getElementById('editSuppressionExpiresAt');
+    expiresInput.dataset.initial = expiresInput.value;
 
     document.getElementById('editSuppressionModal').classList.remove('hidden');
 }
@@ -1587,16 +1600,27 @@ document.getElementById('editSuppressionForm').addEventListener('submit', async 
     const reason = document.getElementById('editSuppressionReason').value;
     const createdBy = document.getElementById('editSuppressionCreatedBy').value;
     const enabled = document.getElementById('editSuppressionEnabled').value === 'true';
-    const expiresAtValue = document.getElementById('editSuppressionExpiresAt').value;
+    const expiresInput = document.getElementById('editSuppressionExpiresAt');
+    const expiresAtValue = expiresInput.value;
 
-    // Convert datetime-local to ISO string
-    let expiresAt = null;
-    if (expiresAtValue) {
-        try {
-            expiresAt = new Date(expiresAtValue).toISOString();
-        } catch (e) {
-            showAlert('Invalid expiration date format', 'error');
-            return;
+    const body = {
+        id: id,
+        reason: reason,
+        created_by: createdBy,
+        enabled: enabled
+    };
+    // expires_at is sent only when the date was changed: omitted keeps the rule's expiry exactly,
+    // null clears it, an ISO time sets it (#866).
+    if (expiresAtValue !== (expiresInput.dataset.initial || '')) {
+        if (expiresAtValue) {
+            const parsed = new Date(expiresAtValue);
+            if (isNaN(parsed.getTime())) {
+                showAlert('Invalid expiration date format', 'error');
+                return;
+            }
+            body.expires_at = parsed.toISOString();
+        } else {
+            body.expires_at = null;
         }
     }
 
@@ -1611,24 +1635,19 @@ document.getElementById('editSuppressionForm').addEventListener('submit', async 
         const response = await fetch('/suppressions/edit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                id: id,
-                reason: reason,
-                created_by: createdBy,
-                enabled: enabled,
-                expires_at: expiresAt
-            })
+            body: JSON.stringify(body)
         });
 
         const data = await response.json();
         if (data.success) {
-            // Track edit operation for undo
+            // Track edit operation for undo, expiry included: the undo must put it back too.
             trackOperation('edit', {
                 id: id,
                 original: {
                     reason: originalRule.Reason || originalRule.reason,
                     created_by: originalRule.CreatedBy || originalRule.created_by || '',
-                    enabled: originalRule.Enabled !== undefined ? originalRule.Enabled : originalRule.enabled
+                    enabled: originalRule.Enabled !== undefined ? originalRule.Enabled : originalRule.enabled,
+                    expires_at: originalRule.ExpiresAt || originalRule.expires_at || null
                 }
             });
             showAlert('Suppression rule updated successfully', 'success');
@@ -1758,17 +1777,14 @@ document.getElementById('addSuppressionForm').addEventListener('submit', async f
     }
 
     try {
-        // Set default 1-week expiration
-        const oneWeekFromNow = new Date();
-        oneWeekFromNow.setDate(oneWeekFromNow.getDate() + 7);
-
+        // No default expiry: a rule lasts until someone changes it, as on the CLI (#696). The server
+        // now honours expires_at, so the one-week default this used to send would have taken effect.
         const response = await fetch('/suppressions/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 hash: hash,
                 reason: reason,
-                expires_at: oneWeekFromNow.toISOString(),
                 finding_data: {
                     ...finding,
                     text: finding.actualText || finding.text,
@@ -1850,8 +1866,8 @@ function getSuppressionHelpContent() {
                 <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
                     <li><strong>Purpose:</strong> Reduce false positives by suppressing known safe findings</li>
                     <li><strong>Hash-based:</strong> Rules are tied to specific finding signatures</li>
-                    <li><strong>Status:</strong> Rules can be enabled, disabled, or expired</li>
-                    <li><strong>Expiration:</strong> New rules expire in 1 week by default</li>
+                    <li><strong>Status:</strong> Rules can be enabled, disabled, expired, or not applied</li>
+                    <li><strong>Expiration:</strong> New rules do not expire; set a date with Edit to have one lapse</li>
                     <li><strong>Metadata:</strong> Shows file, type, confidence, and line info</li>
                 </ul>
 
@@ -1885,7 +1901,7 @@ function getSuppressionHelpContent() {
                 <h3 style="color: #0972d3; margin: 16px 0 8px 0;">📊 Rule Information</h3>
                 <ul style="margin: 0; padding-left: 16px; font-size: 13px;">
                     <li><strong>ID:</strong> Unique identifier (SUP-00000001, etc.)</li>
-                    <li><strong>Status:</strong> ENABLED (green), DISABLED (red), or EXPIRED (orange)</li>
+                    <li><strong>Status:</strong> ENABLED (green), DISABLED (red), EXPIRED (orange), or NOT APPLIED (grey: the file gives the rule a key this version does not recognise; hover for which)</li>
                     <li><strong>File:</strong> Original filename where finding occurred</li>
                     <li><strong>Type:</strong> Category of sensitive data detected</li>
                     <li><strong>Finding:</strong> Actual detected text (N/A for existing rules - only hashes stored for security)</li>
@@ -2150,8 +2166,15 @@ async function confirmBulkDelete() {
     const checkboxes = document.querySelectorAll('.suppression-checkbox:checked');
     const ids = Array.from(checkboxes).map(cb => cb.value);
 
-    // Capture rule data before deletion for undo
-    const selectedRules = allSuppressionRules.filter(rule => ids.includes(rule.ID || rule.id));
+    // Capture rule data before deletion for undo, with each rule's position in the file
+    const selectedRules = [];
+    const selectedPositions = [];
+    allSuppressionRules.forEach((rule, index) => {
+        if (ids.includes(rule.ID || rule.id)) {
+            selectedRules.push(rule);
+            selectedPositions.push(index);
+        }
+    });
 
     if (selectedRules.length === 0) {
         showAlert('Selected rules not found', 'error');
@@ -2167,7 +2190,7 @@ async function confirmBulkDelete() {
 
         const data = await response.json();
         if (data.success) {
-            trackOperation('delete', { rules: selectedRules });
+            trackOperation('delete', { rules: selectedRules, positions: selectedPositions });
             showAlert(`Successfully deleted ${data.success_count} suppression(s)`, 'success');
             if (data.errors && data.errors.length > 0) {
                 showAlert(`Some errors occurred: ${data.errors.join(', ')}`, 'warning');
@@ -2300,6 +2323,21 @@ function trackOperation(type, data) {
     document.getElementById('undoButton').classList.remove('hidden');
 }
 
+// postUndo sends one undo request and throws unless the server reports success, so an undo that
+// changed nothing is never announced as done.
+async function postUndo(url, body) {
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    const result = await response.json();
+    if (!result.success) {
+        throw new Error(result.error || result.message || `HTTP ${response.status}`);
+    }
+    return result;
+}
+
 async function undoLastOperation() {
     if (!lastOperation) return;
 
@@ -2308,54 +2346,42 @@ async function undoLastOperation() {
     try {
         switch (type) {
             case 'enable':
-                await fetch('/suppressions/bulk-disable', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ids: data.ids })
-                });
+                await postUndo('/suppressions/bulk-disable', { ids: data.ids });
                 showAlert(`Undid enable operation for ${data.ids.length} suppression(s)`, 'success');
                 break;
             case 'disable':
-                await fetch('/suppressions/bulk-enable', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ids: data.ids, reason: 'Undo disable operation' })
-                });
+                await postUndo('/suppressions/bulk-enable', { ids: data.ids, reason: 'Undo disable operation' });
                 showAlert(`Undid disable operation for ${data.ids.length} suppression(s)`, 'success');
                 break;
             case 'create':
-                await fetch('/suppressions/bulk-delete', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ids: data.ids })
-                });
+                await postUndo('/suppressions/bulk-delete', { ids: data.ids });
                 showAlert(`Undid creation of ${data.ids.length} suppression(s)`, 'success');
                 break;
-            case 'delete':
-                await fetch('/suppressions/bulk-create', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        rules: data.rules.map(rule => ({
-                            hash: rule.Hash || rule.hash,
-                            reason: rule.Reason || rule.reason,
-                            enabled: rule.Enabled !== undefined ? rule.Enabled : rule.enabled,
-                            metadata: rule.Metadata || rule.metadata || {}
-                        }))
-                    })
+            case 'delete': {
+                // The whole rule goes back, at the position it held: recreating it from its finding
+                // would give it a new id, new dates and no expiry (#866).
+                const result = await postUndo('/suppressions/bulk-create', {
+                    rules: data.rules.map((rule, i) => ({
+                        ...rule,
+                        position: data.positions ? data.positions[i] : -1
+                    }))
                 });
-                showAlert(`Undid deletion of ${data.rules.length} suppression(s)`, 'success');
+                if (result.failed && result.failed.length > 0) {
+                    showAlert(`Restored ${result.created} of ${data.rules.length} suppression(s): ${result.failed.join(', ')}`, 'warning');
+                } else {
+                    showAlert(`Undid deletion of ${result.created} suppression(s)`, 'success');
+                }
                 break;
+            }
             case 'edit':
-                await fetch('/suppressions/edit', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        id: data.id,
-                        reason: data.original.reason,
-                        created_by: data.original.created_by,
-                        enabled: data.original.enabled
-                    })
+                await postUndo('/suppressions/edit', {
+                    id: data.id,
+                    reason: data.original.reason,
+                    created_by: data.original.created_by,
+                    enabled: data.original.enabled,
+                    // null when the rule had none: the edit endpoint keeps an omitted expiry, so
+                    // the undo has to say what to put back.
+                    expires_at: data.original.expires_at
                 });
                 showAlert('Undid edit operation', 'success');
                 break;
