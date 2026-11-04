@@ -6,12 +6,12 @@ package suppressions
 import (
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -59,6 +59,16 @@ type SuppressionRule struct {
 	ReviewedBy string            `yaml:"reviewed_by,omitempty"`
 	ReviewedAt *time.Time        `yaml:"reviewed_at,omitempty"`
 	Metadata   map[string]string `yaml:"metadata,omitempty"`
+
+	// NotApplied says why the loader refused this rule: it carries a key this version does not
+	// recognise, a metadata key named like a rule key, or sits in a file of another version. Such a
+	// rule is listed and saved back untouched, but never suppresses (#866). Derived on every load and
+	// never written to the file.
+	NotApplied string `yaml:"-" json:"NotApplied,omitempty"`
+
+	// node is this rule's place in the parsed file, so a save rewrites only the fields that changed and
+	// keeps the comments and keys it does not own. Nil for a rule created since the load.
+	node *yaml.Node
 }
 
 // SuppressionConfig represents the suppression configuration file
@@ -85,23 +95,50 @@ type SuppressionManager struct {
 	// which we preserve here. Rebuilt on every load/save under indexMu.
 	rulesByHash map[string][]int
 	indexMu     sync.RWMutex
-	// expiryMu guards the two fields below. Deliberately NOT indexMu: IsSuppressed holds
-	// indexMu.RLock() across its match loop, and noteExpiredSkip is called from inside that loop, so
-	// reusing indexMu would deadlock on the write lock.
+	// expiryMu guards generatedExpirySpec.
 	expiryMu sync.RWMutex
 	// generatedExpirySpec is the lifetime given to newly generated rules; the zero value means none.
 	// A spec rather than a duration so an absolute date is expressible (#696).
 	generatedExpirySpec ExpirySpec
 
-	// expiredSkips counts rules that matched a finding but had expired. Atomic: IsSuppressed runs on
-	// worker goroutines as well as the report path.
-	expiredSkips int64
-	// oldestExpired is the earliest expiry among those skips, for the disclosure.
-	oldestExpired *time.Time
+	// lapsed records the findings a lapsed rule left in the report. It has its own lock, deliberately
+	// not indexMu, because IsSuppressed runs on worker goroutines as well as the report path.
+	lapsed lapsedLedger
+
+	// doc is the file as parsed, which saveConfig patches instead of re-marshalling the struct; nil
+	// when the file did not exist or could not be parsed.
+	doc *yaml.Node
+	// warnings receives the loader's diagnostics.
+	warnings io.Writer
+}
+
+// lapsedLedger records, once per finding, that a rule which would have suppressed it had expired.
+//
+// It is keyed by finding rather than counted per call because IsSuppressed is called more than once
+// for the same finding: under --enable-redaction the worker pool asks before redacting and the report
+// path asks again, so a per-call count printed "4 finding(s)" for 2 (#866). A finding that another,
+// live rule still suppresses is not recorded at all: the disclosure says the findings "are reported".
+type lapsedLedger struct {
+	mu       sync.Mutex
+	findings map[string]struct{}
+	oldest   *time.Time
+}
+
+// ManagerOptions adjusts NewSuppressionManagerWithOptions.
+type ManagerOptions struct {
+	// Warnings receives the loader's diagnostics: a file that cannot be read or parsed, and what the
+	// strict pass names. nil means os.Stderr. io.Discard withholds them, for a caller whose stderr is
+	// a findings document rather than prose.
+	Warnings io.Writer
 }
 
 // NewSuppressionManager creates a new suppression manager
 func NewSuppressionManager(configPath string) *SuppressionManager {
+	return NewSuppressionManagerWithOptions(configPath, ManagerOptions{})
+}
+
+// NewSuppressionManagerWithOptions is NewSuppressionManager with its diagnostics routed by opts.
+func NewSuppressionManagerWithOptions(configPath string, opts ManagerOptions) *SuppressionManager {
 	if configPath == "" {
 		configPath = findDefaultSuppressionFile()
 	}
@@ -109,6 +146,10 @@ func NewSuppressionManager(configPath string) *SuppressionManager {
 	manager := &SuppressionManager{
 		configPath: configPath,
 		enabled:    true,
+		warnings:   opts.Warnings,
+	}
+	if manager.warnings == nil {
+		manager.warnings = os.Stderr
 	}
 
 	manager.loadConfig()
@@ -141,7 +182,7 @@ func (sm *SuppressionManager) loadConfig() {
 		// Distinguish "file does not exist" (silent) from any other error
 		// (which is real and worth surfacing).
 		if !os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr,
+			fmt.Fprintf(sm.warnings,
 				"warning: cannot read suppression file %q: %v — treating as empty\n",
 				sm.configPath, err)
 		}
@@ -152,9 +193,17 @@ func (sm *SuppressionManager) loadConfig() {
 		return
 	}
 
+	// Parsed once into a node tree: the strict pass reads it, and saveConfig patches it so a save
+	// keeps what the struct cannot hold (#866). Decoding the struct from the tree is the same decoder
+	// yaml.Unmarshal runs, so a file loads into exactly the rules it always did.
+	var doc yaml.Node
 	var config SuppressionConfig
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		fmt.Fprintf(os.Stderr,
+	err = yaml.Unmarshal(data, &doc)
+	if err == nil && doc.Kind != 0 {
+		err = doc.Decode(&config)
+	}
+	if err != nil {
+		fmt.Fprintf(sm.warnings,
 			"warning: suppression file %q is malformed (%v) — treating as empty; existing rules will NOT be applied\n",
 			sm.configPath, err)
 		sm.config = &SuppressionConfig{
@@ -163,6 +212,19 @@ func (sm *SuppressionManager) loadConfig() {
 		}
 		return
 	}
+
+	if doc.Kind != 0 {
+		sm.doc = &doc
+		if seq := mappingValue(documentRoot(&doc), "rules"); seq != nil && seq.Kind == yaml.SequenceNode &&
+			len(seq.Content) == len(config.Rules) {
+			for i := range config.Rules {
+				config.Rules[i].node = seq.Content[i]
+			}
+		}
+	}
+	problems := checkDocument(&doc)
+	applyRefusals(&config, problems)
+	writeLoadWarnings(sm.warnings, sm.configPath, problems, len(config.Rules))
 
 	sm.config = &config
 	sm.rebuildHashIndex()
@@ -419,51 +481,62 @@ func (sm *SuppressionManager) IsSuppressed(match detector.Match) (bool, *Suppres
 	// without being regenerated.
 	candidates := sm.findingHashCandidates(match)
 
-	// Fast read-locked path: index is already built.
+	// Lazy build for tests/callers that mutate sm.config.Rules without going through saveConfig.
+	// Built under the write lock and re-checked, since another caller may have built it in between;
+	// matching then runs on ONE path whether or not the index had to be built. It used to run on two,
+	// and the lazy one never counted a lapsed rule (#866).
 	sm.indexMu.RLock()
-	if sm.rulesByHash != nil {
-		for _, findingHash := range candidates {
-			for _, ruleIdx := range sm.rulesByHash[findingHash] {
-				rule := &sm.config.Rules[ruleIdx]
-				if !rule.Enabled {
-					continue
-				}
-				if rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt) {
-					// Record it: this rule matched by hash and would have suppressed the finding.
-					sm.noteExpiredSkip(*rule.ExpiresAt)
-					continue
-				}
-				sm.indexMu.RUnlock()
-				return true, rule
-			}
-		}
+	if sm.rulesByHash == nil {
 		sm.indexMu.RUnlock()
-		return false, nil
+		sm.indexMu.Lock()
+		if sm.rulesByHash == nil {
+			sm.rebuildHashIndexLocked()
+		}
+		sm.indexMu.Unlock()
+		sm.indexMu.RLock()
 	}
+	rule, lapsedAt := sm.matchLocked(candidates)
 	sm.indexMu.RUnlock()
 
-	// Lazy build for tests/callers that mutate sm.config.Rules without
-	// going through saveConfig. Take the write lock and re-check (another
-	// caller may have built it in between).
-	sm.indexMu.Lock()
-	if sm.rulesByHash == nil {
-		sm.rebuildHashIndexLocked()
+	if rule != nil {
+		return true, rule
 	}
+	if lapsedAt != nil {
+		// A rule matched by hash and would have suppressed this finding, but had expired.
+		sm.noteExpiredSkip(lapsedFindingKey(match, candidates[0]), *lapsedAt)
+	}
+	return false, nil
+}
+
+// matchLocked returns the first enabled, applied, unexpired rule matching any candidate hash. When
+// there is none, it returns the earliest expiry among matching rules that had lapsed, or nil. The
+// caller holds indexMu for reading.
+func (sm *SuppressionManager) matchLocked(candidates []string) (*SuppressionRule, *time.Time) {
+	now := time.Now()
+	var lapsedAt *time.Time
 	for _, findingHash := range candidates {
 		for _, ruleIdx := range sm.rulesByHash[findingHash] {
 			rule := &sm.config.Rules[ruleIdx]
-			if !rule.Enabled {
+			if !rule.Enabled || rule.NotApplied != "" {
 				continue
 			}
-			if rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt) {
+			if rule.ExpiresAt != nil && now.After(*rule.ExpiresAt) {
+				if lapsedAt == nil || rule.ExpiresAt.Before(*lapsedAt) {
+					at := *rule.ExpiresAt
+					lapsedAt = &at
+				}
 				continue
 			}
-			sm.indexMu.Unlock()
-			return true, rule
+			return rule, nil
 		}
 	}
-	sm.indexMu.Unlock()
-	return false, nil
+	return nil, lapsedAt
+}
+
+// lapsedFindingKey identifies one finding for the lapsed-rule ledger: its full path, which tells two
+// files with the same basename apart, and its current-formula identity hash.
+func lapsedFindingKey(match detector.Match, identity string) string {
+	return match.Filename + "\x00" + identity
 }
 
 // AddSuppression adds a new suppression rule
@@ -566,7 +639,7 @@ func (sm *SuppressionManager) saveConfig() error {
 		sm.configPath = paths.GetSuppressionsFile()
 	}
 
-	data, err := yaml.Marshal(sm.config)
+	data, err := sm.marshalConfig()
 	if err != nil {
 		return fmt.Errorf("failed to marshal suppression config: %w", err)
 	}
@@ -649,7 +722,7 @@ func (sm *SuppressionManager) GetExpiredRule(match detector.Match) *SuppressionR
 	}
 
 	for _, rule := range sm.config.Rules {
-		if sm.hashMatchesFinding(rule.Hash, match) && rule.Enabled {
+		if sm.hashMatchesFinding(rule.Hash, match) && rule.Enabled && rule.NotApplied == "" {
 			// Check if rule has expired
 			if rule.ExpiresAt != nil && time.Now().After(*rule.ExpiresAt) {
 				return &rule
@@ -1022,8 +1095,8 @@ func (sm *SuppressionManager) generatedExpiry(now time.Time) *time.Time {
 	return sm.generatedExpirySpec.Resolve(now)
 }
 
-// ExpiredSkips reports how many times a rule that WOULD have suppressed a finding was skipped because
-// it had expired, and the oldest such expiry seen.
+// ExpiredSkips reports how many findings are in the report because a rule that WOULD have suppressed
+// them had expired, and the oldest such expiry seen.
 //
 // Counted at the moment of matching rather than by walking the file, because that is the number an
 // operator can act on: "3 findings are in your report that your own rules were meant to suppress" is
@@ -1032,26 +1105,29 @@ func (sm *SuppressionManager) generatedExpiry(now time.Time) *time.Time {
 // This is what was missing when the whole committed baseline lapsed: IsSuppressed skips an expired
 // rule with a bare `continue`, so a baseline could stop working entirely and every run looked normal.
 //
-// Atomic because IsSuppressed is called from the worker pool's redaction filter as well as from the
-// report path, so matching happens on several goroutines at once.
+// Each finding counts once however often it is matched (see lapsedLedger), and only when no live rule
+// suppresses it after all. Safe for concurrent use: the redaction filter matches on worker goroutines.
 func (sm *SuppressionManager) ExpiredSkips() (count int, oldest *time.Time) {
-	n := atomic.LoadInt64(&sm.expiredSkips)
-	sm.expiryMu.RLock()
-	defer sm.expiryMu.RUnlock()
-	if sm.oldestExpired != nil {
-		t := *sm.oldestExpired
+	sm.lapsed.mu.Lock()
+	defer sm.lapsed.mu.Unlock()
+	if sm.lapsed.oldest != nil {
+		t := *sm.lapsed.oldest
 		oldest = &t
 	}
-	return int(n), oldest
+	return len(sm.lapsed.findings), oldest
 }
 
-// noteExpiredSkip records that an otherwise-matching rule was skipped for being expired.
-func (sm *SuppressionManager) noteExpiredSkip(expiredAt time.Time) {
-	atomic.AddInt64(&sm.expiredSkips, 1)
-	sm.expiryMu.Lock()
-	defer sm.expiryMu.Unlock()
-	if sm.oldestExpired == nil || expiredAt.Before(*sm.oldestExpired) {
+// noteExpiredSkip records that the finding identified by findingKey was left unsuppressed because the
+// rule that matched it expired at expiredAt.
+func (sm *SuppressionManager) noteExpiredSkip(findingKey string, expiredAt time.Time) {
+	sm.lapsed.mu.Lock()
+	defer sm.lapsed.mu.Unlock()
+	if sm.lapsed.findings == nil {
+		sm.lapsed.findings = make(map[string]struct{})
+	}
+	sm.lapsed.findings[findingKey] = struct{}{}
+	if sm.lapsed.oldest == nil || expiredAt.Before(*sm.lapsed.oldest) {
 		t := expiredAt
-		sm.oldestExpired = &t
+		sm.lapsed.oldest = &t
 	}
 }

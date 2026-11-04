@@ -1,0 +1,36 @@
+# Team suppression baseline (fixture for preserving_save_test.go).
+#
+# Reviewed by the security team; keep this header.
+
+version: "1.0"
+owner: platform-security
+rules:
+    # Rule 1: test fixture in the docs.
+    - id: SUP-00000001
+      hash: 3858f9245d8beb86bc2d630a227a715cd0f57fc0a61d21644901c91f61346455 # pragma: allowlist secret
+      reason: 'Documented example, not a real value'
+      enabled: true # reviewed 2026-10-01
+      created_at: 2026-10-01T09:00:00Z
+      metadata:
+        filename: README.md
+        finding_type: EMAIL
+        ticket: SEC-1234
+    - id: SUP-00000002
+      hash: 7ddbe3caa5220b4fc9b602c80caae3a11ff69a130de8d02fe48761cc8c7f4178 # pragma: allowlist secret
+      reason: Benchmark payload
+      enabled: true
+      reviewer_note: keep until the benchmark is rewritten
+      created_at: 2026-10-02T09:00:00Z
+      metadata:
+        filename: bench_data.txt
+        finding_type: SSN
+    # Rule 3: generated, still under review.
+    - id: SUP-00000003
+      hash: b8c3199573278d1f2ff7f9f1ee3cbdd9389f661f28ac8e6256e129ac2d45b5c9 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: false
+      created_at: 2026-10-03T09:00:00Z
+      last_seen_at: 2026-10-03T09:00:00Z
+      metadata:
+        filename: notes.txt
+        finding_type: PHONE

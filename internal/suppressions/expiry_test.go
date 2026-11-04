@@ -125,8 +125,9 @@ func TestAnExpiredRuleIsCountedAndDated(t *testing.T) {
 	}
 
 	// A second, older expiry must move the reported date backwards, since that is the one an operator
-	// needs to see ("how long has this been broken").
-	sm.noteExpiredSkip(older)
+	// needs to see ("how long has this been broken"). It is recorded for a DIFFERENT finding: the same
+	// finding seen again is the same finding, and counts once (TestExpiredSkipCountingIsConcurrencySafe).
+	sm.noteExpiredSkip(lapsedFindingKey(expiryTestMatch(), "a second finding"), older)
 	if _, o := sm.ExpiredSkips(); o == nil || !o.Equal(older) {
 		t.Errorf("oldest = %v after seeing an older expiry, want %v", o, older)
 	}
@@ -137,10 +138,11 @@ func TestAnExpiredRuleIsCountedAndDated(t *testing.T) {
 
 // TestExpiredSkipCountingIsConcurrencySafe matters because of where IsSuppressed is called from.
 //
-// The redaction filter runs it on worker goroutines as well as the report path, so the counter is
-// atomic and the date is guarded by its OWN mutex — not indexMu, which IsSuppressed already holds
-// read-locked across the match loop. Reusing indexMu would deadlock on the write lock, which is the
-// kind of thing that shows up as a hung CI job rather than a failure.
+// The redaction filter runs it on worker goroutines as well as the report path, so the ledger has its
+// OWN mutex. And because both of those ask about the SAME finding, it counts findings, not calls: a
+// per-call count printed "4 finding(s)" for 2 findings under --enable-redaction (#866). So 8 × 50
+// calls on one finding count 1, and N distinct findings count N — under -race, where a lost write
+// would show.
 func TestExpiredSkipCountingIsConcurrencySafe(t *testing.T) {
 	sm := managerWithRule(t, nil)
 	expired := time.Now().Add(-time.Hour)
@@ -165,9 +167,38 @@ func TestExpiredSkipCountingIsConcurrencySafe(t *testing.T) {
 	}
 	wg.Wait()
 
-	if n, _ := sm.ExpiredSkips(); n != goroutines*each {
-		t.Errorf("ExpiredSkips = %d, want %d — a lost increment means the counter is racy and the "+
-			"disclosure would under-report", n, goroutines*each)
+	if n, _ := sm.ExpiredSkips(); n != 1 {
+		t.Errorf("ExpiredSkips = %d after %d calls on ONE finding, want 1 — the disclosure says how many "+
+			"findings are reported, and a finding matched twice (redaction, then the report) is one finding",
+			n, goroutines*each)
+	}
+
+	// N distinct findings, each with its own lapsed rule, matched concurrently: N.
+	const distinct = 40
+	many := NewSuppressionManager(filepath.Join(t.TempDir(), "many.yaml"))
+	matches := make([]detector.Match, distinct)
+	for i := range matches {
+		m := expiryTestMatch()
+		m.LineNumber = 100 + i
+		matches[i] = m
+		if err := many.AddSuppression(m, "test", "unit test", &expired); err != nil {
+			t.Fatalf("AddSuppression %d: %v", i, err)
+		}
+	}
+	var wg2 sync.WaitGroup
+	for g := 0; g < goroutines; g++ {
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			for _, m := range matches {
+				many.IsSuppressed(m)
+			}
+		}()
+	}
+	wg2.Wait()
+	if n, _ := many.ExpiredSkips(); n != distinct {
+		t.Errorf("ExpiredSkips = %d for %d distinct findings, want %d — a lost write means the ledger is "+
+			"racy and the disclosure would under-report", n, distinct, distinct)
 	}
 }
 
