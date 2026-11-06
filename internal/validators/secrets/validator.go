@@ -507,9 +507,8 @@ func NewValidator() *Validator {
 		// These are used only for complex patterns that can't be handled with string operations
 		shellCommandPattern: regexp.MustCompile(`\b(echo|print|curl|wget|http)\b`),
 
-		// Pre-compiled regex patterns for performance optimization
-		base64Pattern:     regexp.MustCompile(`["']([A-Za-z0-9+/=\\-_]{20,})["']`), // Default pattern
-		hexPattern:        regexp.MustCompile(`["']([0-9A-Fa-f]{16,})["']`),        // Default pattern
+		// Pre-compiled regex patterns for performance optimization. base64Pattern and
+		// hexPattern are compiled from the charsets below, after this literal.
 		multiSpacePattern: regexp.MustCompile(`\s{2,}`),
 		configPattern:     regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*\s*[=:]\s*["'][^"']*["']`),
 		variablePatterns: []*regexp.Regexp{
@@ -520,10 +519,114 @@ func NewValidator() *Validator {
 	}
 
 	// Initialize patterns using the configured charsets to avoid duplication
-	v.base64Pattern = regexp.MustCompile(`["']([` + regexp.QuoteMeta(v.base64Charset) + `]{20,})["']`)
-	v.hexPattern = regexp.MustCompile(`["']([` + regexp.QuoteMeta(v.hexCharset) + `]{16,})["']`)
+	v.base64Pattern = regexp.MustCompile(`["']([` + regexClassBody(v.base64Charset) + `]{20,})["']`)
+	v.hexPattern = regexp.MustCompile(`["']([` + regexClassBody(v.hexCharset) + `]{16,})["']`)
 
 	return v
+}
+
+// regexClassBody renders a charset as the body of a regex character class that admits exactly the
+// charset's bytes, in any order.
+//
+// regexp.QuoteMeta alone is not that. It escapes `\`, `[`, `]` and `^` but not `-`, which inside a
+// class is the range operator, and the base64 charset ends `\-_`: QuoteMeta made that `\\-_`, the
+// range `\`..`_`, so the class admitted `]` and `^` and not `-` (#881). Every quoted value with a
+// hyphen -- base64url, a JWK member, `sk-ant-...`, a kebab-cased key -- never reached the entropy
+// path, the only path that reports a quoted value no keyword labels. calculateShannonEntropy
+// iterates the same string and always counted `-` as a member, so the two disagreed.
+//
+// The charset string itself is left in its order: the entropy sum runs over it, and keeping the
+// order keeps every entropy value, and so every existing finding, bit for bit as it was.
+func regexClassBody(charset string) string {
+	return strings.ReplaceAll(regexp.QuoteMeta(charset), "-", `\-`)
+}
+
+// uncorroboratedHyphenatedCeiling is the ceiling published for a generic value holding a `-` that
+// nothing on its line corroborates: 55, the M24 cap's own bound, which calculateEnhancedConfidence
+// already applied to it.
+const uncorroboratedHyphenatedCeiling = 55.0
+
+// uncorroboratedHyphenatedCap returns uncorroboratedHyphenatedCeiling for a generic finding that
+// holds a `-`, is not structural and has no positive keyword or joined stem on its line, and 0
+// otherwise.
+//
+// It publishes, for the population #881 newly admits to the entropy path, the cap M24 already
+// applied. M24 holds an unlabelled value at 55 inside this validator, but the cap is not published,
+// so the bridge's document-context adjustment lands on top of it: in a document typed CSV or TSV --
+// a Go test table of `{"a", "b"},` rows is one -- an unlabelled value reports at 75, MEDIUM. With
+// `-` admitted that population is base64url test vectors, RFC 3492 punycode samples and alphabet
+// constants (`...0123456789-_`), which must stay LOW.
+//
+// Only values with a `-`, because only those are new: before #881 no value holding one could reach
+// the entropy path, the one path that emits an M24-capped finding (the others' threshold is 60), so
+// this changes no finding main reports. A hyphen-free value keeps main's behaviour, lift included;
+// publishing M24 for it too would demote findings main reports, which is a change of its own.
+func uncorroboratedHyphenatedCap(secretType, match string, kw lineKeywordState, structural bool) float64 {
+	if secretType != genericSecretType || structural || kw == lineKeywordPresent || !strings.Contains(match, "-") {
+		return 0
+	}
+	return uncorroboratedHyphenatedCeiling
+}
+
+// hyphenatedObjectKey reports whether a quoted string holding a `-` is an object KEY: its closing
+// quote, at end, is followed by optional blanks and a `:` (`"TLS13-EarlyData-Client": "PASS"` in a
+// JSON object, a Python dict or a Go map literal). The entropy path skips these.
+//
+// A key names something; a credential sits in the value. With `-` admitted (#881) hyphenated test
+// and feature names became candidates: measured on the Go distribution, the four new HIGH/MEDIUM
+// findings were all object keys of crypto/tls's BoGo test configuration, such as
+// `"NoCommonSignatureAlgorithms-TLS12-Fallback": "..."`, corroborated by `Signature` or `key` on
+// their line. Only values with a `-`, for the reason uncorroboratedHyphenatedCap gives: no such
+// value was scored before #881, so the skip removes nothing main reports, and a hyphen-free key
+// keeps main's behaviour.
+func hyphenatedObjectKey(line, text string, end int) bool {
+	if !strings.Contains(text, "-") {
+		return false
+	}
+	rest := strings.TrimLeft(line[end:], " \t")
+	return strings.HasPrefix(rest, ":")
+}
+
+// isSubresourceIntegrityDigest reports whether a value is wholly a Subresource Integrity /
+// Content-Security-Policy hash source: `sha1-`, `sha256-`, `sha384-` or `sha512-` followed by
+// standard base64 that decodes to exactly that digest's length (28, 44, 64 or 88 characters, padding
+// included). npm lockfiles write one on every package (`"integrity": "sha512-..."`), nix
+// flake.lock writes `"narHash": "sha256-..."`, and HTML and CSP carry them in `integrity="..."` and
+// `'sha256-...'`.
+//
+// The entropy fallback skips these, and nothing else does. Once `-` is in the class (#881) every
+// such value is a quoted 20+ byte high-entropy string that nothing on its line labels a
+// credential, so each would become a LOW finding; the golden corpus's own lockfile case holds five.
+// VALUE-intrinsic, like isMaskedValue: the line, the key and the file name are never read, so an
+// author cannot relabel a credential to reach the skip, and a value that is anything but a digest
+// of the stated length -- a different length, URL-safe base64, an upper-case algorithm, a prefix
+// glued to more bytes -- is scored as before. The padding bits are not required to be zero, so a
+// synthetic lockfile's random 86 characters and `==` (this package's #765 decoy) count as the
+// digest they imitate. It hides no finding main reported: with `-` out of the class no value of
+// this shape could reach the entropy path at all.
+func isSubresourceIntegrityDigest(value string) bool {
+	alg, b64, ok := strings.Cut(value, "-")
+	if !ok {
+		return false
+	}
+	var n int
+	switch alg {
+	case "sha1":
+		n = 20
+	case "sha256":
+		n = 32
+	case "sha384":
+		n = 48
+	case "sha512":
+		n = 64
+	default:
+		return false
+	}
+	if len(b64) != base64.StdEncoding.EncodedLen(n) {
+		return false
+	}
+	raw, err := base64.StdEncoding.DecodeString(b64)
+	return err == nil && len(raw) == n
 }
 
 // SetObserver sets the observability component
@@ -807,8 +910,18 @@ func (v *Validator) validateContentCtx(ctx stdctx.Context, content string, origi
 			lineResults = v.appendURIUserinfoResults(lineResults, uris, line, lineNum, originalPath, content, contextInsights, lineHasShellVars, envType, isShellScript, govKeyLine)
 		}
 
+		// A temporary access key ID (#881) is scored after every path has reported, so the one
+		// rule covers every path that can type an ASIA window AWS_ACCESS_KEY. The pairing scan
+		// runs at most once per line, and only on a line that has such a finding.
+		pairChecked, paired := false, false
 		for _, r := range lineResults {
 			m := r.match
+			if m.Type == "AWS_ACCESS_KEY" && strings.HasPrefix(m.Text, awsTemporaryKeyPrefix) {
+				if !pairChecked {
+					paired, pairChecked = v.temporaryKeyPaired(line, prevLine, nextLine), true
+				}
+				applyTemporaryAccessKey(&m, paired)
+			}
 			// The merge above RAISES confidence (it keeps the max across paths), so it
 			// runs after every emit site and can undo a cap an emit site applied. That
 			// is not hypothetical: the documented AWS secret
@@ -844,6 +957,9 @@ func (v *Validator) findHighEntropyStrings(line string) []candidate {
 	for _, m := range base64Matches {
 		if len(m) > 3 && m[2] >= 0 {
 			text := line[m[2]:m[3]]
+			if isSubresourceIntegrityDigest(text) || hyphenatedObjectKey(line, text, m[1]) {
+				continue
+			}
 			if v.calculateShannonEntropy(text, v.base64Charset) > v.base64Limit {
 				matches = append(matches, candidate{text: text, start: m[2], end: m[3]})
 			}
@@ -2003,8 +2119,10 @@ var (
 	reAWSSecretKeyName = regexp.MustCompile(`(?i)(?:aws[_-]?)?secret[_-]?access[_-]?key|aws[_-]?secret(?:[_-]?key)?`)
 
 	// reAKIAAnywhere detects a paired access-key ID nearby — the strongest
-	// possible signal that a 40-char token is the matching secret.
-	reAKIAAnywhere = regexp.MustCompile(`\b(?:AKIA|ASIA)[0-9A-Z]{16}\b`)
+	// possible signal that a 40-char token is the matching secret. Derived from
+	// the AWS_ACCESS_KEY row, so it and the detector agree on what an ID is
+	// (#881): `\b(?:AKIA|ASIA)[0-9A-Z]{16}\b`.
+	reAKIAAnywhere = regexp.MustCompile(`\b` + awsAccessKeyRule.alternation() + awsAccessKeyRule.Charset + awsAccessKeyRule.bodyQuantifier() + `\b`)
 )
 
 // containsWordBoundary reports whether keyword appears in text as a whole
@@ -2116,6 +2234,31 @@ func (v *Validator) awsSecretContextOpen(line, prevLine, nextLine string) bool {
 		reAKIAAnywhere.MatchString(nextLine)
 }
 
+// awsSecretShaped is findAWSSecretKeys' judgement of one 40-byte capture of
+// reAWSSecretCandidate, shared with temporaryKeyPaired so that "a secret key
+// is beside this ID" means exactly what the AWS path reports.
+func (v *Validator) awsSecretShaped(candidate string) bool {
+	// The ID half is handled by the AWS_ACCESS_KEY row; don't double-report.
+	if hasAWSAccessKeyPrefix(candidate) {
+		return false
+	}
+	// Placeholder / documentation values ("EXAMPLE", "wJalr..." is
+	// intentionally NOT excluded — it is AWS's canonical doc secret and
+	// the golden fixtures prove users paste it; test-context keywords are
+	// the right suppressor for docs, not a value denylist).
+	if v.isObviousPlaceholder(candidate) {
+		return false
+	}
+	lower := strings.ToLower(candidate)
+	if lower == candidate || strings.ToUpper(candidate) == candidate {
+		// All-lowercase or all-uppercase 40-char runs are usually hashes,
+		// hex blobs, or shouty placeholders, not AWS secrets (which are
+		// base64 of random bytes — mixed case with overwhelming odds).
+		return false
+	}
+	return v.calculateShannonEntropy(candidate, v.base64Charset) > v.base64Limit
+}
+
 // findAWSSecretKeys detects AWS secret access keys on a line. Guards, in
 // order: the context gate above (no gate, no scan — bare 40-char base64 is
 // far too common); a placeholder/test-pattern check; an all-one-case check
@@ -2147,25 +2290,7 @@ func (v *Validator) findAWSSecretKeys(line, prevLine, nextLine string, lineNum i
 		start, end := m[4], m[5] // capture group 2: the 40-char token
 		candidate := line[start:end]
 
-		// The ID half is handled by the AKIA pattern; don't double-report.
-		if strings.HasPrefix(candidate, "AKIA") || strings.HasPrefix(candidate, "ASIA") {
-			continue
-		}
-		// Placeholder / documentation values ("EXAMPLE", "wJalr..." is
-		// intentionally NOT excluded — it is AWS's canonical doc secret and
-		// the golden fixtures prove users paste it; test-context keywords are
-		// the right suppressor for docs, not a value denylist).
-		if v.isObviousPlaceholder(candidate) {
-			continue
-		}
-		lower := strings.ToLower(candidate)
-		if lower == candidate || strings.ToUpper(candidate) == candidate {
-			// All-lowercase or all-uppercase 40-char runs are usually hashes,
-			// hex blobs, or shouty placeholders, not AWS secrets (which are
-			// base64 of random bytes — mixed case with overwhelming odds).
-			continue
-		}
-		if v.calculateShannonEntropy(candidate, v.base64Charset) <= v.base64Limit {
+		if !v.awsSecretShaped(candidate) {
 			continue
 		}
 
@@ -2471,6 +2596,10 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 			lineKw = govKw
 		}
 	}
+	// A joined stem (`apikey`, #881) corroborates like a positive keyword. Computed on the first
+	// candidate that needs it, so a line with no candidate, or one a positive keyword already
+	// corroborates, pays nothing for it.
+	joined := lineKeywordUnknown
 
 	for _, cand := range matches {
 		match := cand.text
@@ -2482,13 +2611,26 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 			continue
 		}
 
+		candKw := lineKw
+		if candKw != lineKeywordPresent {
+			if joined == lineKeywordUnknown {
+				joined = lineKeywordAbsent
+				if lineHasJoinedStem(line) || govKeyLine != "" && lineHasJoinedStem(govKeyLine) {
+					joined = lineKeywordPresent
+				}
+			}
+			if joined == lineKeywordPresent && !pathRootedValue(match) {
+				candKw = lineKeywordPresent
+			}
+		}
+
 		// PERFORMANCE: pass the known line as the nearby-keyword hint so the
 		// confidence calculation does not rescan the whole content per match
 		// (strings.Index over fullContent). For per-line matches the match
 		// always originates from this exact line, so this is behavior-preserving
 		// and additionally avoids the latent first-occurrence bug where a
 		// duplicated token resolves to a different line's context.
-		confidence, checks := v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, content, line, lineKw, contextInsights, isShellScript, envType, cand.structural)
+		confidence, checks := v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, content, line, candKw, contextInsights, isShellScript, envType, cand.structural)
 
 		// Skip matches with 0% confidence - they are false positives
 		if confidence <= 0 {
@@ -2546,6 +2688,9 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 				checks["not_test_data"] = false
 			}
 			if c := cand.ceiling; c > 0 && (ceiling == 0 || c < ceiling) {
+				ceiling = c
+			}
+			if c := uncorroboratedHyphenatedCap(secretType, match, candKw, cand.structural); c > 0 && (ceiling == 0 || c < ceiling) {
 				ceiling = c
 			}
 			if ceiling > 0 {
