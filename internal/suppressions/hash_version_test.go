@@ -4,6 +4,7 @@
 package suppressions
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -104,8 +105,9 @@ func TestLegacyHashRemainsConfidenceBound(t *testing.T) {
 // If new rules were still written with the legacy hash the change would be inert.
 func TestNewRulesAreWrittenWithTheCurrentFormula(t *testing.T) {
 	sm := &SuppressionManager{
-		config:  &SuppressionConfig{Version: "1.0"},
-		enabled: true,
+		configPath: filepath.Join(t.TempDir(), "rules.yaml"),
+		config:     &SuppressionConfig{Version: "1.0"},
+		enabled:    true,
 	}
 	match := testMatch(55)
 
@@ -116,7 +118,7 @@ func TestNewRulesAreWrittenWithTheCurrentFormula(t *testing.T) {
 		t.Fatalf("got %d rules, want 1", len(sm.config.Rules))
 	}
 
-	want := sm.findingHashVersion(match, hashVersionNoConfidence)
+	want := sm.findingHashVersion(match, hashVersionCurrent)
 	if got := sm.config.Rules[0].Hash; got != want {
 		t.Errorf("new rule hash = %s, want the current (confidence-free) formula %s", got, want)
 	}
@@ -127,8 +129,9 @@ func TestNewRulesAreWrittenWithTheCurrentFormula(t *testing.T) {
 // duplicate per finding on every regeneration.
 func TestDuplicateDetectionSpansBothFormulas(t *testing.T) {
 	sm := &SuppressionManager{
-		config:  &SuppressionConfig{Version: "1.0"},
-		enabled: true,
+		configPath: filepath.Join(t.TempDir(), "rules.yaml"),
+		config:     &SuppressionConfig{Version: "1.0"},
+		enabled:    true,
 	}
 	match := testMatch(55)
 
@@ -152,8 +155,10 @@ func TestDuplicateDetectionSpansBothFormulas(t *testing.T) {
 // still suppresses it at 60.
 func TestSuppressionSurvivesAConfidenceShift(t *testing.T) {
 	sm := &SuppressionManager{
-		config:  &SuppressionConfig{Version: "1.0"},
-		enabled: true,
+		// A temp path: with none, the save would go to the user's own default suppression file.
+		configPath: filepath.Join(t.TempDir(), "rules.yaml"),
+		config:     &SuppressionConfig{Version: "1.0"},
+		enabled:    true,
 	}
 
 	if err := sm.AddSuppression(testMatch(55), "reviewed", "tester", nil); err != nil {
