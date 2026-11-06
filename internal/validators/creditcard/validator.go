@@ -64,8 +64,21 @@ const intrinsicValueFloor = 15.0
 //     metadata as it was.
 const bareRunCeiling = 75.0
 
+// testValueCeiling is the highest confidence a value that is itself a test value may reach: a
+// number a processor publishes for its sandbox (published_test_pans.go), a literal on the
+// test-pattern list, or a repeating shape. ValidateContent caps such a value here and publishes
+// the cap under confidenceCeilingKey, because a cap kept local was lifted by the document bridge:
+// measured on main, a repeating-shape Visa capped at 15 was reported at 35 in a CSV row once the
+// bridge's tabular boost (+20) had been applied (#883).
+//
+// Unlike bareRunCeiling this is a property of the value, so it is published whatever the line
+// says. The keyword floor (intrinsicValueFloor) publishes nothing: it is a minimum that the
+// line's author chose, not a bound on the value.
+const testValueCeiling = 15.0
+
 // confidenceCeilingKey is the Match.Metadata key the document bridge reads to apply
-// bareRunCeiling again after its own context adjustment (validators.ConfidenceCeilingKey).
+// bareRunCeiling or testValueCeiling again after its own context adjustment
+// (validators.ConfidenceCeilingKey).
 // The bridge raises confidence AFTER this validator returns, so a cap applied only here is
 // lifted straight back. Measured on main: a bare unknown-vendor run in a CSV data row scored
 // 70 here, below the ceiling, and was reported at 90 HIGH after the bridge's +20. That is why
@@ -90,6 +103,10 @@ type Validator struct {
 
 	// Pre-compiled test patterns for fast rejection
 	testPatterns []*regexp.Regexp
+
+	// publishedTestPANs is publishedTestPANSet (published_test_pans.go). A field rather than a
+	// direct read of the package set so a test can scan the same content with and without it.
+	publishedTestPANs map[string]struct{}
 
 	// Keywords for context analysis
 	positiveKeywords []string
@@ -148,6 +165,8 @@ func NewValidator() *Validator {
 		pattern: `(?:^|[\s\t,;|"'(){}[\]<>=:])(\d{4}[\s\-]\d{4}[\s\-]\d{4}[\s\-]\d{4}|\d{4}[\s\-]\d{6}[\s\-]\d{5}|\d{4}[\s\-]\d{4}[\s\-]\d{4}[\s\-]\d{3}|\d{4}[\s\-]\d{4}[\s\-]\d{4}[\s\-]\d{2}|\d{4}\s\d{4}\s\d{4}\s\d{4}|\d{4}\s\d{6}\s\d{5}|\d{4}\s\d{4}\s\d{4}\s\d{3}|\d{4}\s\d{4}\s\d{4}\s\d{2}|\d{19}|\d{16}|\d{15}|\d{14}|\d{13})(?:[\s\t,;|"'(){}[\]<>=:]|$)`,
 
 		binRanges: initBINRanges(),
+
+		publishedTestPANs: publishedTestPANSet,
 
 		positiveKeywords: []string{
 			"credit", "debit", "card", "visa", "mastercard", "amex", "american express",
@@ -211,12 +230,14 @@ func NewValidator() *Validator {
 	v.softNegativeKeywordRegex = buildKeywordRegex(v.softNegativeKeywords)
 	v.anyNegativeKeywordRegex = buildKeywordRegex(v.negativeKeywords) // hard+soft combined
 
-	// Pre-compile test patterns for fast rejection
+	// Pre-compile test patterns for fast rejection. Each entry must be able to match a Luhn-valid
+	// number: the list is read only after the Luhn check, so an entry that cannot is dead (#883
+	// removed two such literals, 1234567890123456 and 1212121212121212). Processor-published test
+	// numbers do not belong here: they are exact values in published_test_pans.go, which caps them
+	// instead of forcing them to 5.
 	v.testPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`^1234567890123456$`),
 		regexp.MustCompile(`^0{14,16}$|^1{14,16}$|^2{14,16}$|^3{14,16}$|^4{14,16}$|^5{14,16}$|^6{14,16}$|^7{14,16}$|^8{14,16}$|^9{14,16}$`), // All same digit
 		regexp.MustCompile(`^1111222233334444$`),
-		regexp.MustCompile(`^1212121212121212$`), // Simple alternating pattern
 		regexp.MustCompile(`^4111111111111111$`), // Common test Visa
 		regexp.MustCompile(`^5555555555554444$`), // Common test MasterCard
 		regexp.MustCompile(`^4444444444444448$`), // Obvious test pattern
@@ -350,9 +371,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				continue
 			}
 
-			// OPTIMIZATION 2: Note test patterns but don't reject them
-			// They should be detected with very low confidence
-			isTestPattern := v.isKnownTestPattern(cleanMatch)
+			// OPTIMIZATION 2: the test-pattern list is not read here. calculateConfidence reads
+			// it, after the Luhn check below, so a candidate that fails Luhn costs no regex.
 
 			// OPTIMIZATION 3: Luhn check early (before expensive operations)
 			if !v.luhnCheck(cleanMatch) {
@@ -364,13 +384,9 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			vendor := v.detectCardVendor(cleanMatch)
 			// Note: Don't skip unknown vendors for CalculateConfidence compatibility
 
-			// Now do more expensive operations only for valid candidates
+			// Now do more expensive operations only for valid candidates. calculateConfidence
+			// sets not_test=false for a test-pattern literal.
 			confidence, checks := v.calculateConfidence(match, cleanMatch)
-
-			// Override test pattern detection from calculateConfidence
-			if isTestPattern {
-				checks["not_test"] = false
-			}
 
 			// Context analysis. The window slice uses the KNOWN match offset
 			// (matchStart/matchEnd) rather than re-running strings.Index over the
@@ -395,8 +411,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			// CRITICAL: Ensure test patterns and suspicious numbers maintain minimum confidence
 			// This must happen AFTER context analysis to prevent filtering
 			if !checks["not_test"] || !checks["not_repeating"] {
-				if confidence > 15.0 {
-					confidence = 15.0 // Hard cap for test patterns
+				if confidence > testValueCeiling {
+					confidence = testValueCeiling // Hard cap for test patterns
 				}
 				if confidence < 1.0 {
 					confidence = 1.0 // Minimum confidence to ensure detection
@@ -461,6 +477,13 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				confidence = bareRunCeiling
 			}
 
+			// Published test number (#883, published_test_pans.go): capped at testValueCeiling
+			// and marked not_test=false. This is the LAST score step, after the floor, so the
+			// result is exactly min(score, testValueCeiling). It does not go through the
+			// test-pattern clamp above, which would take a value whose negative word floored it
+			// at 15 down to 1.
+			confidence = v.capPublishedTestPAN(cleanMatch, confidence, checks)
+
 			cardType := v.getCreditCardType(cleanMatch)
 			meta := map[string]any{
 				"card_type":         cardType,
@@ -470,7 +493,14 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				"source":            "preprocessed_content",
 				"original_file":     originalPath,
 			}
-			if capEligible {
+			// The bound the bridge must hold the value to after its own adjustment. A value that
+			// is itself a test value (published, on the test-pattern list, or a repeating shape;
+			// capPublishedTestPAN has already set not_test=false for a published one) is held at
+			// testValueCeiling whatever its line says; otherwise a bare run with no card label is
+			// held at bareRunCeiling. The keyword floor publishes nothing (see testValueCeiling).
+			if !checks["not_test"] || !checks["not_repeating"] {
+				meta[confidenceCeilingKey] = testValueCeiling
+			} else if capEligible {
 				meta[confidenceCeilingKey] = bareRunCeiling
 			}
 			matches = append(matches, detector.Match{
@@ -705,11 +735,13 @@ func (v *Validator) hasRepeatingPatterns(number string) bool {
 
 	// Check for excessive consecutive identical digits. The previous threshold of
 	// 8 was too aggressive: a genuine Luhn-valid PAN can legitimately contain a
-	// run of 8-11 identical digits (the canonical Discover test card
-	// 6011111111111117 has eleven consecutive 1s), and tripping this hard-capped
-	// real cards at confidence 15 (LOW). The all-same / alternating / sequential
-	// checks below still reject obvious junk, so we only treat a very long run
-	// (12+) as a repeating pattern here.
+	// run of 8-11 identical digits (4111111111110006 has eleven consecutive 1s),
+	// and tripping this hard-capped real cards at confidence 15 (LOW). The
+	// all-same / alternating / sequential checks below still reject obvious junk,
+	// so we only treat a very long run (12+) as a repeating pattern here. The
+	// published Discover test card 6011111111111117 has THIRTEEN consecutive 1s,
+	// so this rule still caps it; it is also on the published list
+	// (published_test_pans.go), which caps it regardless of shape.
 	consecutiveCount := 1
 	for i := 1; i < len(number); i++ {
 		if number[i] == number[i-1] {
@@ -1002,10 +1034,25 @@ func (v *Validator) isTabularData(line, match string) bool {
 	return false
 }
 
-// CalculateConfidence implements the detector.Validator interface
+// CalculateConfidence implements the detector.Validator interface. A published test number is
+// capped here exactly as ValidateContent caps it, so a caller scoring the value alone agrees
+// with the scan (#883).
 func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool) {
 	cleanMatch := v.cleanCreditCardNumber(match)
-	return v.calculateConfidence(match, cleanMatch)
+	confidence, checks := v.calculateConfidence(match, cleanMatch)
+	return v.capPublishedTestPAN(cleanMatch, confidence, checks), checks
+}
+
+// capPublishedTestPAN applies the published-test-number cap (#883). When cleanMatch, digits
+// only, is on the published list (published_test_pans.go) it sets checks["not_test"] to false
+// and returns min(confidence, testValueCeiling). Any other value's confidence comes back
+// unchanged. A cap and never a drop: the value stays reported, and so stays redacted.
+func (v *Validator) capPublishedTestPAN(cleanMatch string, confidence float64, checks map[string]bool) float64 {
+	if _, listed := v.publishedTestPANs[cleanMatch]; !listed {
+		return confidence
+	}
+	checks["not_test"] = false
+	return min(confidence, testValueCeiling)
 }
 
 // DetectCardVendor implements the existing interface for compatibility
