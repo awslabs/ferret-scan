@@ -17,11 +17,12 @@ It uses pattern matching to identify potential passport numbers and then perform
 The check looks for country-specific patterns and validates them against known passport number formats. It also considers contextual clues to distinguish between actual passport numbers and other similar alphanumeric strings.`,
 
 		Patterns: []string{
-			"US passport: 1 letter followed by 8 digits (e.g., A12345678)",
-			"UK passport: 9 digits (e.g., 123456789)",
-			"Canadian passport: 2 letters followed by 6 digits (e.g., AB123456)",
+			"US passport: 1 letter followed by 8 digits (e.g., C12345678)",
+			"UK passport: 9 digits (e.g., 512345678)",
+			"Canadian passport: 2 letters followed by 6 digits (e.g., GK123456)",
 			"EU passport: 2 letters followed by 7 alphanumeric characters (e.g., DE1234567)",
-			"Machine Readable Zone (MRZ) formats",
+			"Letters in either case; a value with a lowercase letter (gk123456) needs a passport label right before it, its column header or the line above",
+			"Machine Readable Zone (MRZ) formats, uppercase only",
 		},
 
 		SupportedFormats: []string{
@@ -29,9 +30,9 @@ The check looks for country-specific patterns and validates them against known p
 			"UK passport format",
 			"Canadian passport format",
 			"EU passport format",
-			"Generic passport format (6-10 alphanumeric characters)",
 			"Machine Readable Zone (MRZ) format",
 			"MRZ TD3 format",
+			"MRZ TD3 line 2 (check digits verified)",
 		},
 
 		ConfidenceFactors: []help.ConfidenceFactor{

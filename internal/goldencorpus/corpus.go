@@ -1489,6 +1489,35 @@ var Cases = []Case{
 			"corrupted check digit, must not be reported:\n" +
 			"L898902C30GBR7408122M1204159ZE184226B<<<<<10\n",
 	},
+	{
+		Name: "passport_lowercase_placeholder_decoys",
+		Description: "Labelled values the #888 mixed-case pass must refuse, which must stay EMPTY. " +
+			"PASSPORT now reports a passport number written with lowercase letters (gk123456, " +
+			"Gk123456) when a passport label ends right before it. Lines 1-10 are labelled " +
+			"placeholders: each is EU-shaped once a digit follows the word, each passes that label " +
+			"gate, and measured without the placeholder guard lines 1-9 reported at 85 and line 10 " +
+			"at 100. Lines 11-13 put U+212A (Kelvin sign) and U+017F (long s) where an ASCII letter " +
+			"belongs. Go folds both into (?i)[A-Z]: measured with (?i) value patterns and anchors, " +
+			"line 13 reported at 65 with a first two bytes that end mid-rune (lines 11-12 stay out " +
+			"on the ASCII word boundary either way), which is why the patterns spell [A-Za-z]. " +
+			"The positives (every labelled layout, the CSV column, the label above, " +
+			"Title case) and the uppercase controls REDACTED1 and PASSWORD1, still reported at 85, are " +
+			"unit tests in internal/validators/passport, so this case adds no finding to the census.",
+		Checks: []string{"PASSPORT"},
+		Input: "passport_number: redacted1\n" +
+			"Passport Number: password1\n" +
+			"passport: pending12\n" +
+			"passport no: unknown00\n" +
+			"Passport Number: document2\n" +
+			"Passport Number: missing01\n" +
+			"passport_number: tbd123456\n" +
+			"Passport Number: abc123456\n" +
+			"passport_number: sample001\n" +
+			"Passport Number: invalid01\n" +
+			"Passport Number: \u212aA123456\n" +
+			"Passport Number: \u017fA123456\n" +
+			"Passport Number: G\u212a123456\n",
+	},
 }
 
 // FileCase is one file-based corpus entry. Unlike Case (which scans an in-memory

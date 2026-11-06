@@ -270,6 +270,17 @@ var MultiCheckCases = []Case{
 		Redactable: true,
 	},
 	{
+		Name:      "passport_letter_bearing_prose",
+		Origin:    "authored 2026-11 for #888; value verified against the real CLI",
+		Rationale: "A passport number written in a sentence is the same PII as one in a form. The passport-keyword boost used to search for the original-case value in the lower-cased line, so a number containing a letter never earned it, and this sentence was not reported while its 9-digit twin was.",
+		Checks:    []string{"PASSPORT"},
+		Input:     "She showed passport GK123456 at the border.\n",
+		Labels: []Label{
+			{Line: 1, Value: "GK123456", Types: []string{"PASSPORT"}, MinBand: BandMedium},
+		},
+		Redactable: true,
+	},
+	{
 		Name:      "person_prose_byline",
 		Origin:    "authored 2026-08 for scorecorpus; value verified against the real CLI",
 		Rationale: "A named individual in a document byline is personal data.",
