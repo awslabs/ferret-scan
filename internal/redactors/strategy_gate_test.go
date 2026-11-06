@@ -129,18 +129,12 @@ func TestRedactEmbeddedRefusesAnUndeclaredStrategy(t *testing.T) {
 	}
 }
 
-// dispatchBypasses lists the production calls to GetRedactorForFile that do not go through the
-// strategy gate yet, by file and count. internal/parallel/worker_pool.go is outside the paths #863
-// could change; until it calls RedactorFor, the redactors that decline a strategy (audio, video,
-// legacy OLE) refuse it at their own entry point, which the per-package strategy tests pin.
-var dispatchBypasses = map[string]int{
-	"internal/parallel/worker_pool.go": 1,
-}
-
-// TestNoDispatchBypassesTheStrategyGate keeps GetSupportedStrategies enforced: a production call to
+// TestNoDispatchBypassesTheStrategyGate keeps GetSupportedStrategies enforced: a production use of
 // GetRedactorForFile hands a file to a redactor without asking whether it declares the strategy,
 // which is how synthetic was written as a mask at exit 0. Every non-test Go file in the module is
-// parsed; RedactorFor itself is the one sanctioned caller.
+// parsed, and every reference counts -- a call, or the method taken as a value and called later;
+// RedactorFor itself is the one sanctioned user. There is no allowlist: the worker pool, the last
+// production caller, dispatches through RedactorFor since #863.
 func TestNoDispatchBypassesTheStrategyGate(t *testing.T) {
 	root := moduleRoot(t)
 	found := map[string]int{}
@@ -167,11 +161,7 @@ func TestNoDispatchBypassesTheStrategyGate(t *testing.T) {
 		for _, decl := range file.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			ast.Inspect(decl, func(n ast.Node) bool {
-				call, isCall := n.(*ast.CallExpr)
-				if !isCall {
-					return true
-				}
-				sel, isSel := call.Fun.(*ast.SelectorExpr)
+				sel, isSel := n.(*ast.SelectorExpr)
 				if !isSel || sel.Sel.Name != "GetRedactorForFile" {
 					return true
 				}
@@ -189,19 +179,11 @@ func TestNoDispatchBypassesTheStrategyGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	if gate != 1 {
-		t.Fatalf("RedactorFor calls GetRedactorForFile %d times, want 1: the guard is not looking at the gate", gate)
+		t.Fatalf("RedactorFor uses GetRedactorForFile %d times, want 1: the guard is not looking at the gate", gate)
 	}
 	for file, n := range found {
-		if dispatchBypasses[file] != n {
-			t.Errorf("%s calls GetRedactorForFile %d time(s) (allowed: %d). Dispatch through "+
-				"RedactionManager.RedactorFor so the redactor's declared strategies are enforced (#863)",
-				file, n, dispatchBypasses[file])
-		}
-	}
-	for file, n := range dispatchBypasses {
-		if found[file] == 0 {
-			t.Errorf("%s no longer calls GetRedactorForFile (allowed %d); delete its dispatchBypasses entry", file, n)
-		}
+		t.Errorf("%s uses GetRedactorForFile %d time(s). Dispatch through RedactionManager.RedactorFor so "+
+			"the redactor's declared strategies are enforced (#863)", file, n)
 	}
 }
 

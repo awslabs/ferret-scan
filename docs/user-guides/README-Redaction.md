@@ -234,11 +234,13 @@ with no domain, or a random string with no `@`.
 > ZIPs. Redaction overwrites the matched bytes with a replacement of exactly the same
 > byte length, so no stream changes size and every sector offset, chain and length
 > prefix in the container stays valid — nothing has to be recomputed because nothing
-> moves. Two consequences follow. The `synthetic` strategy is **not** offered for
-> these formats, because a generated value's length is unrelated to the original:
-> a legacy file embedded in a `.docx`/`.xlsx`/`.pptx` is refused under `synthetic`,
-> and its container with it, while a top-level `.doc`/`.xls`/`.ppt` is still written
-> with a same-length `*` mask, which keeps nothing of the value. `format_preserving`
+> moves. Two consequences follow. `synthetic` is **refused** for these formats, as for
+> audio and video, because a generated value's length is unrelated to the original: a
+> `.doc`/`.xls`/`.ppt` with findings gets **no output**, the run names it under
+> `redaction incomplete` with the strategies it does take, and `--fail-on-incomplete`
+> makes that exit `3`; one embedded in a `.docx`/`.xlsx`/`.pptx` is refused with its
+> container. A file with nothing to redact is not refused. (Up to v2.5.5 a top-level file
+> was written under `synthetic` with a same-length `*` mask at exit 0.) `format_preserving`
 > writes the same rendering as a `.docx`, and `simple` a same-length `*` mask, because
 > its placeholder does not fit. And detection of body text is approximate
 > (see the Office metadata preprocessor README), so redaction of `.doc` body text is
@@ -436,9 +438,11 @@ the order the documents finished. Abridged from a real run (`--file sample.txt
 | `redaction_summary.processing_time_ms` | how long the redactor took on this document, in milliseconds |
 | `total_redactions`, `successful_redactions` | the number of entries in `content_redactions` plus `metadata_redactions`; always equal |
 | `failed_redactions` | always `0`: a document is logged only after its redacted copy was written and checked to hold none of its reported values. A document that could not be redacted has no entry; the run reports it under `redaction incomplete` instead |
-| `content_redactions[].strategy` | the strategy the redactor was called with, by name |
+| `content_redactions[].redacted_text` | the text written over the value. In an audio or video tag, two findings sharing bytes (an address inside the comment it was found in) are written as one `*` mask of their union, and both entries record that mask. A value found only as UTF-16 in a legacy Office file is recorded at the width written there |
+| `content_redactions[].strategy` | the rendering written, by name: the strategy the redactor was called with, or `mask` where a format rewritten in place (audio, video, legacy Office) wrote a run of `*` instead of a `format_preserving` rendering that keeps part of the value, because that rendering does not fit the value's bytes or the value shared bytes with another finding. `simple` writes such a mask in those formats by design, so its entries say `simple` |
+| `content_redactions[].requested_strategy` | present only beside `mask`: the strategy the run asked for |
 | `content_redactions[].confidence` | the finding's detection confidence on 0–1: the report's `confidence` / 100 |
-| `content_redactions[].line` | the finding's `line_number`; absent where the redactor records no position (audio, video and legacy Office today) |
+| `content_redactions[].line` | the finding's `line_number`; absent when the finding has none |
 | `content_redactions[].placement` | text files only (and SVG and RTF): how the value was located — `method` `position_correlation` or `simple_text_search`, and `score`, the 0–1 placement score, lower for a fuzzy or corrected position |
 | `content_redactions[].target_type`, `target_path` | `parent_document`, or `embedded_media` with the part's name inside the container (`word/media/image1.jpeg`) |
 | `content_redactions[].member_types` | for one write covering an overlapping group of findings, every member's type |
@@ -449,6 +453,11 @@ Up to v2.5.5 this log wrote `ferret_version` as the literal `v1.0.0`; left `stra
 an integer; logged text-file findings at their placement score (`0.0095` for findings the report
 scored 15 to 100) and every image metadata removal as an `IMAGE_METADATA` content redaction at
 `0.01`, with `metadata_redactions` always empty; and dropped the line and the embedded part's name.
+Audio, video and legacy Office entries recorded each value's own rendering under the strategy asked
+for, whatever was written: a `.wav` comment holding an email, reported as the address and as the
+whole field and written as one 28-byte mask, was logged as `j*******@example.com` and
+`c***************@example.com` beside `format_preserving`, neither of which is in the file, and
+none of those entries had a line.
 
 The two hashes let a reviewer confirm the log describes the artifact in front of them rather than
 some other run. **They are never equal for a file the log reports as redacted** — a replacement

@@ -4,6 +4,7 @@
 package tagmeta
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -112,15 +113,16 @@ func TestSameLengthGroupRenderingMasksUnderSimple(t *testing.T) {
 	}
 }
 
-// TestCheckStrategyExplainsTheLengthRule: the refusal names the strategy and why this format
-// cannot take it, and still matches the sentinel.
-func TestCheckStrategyExplainsTheLengthRule(t *testing.T) {
+// TestTheRefusalExplainsTheLengthRule: a redactor giving RefusalReason as its explanation is refused
+// with the strategy and why this format cannot take it, and the refusal still matches the sentinel.
+func TestTheRefusalExplainsTheLengthRule(t *testing.T) {
 	r := declining{}
-	err := CheckStrategy(r, redactors.RedactionSynthetic, []detector.Match{{Text: "x", Type: "SSN"}})
-	if err == nil || !strings.Contains(err.Error(), "own byte length") || !strings.Contains(err.Error(), "synthetic") {
+	err := redactors.CheckStrategy(r, redactors.RedactionSynthetic, []detector.Match{{Text: "x", Type: "SSN"}})
+	if !errors.Is(err, redactors.ErrStrategyNotSupported) || !strings.Contains(err.Error(), "own byte length") ||
+		!strings.Contains(err.Error(), "a synthetic replacement") {
 		t.Fatalf("CheckStrategy = %v", err)
 	}
-	if err := CheckStrategy(r, redactors.RedactionSimple, []detector.Match{{Text: "x", Type: "SSN"}}); err != nil {
+	if err := redactors.CheckStrategy(r, redactors.RedactionSimple, []detector.Match{{Text: "x", Type: "SSN"}}); err != nil {
 		t.Errorf("a declared strategy was refused: %v", err)
 	}
 }
@@ -135,4 +137,7 @@ func (declining) GetSupportedStrategies() []redactors.RedactionStrategy {
 func (declining) GetComponentName() string { return "declining" }
 func (declining) RedactDocument(string, string, []detector.Match, redactors.RedactionStrategy) (*redactors.RedactionResult, error) {
 	return nil, nil
+}
+func (declining) ExplainStrategyRefusal(s redactors.RedactionStrategy) string {
+	return RefusalReason(s)
 }

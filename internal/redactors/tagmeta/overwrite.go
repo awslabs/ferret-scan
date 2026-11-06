@@ -104,8 +104,42 @@ type Occurrence struct {
 // It also reports, per match, how many occurrences of that match were located, so the caller
 // can record a mapping only for values it actually wrote over — never one it merely tried.
 func Plan(orig []byte, regions []Region, matches []detector.Match, strategy redactors.RedactionStrategy) (plan []Occurrence, perMatch []int) {
+	plan, perMatch, _ = PlanWritten(orig, regions, matches, strategy)
+	return plan, perMatch
+}
+
+// Written is what a plan writes over one match, at the match's first located occurrence: the
+// overwrite's text (for a UTF-16 occurrence its text, not its bytes), and whether that text is a
+// mask standing in for the strategy's own rendering of the value (WrittenAsMask).
+//
+// It is what an audit entry records (#865). The entries used to record each match's own rendering
+// under the strategy asked for, whatever was written: two overlapping values in one WAV comment,
+// written as one 28-byte mask, were logged as "j*******@example.com" and
+// "c***************@example.com", neither of which occurs in the file, each beside
+// "format_preserving".
+type Written struct {
+	Text   string
+	Masked bool
+}
+
+// PlanWritten is Plan, together with what it writes over each match (Written; the zero value for a
+// match it did not locate).
+func PlanWritten(orig []byte, regions []Region, matches []detector.Match, strategy redactors.RedactionStrategy) (plan []Occurrence, perMatch []int, written []Written) {
 	var found []Occurrence
 	perMatch = make([]int, len(matches))
+
+	// Each match's first occurrence and the text its own rendering writes there, kept apart from
+	// found, which mergeOccurrences sorts in place.
+	type firstOccurrence struct {
+		start int
+		text  string
+	}
+	firsts := make([]*firstOccurrence, len(matches))
+	note := func(mi, start int, text string) {
+		if f := firsts[mi]; f == nil || start < f.start {
+			firsts[mi] = &firstOccurrence{start: start, text: text}
+		}
+	}
 
 	for mi, m := range matches {
 		if m.Text == "" {
@@ -118,23 +152,22 @@ func Plan(orig []byte, regions []Region, matches []detector.Match, strategy reda
 		// Both UTF-16 byte orders: ID3v2 declares UTF-16LE (with a BOM) or UTF-16BE (0x02,
 		// no BOM) per frame, and a value stored in the order not searched is a value left
 		// behind.
-		wideEncodings := []struct {
-			pat  []byte
-			repl []byte
-		}{}
+		type wideEncoding struct {
+			pat, repl []byte
+			text      string // what repl reads as
+		}
+		var wideEncodings []wideEncoding
 		for _, enc := range []func(string) []byte{UTF16LE, UTF16BE} {
 			pat := enc(m.Text)
 			if len(pat) == 0 {
 				continue
 			}
-			wr := enc(repl)
-			if len(wr) != len(pat) {
-				wr = MaskFor(len(pat), true)
+			we := wideEncoding{pat: pat, repl: enc(repl), text: repl}
+			if len(we.repl) != len(pat) {
+				we.repl = MaskFor(len(pat), true)
+				we.text = strings.Repeat(string(MaskByte), len(pat)/2)
 			}
-			wideEncodings = append(wideEncodings, struct {
-				pat  []byte
-				repl []byte
-			}{pat, wr})
+			wideEncodings = append(wideEncodings, we)
 		}
 
 		for _, rg := range regions {
@@ -152,6 +185,7 @@ func Plan(orig []byte, regions []Region, matches []detector.Match, strategy reda
 						Count: 1,
 					})
 					perMatch[mi]++
+					note(mi, rg.Start+at, repl)
 				}
 			}
 			for _, enc := range wideEncodings {
@@ -164,12 +198,66 @@ func Plan(orig []byte, regions []Region, matches []detector.Match, strategy reda
 						Count: 1,
 					})
 					perMatch[mi]++
+					note(mi, rg.Start+at, enc.text)
 				}
 			}
 		}
 	}
 
-	return mergeOccurrences(found), perMatch
+	plan = mergeOccurrences(found)
+
+	// What was written over each match is its own rendering, unless its first occurrence was merged
+	// with another into one masked span: then it is that span's mask. plan is sorted by Start and
+	// its spans are disjoint, so the span holding an occurrence is the last one starting at or before
+	// it, found by binary search rather than a scan of the plan per match.
+	written = make([]Written, len(matches))
+	for mi, f := range firsts {
+		if f == nil {
+			continue
+		}
+		text := f.text
+		if j := sort.Search(len(plan), func(k int) bool { return plan[k].Start > f.start }) - 1; j >= 0 && plan[j].Count > 1 {
+			text = maskText(plan[j])
+		}
+		written[mi] = Written{Text: text, Masked: WrittenAsMask(matches[mi].Text, matches[mi].Type, text, strategy)}
+	}
+	return plan, perMatch, written
+}
+
+// maskText is the text of a merged span's mask (MaskFor): one '*' per byte, or per UTF-16 code unit
+// when the span is wide.
+func maskText(o Occurrence) string {
+	n := o.End - o.Start
+	if o.Wide && n%2 == 0 {
+		n /= 2
+	}
+	return strings.Repeat(string(MaskByte), n)
+}
+
+// WrittenAsMask reports whether text, written over value in a format rewritten in place at the
+// value's own byte length, is a mask standing in for the strategy's rendering of the value: a run of
+// '*' where format_preserving's rendering keeps part of the value (a card's last four digits, an
+// email's domain), written because that rendering does not fit the value's bytes, or because the
+// value shared bytes with another finding and the two were masked as one. The audit log records
+// such a write as "mask", beside the strategy asked for (#865).
+//
+// Never under simple: in these formats simple's rendering is the mask (SameLengthRendering), merged
+// or not. Nor where format_preserving's own rendering is all '*' (a name's, a secret's): a mask of
+// any width over that value, its UTF-16 width included, keeps exactly what that rendering keeps.
+func WrittenAsMask(value, dataType, text string, strategy redactors.RedactionStrategy) bool {
+	if strategy == redactors.RedactionSimple || !isMask(text) {
+		return false
+	}
+	if strategy != redactors.RedactionFormatPreserving {
+		return true
+	}
+	fp := replacement.FormatPreserving(value, dataType)
+	return text != fp && !isMask(fp)
+}
+
+// isMask reports whether s is a non-empty run of MaskByte.
+func isMask(s string) bool {
+	return s != "" && strings.Trim(s, string(MaskByte)) == ""
 }
 
 // indexAll returns every start offset of pat within region, without overlapping itself.
@@ -400,15 +488,14 @@ func SameLengthGroupRendering(g redactors.OverlapGroup, matches []detector.Match
 	return replacement.Rendering{Text: strings.Repeat(string(MaskByte), len(g.Text))}
 }
 
-// CheckStrategy is redactors.CheckStrategy with the reason a same-length redactor declines a
-// strategy, for the refusal an operator reads. Each same-length redactor calls it before reading
-// its input, so an undeclared strategy writes nothing whichever dispatcher handed the file over.
-func CheckStrategy(r redactors.Redactor, strategy redactors.RedactionStrategy, matches []detector.Match) error {
-	if err := redactors.CheckStrategy(r, strategy, matches); err != nil {
-		return fmt.Errorf("%w; values in this format are overwritten in place at their own byte length, "+
-			"which a %s replacement does not keep", err, strategy)
-	}
-	return nil
+// RefusalReason is why a same-length redactor declines a strategy, for the refusal an operator reads.
+// Each same-length redactor returns it as its redactors.StrategyRefusalExplainer, so
+// redactors.CheckStrategy appends it wherever the refusal is made: the worker pool and the embedded
+// path, which refuse before the redactor is called, and the redactor's own entry point, which
+// refuses before reading its input whichever dispatcher handed the file over.
+func RefusalReason(strategy redactors.RedactionStrategy) string {
+	return fmt.Sprintf("values in this format are overwritten in place at their own byte length, "+
+		"which a %s replacement does not keep", strategy)
 }
 
 // UTF16BE encodes a string as UTF-16 big-endian, with surrogate pairs for anything outside

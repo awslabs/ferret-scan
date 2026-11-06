@@ -23,9 +23,10 @@
 // replaces. Changing a length would mean rewriting every enclosing atom size AND every sample
 // offset in stco, because moving bytes moves the video; getting that wrong yields a file a
 // player refuses. A corrupt file that looks redacted is worse than an honest refusal, which is
-// why synthetic — whose output length is unrelated to the input's — is declined: RedactDocument
-// refuses it before opening the file (tagmeta.CheckStrategy). It used to be accepted and written
-// as a mask (#863). simple writes a same-length '*' mask of every value, and format_preserving
+// why synthetic — whose output length is unrelated to the input's — is declined: the worker pool
+// refuses it before calling the redactor (redactors.RedactorFor), and RedactDocument again before
+// opening the file (redactors.CheckStrategy), with the reason (ExplainStrategyRefusal). It used to
+// be accepted and written as a mask (#863). simple writes a same-length '*' mask of every value, and format_preserving
 // the rendering a .docx gets (tagmeta.SameLengthRendering).
 //
 // # Coordinates are not text
@@ -132,6 +133,12 @@ func (r *VideoRedactor) GetSupportedStrategies() []redactors.RedactionStrategy {
 	}
 }
 
+// ExplainStrategyRefusal is why a strategy left out of GetSupportedStrategies is refused, appended to
+// the refusal wherever it is made (redactors.StrategyRefusalExplainer).
+func (r *VideoRedactor) ExplainStrategyRefusal(s redactors.RedactionStrategy) string {
+	return tagmeta.RefusalReason(s)
+}
+
 // tagBlock is one udta payload: where it lives in the file, and its bytes once modified.
 type tagBlock struct {
 	span     isobmff.Span
@@ -159,7 +166,7 @@ func (r *VideoRedactor) RedactDocument(originalPath string, outputPath string, m
 
 	// Refuse an undeclared strategy before anything is opened or written, whichever dispatcher
 	// called. See the package comment.
-	if err := tagmeta.CheckStrategy(r, strategy, matches); err != nil {
+	if err := redactors.CheckStrategy(r, strategy, matches); err != nil {
 		return nil, err
 	}
 
@@ -209,7 +216,7 @@ func (r *VideoRedactor) RedactDocument(originalPath string, outputPath string, m
 	matches = redactors.ExpandClusterMatches(matches)
 	matches = redactors.RestoreBoundedMatchText(matches)
 
-	blocks, perMatch, err := r.planBlocks(src, spans, matches, strategy)
+	blocks, perMatch, written, err := r.planBlocks(src, spans, matches, strategy)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +248,7 @@ func (r *VideoRedactor) RedactDocument(originalPath string, outputPath string, m
 		return nil, err
 	}
 
-	mappings := r.mappings(matches, perMatch, gpsHandled, strategy)
+	mappings := r.mappings(matches, perMatch, written, gpsHandled, strategy)
 
 	return &redactors.RedactionResult{
 		Success:          true,
@@ -257,9 +264,13 @@ func (r *VideoRedactor) RedactDocument(originalPath string, outputPath string, m
 //
 // Only these payloads are read. The media stream — which is all but a few kilobytes of a real
 // video — is never loaded, which is the whole point of walking the file rather than reading it.
-func (r *VideoRedactor) planBlocks(src io.ReaderAt, spans []isobmff.Span, matches []detector.Match, strategy redactors.RedactionStrategy) ([]*tagBlock, []int, error) {
+//
+// It also returns what was written over each match in the first block that holds it (#865), for
+// the audit entry.
+func (r *VideoRedactor) planBlocks(src io.ReaderAt, spans []isobmff.Span, matches []detector.Match, strategy redactors.RedactionStrategy) ([]*tagBlock, []int, []tagmeta.Written, error) {
 	blocks := make([]*tagBlock, 0, len(spans))
 	perMatch := make([]int, len(matches))
+	written := make([]tagmeta.Written, len(matches))
 
 	for _, sp := range spans {
 		length := sp.Len()
@@ -268,19 +279,22 @@ func (r *VideoRedactor) planBlocks(src io.ReaderAt, spans []isobmff.Span, matche
 		}
 		buf := make([]byte, length)
 		if _, err := src.ReadAt(buf, sp.Start); err != nil {
-			return nil, nil, fmt.Errorf("failed to read metadata at offset %d: %w", sp.Start, err)
+			return nil, nil, nil, fmt.Errorf("failed to read metadata at offset %d: %w", sp.Start, err)
 		}
 
 		region := []tagmeta.Region{{Start: 0, End: len(buf), Label: sp.Label}}
-		plan, found := tagmeta.Plan(buf, region, matches, strategy)
+		plan, found, w := tagmeta.PlanWritten(buf, region, matches, strategy)
 		tagmeta.Apply(buf, plan)
 		for i, n := range found {
+			if n > 0 && perMatch[i] == 0 {
+				written[i] = w[i]
+			}
 			perMatch[i] += n
 		}
 
 		blocks = append(blocks, &tagBlock{span: sp, buf: buf, coords: isobmff.Coordinates(buf)})
 	}
-	return blocks, perMatch, nil
+	return blocks, perMatch, written, nil
 }
 
 // scrubCoordinates overwrites every coordinate payload when a position was reported, and
@@ -566,8 +580,8 @@ func verifyWritten(dst io.ReaderAt, blocks []*tagBlock) error {
 }
 
 // mappings records one entry per value this redactor actually wrote over — never one it merely
-// tried.
-func (r *VideoRedactor) mappings(matches []detector.Match, perMatch []int, gpsHandled bool, strategy redactors.RedactionStrategy) []redactors.RedactionMapping {
+// tried — with what was written over it (#865).
+func (r *VideoRedactor) mappings(matches []detector.Match, perMatch []int, written []tagmeta.Written, gpsHandled bool, strategy redactors.RedactionStrategy) []redactors.RedactionMapping {
 	var mappings []redactors.RedactionMapping
 	for i, m := range matches {
 		if m.Text == "" {
@@ -575,6 +589,7 @@ func (r *VideoRedactor) mappings(matches []detector.Match, perMatch []int, gpsHa
 		}
 		method := "video_tag_same_length_overwrite"
 		occurrences := perMatch[i]
+		w := written[i]
 		if occurrences == 0 {
 			if !gpsHandled || !strings.EqualFold(m.Type, gpsType) {
 				continue
@@ -583,11 +598,14 @@ func (r *VideoRedactor) mappings(matches []detector.Match, perMatch []int, gpsHa
 			// the audit trail does not imply a text replacement that never happened.
 			method = "video_coordinate_atom_scrubbed"
 			occurrences = 1
+			w = tagmeta.Written{Text: tagmeta.SameLengthReplacement(m.Text, m.Type, strategy)}
 		}
 		mappings = append(mappings, redactors.RedactionMapping{
-			RedactedText: tagmeta.SameLengthReplacement(m.Text, m.Type, strategy),
+			RedactedText: w.Text,
+			Position:     redactors.TextPosition{Line: m.LineNumber},
 			DataType:     m.Type,
 			Strategy:     strategy,
+			Masked:       w.Masked,
 			Confidence:   m.Confidence,
 			Metadata: map[string]interface{}{
 				"occurrences":     occurrences,

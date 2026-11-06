@@ -74,6 +74,39 @@ func singleFragmentStream(buf []byte) streamExtent {
 	}
 }
 
+// overwriteInStream is overwriteEachEncoding's total, the count these tests assert.
+func overwriteInStream(raw []byte, s streamExtent, logical []byte, value, repl string) int {
+	narrow, wide := overwriteEachEncoding(raw, s, logical, value, repl)
+	return narrow + wide
+}
+
+// The audit records what was written (#865): where a value was found only as UTF-16LE and its
+// replacement does not encode to the value's width, that is the mask written there.
+func TestWrittenTextIsWhatTheOverwriteLeft(t *testing.T) {
+	const name = "José Ramírez" // 14 bytes, 12 code units
+	buf := toUTF16LE("Author " + name)
+	narrow, wide := overwriteEachEncoding(buf, singleFragmentStream(buf), buf, name, strings.Repeat("*", len(name)))
+	if narrow != 0 || wide != 1 {
+		t.Fatalf("counted %d narrow and %d wide occurrences, want 0 and 1", narrow, wide)
+	}
+	if want := toUTF16LE("Author " + strings.Repeat("*", 12)); !bytes.Equal(buf, want) {
+		t.Fatalf("stream = %q, want a 12-unit mask", buf)
+	}
+	for _, c := range []struct {
+		value, repl string
+		narrow      int
+		want        string
+	}{
+		{name, strings.Repeat("*", 14), 0, strings.Repeat("*", 12)},
+		{name, strings.Repeat("*", 14), 1, strings.Repeat("*", 14)},
+		{"449-87-4100", "***-**-4100", 0, "***-**-4100"},
+	} {
+		if got := writtenText(c.value, c.repl, c.narrow); got != c.want {
+			t.Errorf("writtenText(%q, %q, narrow %d) = %q, want %q", c.value, c.repl, c.narrow, got, c.want)
+		}
+	}
+}
+
 // Legacy Word stores much of its text as UTF-16LE, so a value in the document may
 // exist in the bytes only as interleaved zeros. An ASCII-only overwrite would
 // report success while leaving that copy in cleartext — the exact "reported but

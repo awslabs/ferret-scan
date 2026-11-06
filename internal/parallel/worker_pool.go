@@ -5,6 +5,7 @@ package parallel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/awslabs/ferret-scan/v2/internal/coverage"
 	"os"
@@ -504,8 +505,14 @@ func (wp *WorkerPool) performInlineRedaction(job *Job, matches []detector.Match,
 		return nil, "", fmt.Errorf("failed to create output path: %w", err)
 	}
 
-	// Get appropriate redactor
-	redactor, err := job.RedactionManager.GetRedactorForFile(job.FilePath)
+	// Get the redactor for the file, refused when it does not declare the strategy (#863): the
+	// declaration is enforced here, where every top-level file is dispatched, rather than left to
+	// each redactor to remember. A refusal is not a selection failure, so it is returned as the
+	// gate words it, naming the strategy and the ones the redactor takes.
+	redactor, err := job.RedactionManager.RedactorFor(job.FilePath, strategy, matches)
+	if errors.Is(err, redactors.ErrStrategyNotSupported) {
+		return nil, "", err
+	}
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to get redactor: %w", err)
 	}

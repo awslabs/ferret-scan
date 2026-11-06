@@ -12,9 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf16"
 
 	"github.com/awslabs/ferret-scan/v2/internal/config"
 	"github.com/awslabs/ferret-scan/v2/internal/core"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors/replacement"
 )
 
 // TestGoldenFileRedactionSink closes the coverage gap that let every container
@@ -118,6 +120,26 @@ func TestGoldenFileRedactionSink(t *testing.T) {
 			if len(parts) == 0 {
 				t.Fatalf("read no content at all from the redacted artifact %s", redacted)
 			}
+			// simple keeps NOTHING of a value, in every format (#863). The same-length formats -- audio,
+			// video, legacy Office -- used to write the format_preserving rendering under simple, a card's
+			// last four and an email's domain included, and nothing here looked: the whole value was gone,
+			// so the check below passed. So no part may hold a value's format_preserving rendering where
+			// that rendering keeps any letter or digit of it, in either encoding a part can carry.
+			for _, m := range res.Matches {
+				v := strings.TrimSpace(m.Text)
+				fp := replacement.FormatPreserving(v, m.Type)
+				if fp == v || len(fp) < minRedactableLen || !keepsValueByte(fp) {
+					continue
+				}
+				for name, body := range parts {
+					if bytes.Contains(body, []byte(fp)) || bytes.Contains(body, utf16LE(fp)) {
+						t.Errorf("case %q: part %s holds the format_preserving rendering of a %s value under simple "+
+							"(%d bytes, %d of them the value's); simple must keep nothing of it", fc.Name, name, m.Type,
+							len(fp), len(fp)-strings.Count(fp, "*"))
+					}
+				}
+			}
+
 			for _, v := range reported {
 				for name, body := range parts {
 					if !bytes.Contains(body, []byte(v)) {
@@ -234,3 +256,23 @@ func readAllParts(t *testing.T, path string) map[string][]byte {
 // would collide with ordinary bytes anywhere in a container's XML and produce a
 // false failure.
 const minRedactableLen = 6
+
+// keepsValueByte reports whether a rendering holds a letter, a digit or a non-ASCII byte: some of the
+// value, rather than only its mask and separators.
+func keepsValueByte(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80 {
+			return true
+		}
+	}
+	return false
+}
+
+// utf16LE is s in UTF-16LE, the encoding a legacy Word body and many tag frames store text in.
+func utf16LE(s string) []byte {
+	var b []byte
+	for _, u := range utf16.Encode([]rune(s)) {
+		b = append(b, byte(u), byte(u>>8))
+	}
+	return b
+}
