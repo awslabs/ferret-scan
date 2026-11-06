@@ -222,8 +222,12 @@ func TestANegativeWordKeepsItsFloorAndGetsNoCeiling(t *testing.T) {
 	for _, tc := range []struct{ line, twin, value string }{
 		{"order id: 4532015112830366 catalog", "catalog: 4532015112830366", "4532015112830366"}, // soft negative
 		{"imei 490154203237518 on the handset", "490154203237518 on the handset", "490154203237518"},
-		{"account_number_test: 4012888888881881", "number: 4012888888881881", "4012888888881881"}, // hard, snake_case
-		{"md5 hash 4532015112830366", "4532015112830366", "4532015112830366"},                     // hard negative
+		// hard, snake_case. Not 4012888888881881, which this row carried until #883: Braintree
+		// publishes it as a test card, so it is now held at testValueCeiling with a published
+		// ceiling whatever its line says, and no longer isolates the keyword floor
+		// (TestAPublishedValueOnAFlooredLineKeepsItsFifteen pins it).
+		{"account_number_test: 4000123456789017", "number: 4000123456789017", "4000123456789017"},
+		{"md5 hash 4532015112830366", "4532015112830366", "4532015112830366"}, // hard negative
 	} {
 		t.Run(tc.line, func(t *testing.T) {
 			assertUntouched(t, onlyMatch(t, v, tc.line, tc.value), intrinsicValueFloor)

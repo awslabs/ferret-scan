@@ -24,8 +24,9 @@ import (
 // field is rewritten only when its value changed, a rule added since the load is encoded as before and
 // appended, and a removed rule's node is dropped. Comments, key order, unknown keys (top-level, in a
 // rule, in metadata) and the formatting of untouched rules all survive, because nothing rewrites them.
-// A file that did not exist, or could not be parsed, is still written by yaml.Marshal, so a freshly
-// generated file is byte-for-byte what it was.
+// A file that did not exist is still written by yaml.Marshal, so a freshly generated file is
+// byte-for-byte what it was. A file that exists but could not be read or parsed is not written at all:
+// saveConfig refuses (LoadError, #880).
 
 // marshalConfig renders sm.config for writing.
 func (sm *SuppressionManager) marshalConfig() ([]byte, error) {

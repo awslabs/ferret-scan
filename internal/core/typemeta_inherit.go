@@ -167,6 +167,10 @@ var typeParent = map[string]string{
 	"OTPAUTH_URI":    "OTP",
 	"OTP_SECRET":     "OTP",
 	"RECOVERY_CODES": "OTP",
+
+	// The SSN validator reports an ITIN under its own type (#884). It is the same nine-digit US
+	// taxpayer number shape, issued by the IRS from the 9xx areas the SSA never uses.
+	"ITIN": "SSN",
 }
 
 // supplementalDescriptors supplies copy the migrated registry does not have — both for families that

@@ -450,9 +450,10 @@ VIN	keys=11	band=1
 	source
 	validation_checks
 	validation_path
-VISA	keys=13	band=1
+VISA	keys=14	band=1
 	card_type
 	confidence_adjustment
+	confidence_ceiling
 	context_confidence
 	context_doctype
 	context_domain

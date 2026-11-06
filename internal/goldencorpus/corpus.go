@@ -135,6 +135,29 @@ var Cases = []Case{
 			"[Portfolio](https://vimeo.com/291135150)\n",
 	},
 	{
+		Name: "ssn_itin_decoys",
+		Description: "The #884 decoys, which must stay EMPTY: 9xx values the ITIN lane must decline. " +
+			"Lines 1-3 are the SSA advertising block 987-65-4320..4329 (bare, under SSN:, under ITIN:), whose " +
+			"group 65 is an ITIN group, so without an explicit drop 'SSN: 987-65-4325' reports ITIN 100; " +
+			"line 4 is the 9xx repdigit; lines 5-7 are groups 93 (an ATIN), 40 and " +
+			"89, none issued as an ITIN; line 8 has serial 0000; line 9 is a bare nine-digit 9xx run with no " +
+			"ITIN label and line 10 a Chilean mobile, +56 9XXXXXXXX, both kept out by the form gate (accepting " +
+			"any 9xx form reported 75-92 false findings per 200 mobiles). Positive controls (separated and " +
+			"labelled ITINs) are unit tests in internal/validators/ssn, so this case adds no finding to the " +
+			"census.",
+		Checks: []string{"SSN"},
+		Input: "Advertising: 987-65-4320 987-65-4325 987-65-4329\n" +
+			"SSN: 987-65-4325\n" +
+			"ITIN: 987-65-4321\n" +
+			"ITIN: 999-99-9999\n" +
+			"ITIN: 912-93-3456\n" +
+			"ITIN: 912-40-3456\n" +
+			"ITIN: 912-89-3456\n" +
+			"ITIN: 912-70-0000\n" +
+			"Order reference 912703456\n" +
+			"Contacto: +56 912703456\n",
+	},
+	{
 		Name:        "creditcard_brands",
 		Description: "Luhn-valid cards across brands; locks brand classification in Match.Type.",
 		Checks:      []string{"CREDIT_CARD"},
@@ -764,6 +787,34 @@ var Cases = []Case{
 			"session: ${SESSION}\n" +
 			"session = None\n" +
 			"session_timeout=30m\n",
+	},
+	{
+		Name: "secrets_sri_digest_and_key_path_decoys",
+		Description: "The values #881 newly lets reach scoring that are not credentials, which must stay " +
+			"EMPTY. The entropy path's class dropped `-` (a QuoteMeta range bug), so no quoted value with a " +
+			"hyphen was ever scored; with `-` admitted, a Subresource Integrity or CSP hash source -- " +
+			"`<script integrity>`, a CSP `'sha512-...'` source, a nix `narHash` -- is a quoted 28-88 byte " +
+			"high-entropy string, and only the exact-length `sha1/256/384/512-` digest skip keeps it out. " +
+			"A joined stem (`apikey`, `privkey`, `accesstoken`) now corroborates its value as `api_key` " +
+			"does, except a rooted value holding a `.`: certbot's `privkey = /etc/letsencrypt/...pem` and " +
+			"`<joined stem> = <path>` in its rooted spellings. A UUID and a kebab-case slug, quoted, stay " +
+			"under the entropy floor.\n" +
+			"  The positives -- hyphenated values, the 13 joined stems, ASIA access key IDs -- are pinned by " +
+			"the unit tests in internal/validators/secrets (entropy_class_test.go, joined_stem_test.go, " +
+			"aws_temporary_key_test.go) rather than here, since a positive case would move the " +
+			"metadata-key census.",
+		Checks: []string{"SECRETS"},
+		Input: "<script src=\"/static/app.js\" integrity=\"" + sriDigest("app.js") + "\" crossorigin=\"anonymous\"></script>\n" +
+			"Content-Security-Policy: default-src 'self'; script-src 'self' '" + sriDigest("inline-boot") + "'\n" +
+			"        \"narHash\": \"sha256-klNqU/jORiet4cb6clI/A7QQzQx6xrZ6RlyF9wzPLTY=\",\n" +
+			"[renewalparams]\n" +
+			"privkey = /etc/letsencrypt/live/mail.internal/privkey.pem\n" +
+			"apikey = /srv/app/conf/abc.pem\n" +
+			"accesstoken = ./conf/abc.pem\n" +
+			"privatekey = C:\\app\\conf\\abc.pem\n" +
+			"clientkey=~/.config/app/client.pem\n" +
+			"\"request_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n" +
+			"\"name\": \"orders-service-blue-green-deployment-v2\",\n",
 	},
 	{
 		Name:        "ip_addresses",
@@ -1488,6 +1539,35 @@ var Cases = []Case{
 			"L898902C36GBR7408122M1204159ZE184226B<<<<<10\n" +
 			"corrupted check digit, must not be reported:\n" +
 			"L898902C30GBR7408122M1204159ZE184226B<<<<<10\n",
+	},
+	{
+		Name: "passport_lowercase_placeholder_decoys",
+		Description: "Labelled values the #888 mixed-case pass must refuse, which must stay EMPTY. " +
+			"PASSPORT now reports a passport number written with lowercase letters (gk123456, " +
+			"Gk123456) when a passport label ends right before it. Lines 1-10 are labelled " +
+			"placeholders: each is EU-shaped once a digit follows the word, each passes that label " +
+			"gate, and measured without the placeholder guard lines 1-9 reported at 85 and line 10 " +
+			"at 100. Lines 11-13 put U+212A (Kelvin sign) and U+017F (long s) where an ASCII letter " +
+			"belongs. Go folds both into (?i)[A-Z]: measured with (?i) value patterns and anchors, " +
+			"line 13 reported at 65 with a first two bytes that end mid-rune (lines 11-12 stay out " +
+			"on the ASCII word boundary either way), which is why the patterns spell [A-Za-z]. " +
+			"The positives (every labelled layout, the CSV column, the label above, " +
+			"Title case) and the uppercase controls REDACTED1 and PASSWORD1, still reported at 85, are " +
+			"unit tests in internal/validators/passport, so this case adds no finding to the census.",
+		Checks: []string{"PASSPORT"},
+		Input: "passport_number: redacted1\n" +
+			"Passport Number: password1\n" +
+			"passport: pending12\n" +
+			"passport no: unknown00\n" +
+			"Passport Number: document2\n" +
+			"Passport Number: missing01\n" +
+			"passport_number: tbd123456\n" +
+			"Passport Number: abc123456\n" +
+			"passport_number: sample001\n" +
+			"Passport Number: invalid01\n" +
+			"Passport Number: \u212aA123456\n" +
+			"Passport Number: \u017fA123456\n" +
+			"Passport Number: G\u212a123456\n",
 	},
 }
 

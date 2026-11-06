@@ -322,9 +322,6 @@ type Validator struct {
 	// Keywords that suggest this is not an SSN
 	negativeKeywords []string
 
-	// Known invalid SSN patterns
-	invalidPatterns []string
-
 	// Enhanced domain-specific keywords for better context analysis
 	hrKeywords         []string
 	taxKeywords        []string
@@ -379,9 +376,6 @@ func NewValidator() *Validator {
 			// real SSNs near a person named Grant. Only the ID-number forms, which
 			// share the SSN shape in ERP/grants-management exports, suppress.
 			"policy number", "policy no", "grant number", "grant no",
-		},
-		invalidPatterns: []string{
-			"000", "666", "900", "901", "902", "903", "904", "905", "906", "907", "908", "909",
 		},
 		hrKeywords: []string{
 			"payroll", "hr", "human resources", "employee", "personnel", "staff",
@@ -482,6 +476,9 @@ func (v *Validator) newLineContext(line string) *lineContext {
 	// Read by labelsTheIdentifier. Every entry is a positive keyword today, so this adds
 	// no scan; it is here so a label added to that list alone is still cached.
 	cache(urlVetoLabels)
+	// Read by the ITIN form gate and by an ITIN candidate's context score. itinLabels is a
+	// subset of itinKeywords, so this caches both.
+	cache(itinKeywords)
 
 	return lc
 }
@@ -654,6 +651,22 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					lc.columnHeader = table.HeaderAt(lineBounds, ms.start)
 				}
 			}
+			// Clean the SSN for validation
+			cleanMatch := v.cleanSSN(match)
+
+			// Decide which identifier this is, if either. An SSN is decided exactly as before.
+			// A value isValidSSN rejects is an ITIN when the shared predicate accepts its
+			// digits AND it is in a form an ITIN may be reported in: separated, or bare under
+			// an ITIN label (see itinFormAdmits). isValidSSN still rejects every 9xx area, so
+			// no value is both.
+			itin := false
+			if !v.isValidSSN(cleanMatch) {
+				if !isITIN(cleanMatch) || !v.itinFormAdmits(match, lc) {
+					continue
+				}
+				itin = true
+			}
+
 			// Drop a value that is only ever a decimal fraction or a URL path component on
 			// this line.
 			//
@@ -661,23 +674,20 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			// have no offsets; those are unaffected. A text absent from the map appeared
 			// only as a fraction tail or inside a URL's path. The URL veto alone yields when
 			// the line or the column header names the identifier, and the value is then
-			// scored exactly as before.
+			// scored exactly as before. It always yields for an ITIN: the veto reads only the
+			// bare nine-digit form, and a bare ITIN got past the gate above only because its
+			// line or header names it.
+			//
+			// This runs after the validity decision rather than before it. Both are filters
+			// with no side effect, so the order changes nothing for an SSN.
 			if standalone != nil && ms.start >= 0 && !standalone[match] {
-				if !urlPath[match] || !v.labelsTheIdentifier(lc) {
+				if !urlPath[match] || !(itin || v.labelsTheIdentifier(lc)) {
 					continue
 				}
 			}
 
-			// Clean the SSN for validation
-			cleanMatch := v.cleanSSN(match)
-
-			// Validate the SSN format and content
-			if !v.isValidSSN(cleanMatch) {
-				continue
-			}
-
 			// Calculate confidence
-			confidence, checks := v.CalculateConfidence(match)
+			confidence, checks := v.calculateConfidence(match, itin)
 
 			// "This line looks like encoded data" DEMOTES; it no longer deletes.
 			//
@@ -712,7 +722,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			// be able to hide a value that looks exactly like an SSN.
 			if lc.isEncoded {
 				confidence -= encodedDataPenalty
-				if v.isStrongHyphenatedSSN(match) && confidence < encodedDataStrongFloor {
+				if v.isStrongHyphenated(match, itin) && confidence < encodedDataStrongFloor {
 					confidence = encodedDataStrongFloor
 				}
 				checks["encoded_data_line"] = true
@@ -745,11 +755,16 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			}
 
 			// Analyze context and adjust confidence
-			contextImpact := v.analyzeContextWithLine(match, contextInfo, lc)
+			contextImpact := v.analyzeContextWithLine(match, contextInfo, lc, itin)
 			confidence += contextImpact
 
-			// Store keywords found in context
+			// Store keywords found in context. An ITIN also reads its own labels, so
+			// "ITIN: 912-70-3456" is a labelled value rather than an unlabelled one.
 			contextInfo.PositiveKeywords = v.findKeywordsCached(lc, v.positiveKeywords)
+			if itin {
+				contextInfo.PositiveKeywords = append(contextInfo.PositiveKeywords,
+					v.findKeywordsCached(lc, itinKeywords)...)
+			}
 			contextInfo.NegativeKeywords = v.findKeywordsCached(lc, v.negativeKeywords)
 			contextInfo.ConfidenceImpact = contextImpact
 
@@ -810,7 +825,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					// without a keyword (L45). The riskier separator-less / spaced
 					// forms keep the stricter LOW cap of 50.
 					capValue := 50.0
-					if v.isStrongHyphenatedSSN(match) {
+					if v.isStrongHyphenated(match, itin) {
 						capValue = 60.0
 					}
 					if confidence > capValue {
@@ -843,7 +858,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				continue
 			}
 
-			matches = append(matches, detector.Match{
+			m := detector.Match{
 				Text:       match,
 				LineNumber: lineNum + 1, // 1-based line numbering
 				Type:       "SSN",
@@ -852,7 +867,13 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				Validator:  "ssn",
 				Context:    contextInfo,
 				Metadata:   buildSSNMetadata(checks, contextImpact, originalPath, capByHeader),
-			})
+			}
+			if itin {
+				// Its own type, from this validator, as CREDIT_CARD reports VISA. A 9xx value
+				// was never reported before #884, so no existing finding changes type.
+				m.Type = "ITIN"
+			}
+			matches = append(matches, m)
 		}
 	}
 
@@ -864,7 +885,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 // context on each call; ValidateContent uses analyzeContextWithLine to share that
 // work across all matches on a line.
 func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) float64 {
-	return v.analyzeContextWithLine(match, context, v.newLineContext(context.FullLine))
+	return v.analyzeContextWithLine(match, context, v.newLineContext(context.FullLine), false)
 }
 
 // junctionWindowLen bounds how far a multi-word keyword can reach across the
@@ -932,7 +953,10 @@ func (v *Validator) keywordInFullContext(keyword, before, after string, lc *line
 // analyzeContextWithLine is the per-match context analysis that reuses the shared
 // per-line context lc, eliminating the per-match whole-line rescans that caused the
 // O(n^2) blowup. Its result is identical to the original AnalyzeContext.
-func (v *Validator) analyzeContextWithLine(match string, context detector.ContextInfo, lc *lineContext) float64 {
+//
+// itin is set for an ITIN candidate, which also reads itinKeywords at the weight a
+// positive keyword has. An SSN candidate never reads them, so its score is unchanged.
+func (v *Validator) analyzeContextWithLine(match string, context detector.ContextInfo, lc *lineContext, itin bool) float64 {
 	before := strings.ToLower(context.BeforeText)
 	after := strings.ToLower(context.AfterText)
 
@@ -943,15 +967,9 @@ func (v *Validator) analyzeContextWithLine(match string, context detector.Contex
 	confidenceImpact += v.validateSSNByDomainCached(before, after, lc)
 
 	// Check for positive keywords (increase confidence)
-	for _, keyword := range v.positiveKeywords {
-		if v.keywordInFullContext(keyword, before, after, lc) {
-			// Give more weight to keywords that are closer to the match
-			if lc.keywordOnLine[keyword] {
-				confidenceImpact += 25 // +25% for keywords in the same line
-			} else {
-				confidenceImpact += 10 // +10% for keywords in surrounding context
-			}
-		}
+	confidenceImpact += v.positiveKeywordImpact(v.positiveKeywords, before, after, lc)
+	if itin {
+		confidenceImpact += v.positiveKeywordImpact(itinKeywords, before, after, lc)
 	}
 
 	// Check for negative keywords (decrease confidence)
@@ -986,6 +1004,23 @@ func (v *Validator) analyzeContextWithLine(match string, context detector.Contex
 	}
 
 	return confidenceImpact
+}
+
+// positiveKeywordImpact sums the boost the given positive keywords give a match: +25 for one on the
+// match's own line, +10 for one only in the surrounding context.
+func (v *Validator) positiveKeywordImpact(keywords []string, before, after string, lc *lineContext) float64 {
+	impact := 0.0
+	for _, keyword := range keywords {
+		if v.keywordInFullContext(keyword, before, after, lc) {
+			// Give more weight to keywords that are closer to the match
+			if lc.keywordOnLine[keyword] {
+				impact += 25 // +25% for keywords in the same line
+			} else {
+				impact += 10 // +10% for keywords in surrounding context
+			}
+		}
+	}
+	return impact
 }
 
 // validateSSNByDomainCached mirrors validateSSNByDomain but evaluates each domain
@@ -1163,6 +1198,16 @@ func (v *Validator) findKeywordsCached(lc *lineContext, keywords []string) []str
 
 // CalculateConfidence calculates the confidence score for a potential SSN
 func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool) {
+	return v.calculateConfidence(match, false)
+}
+
+// calculateConfidence is CalculateConfidence for either identifier this validator reports.
+//
+// itin scores an ITIN on the SSN's own curve with one difference: its 9xx area is the area an ITIN is
+// issued from, so it takes the +15 a valid SSN area takes rather than the -15 an invalid one costs.
+// Every other term is the SSN's, including the penalties for sequential, repeating and common
+// patterns, so an ITIN and an SSN of the same shape and context score the same.
+func (v *Validator) calculateConfidence(match string, itin bool) (float64, map[string]bool) {
 	checks := map[string]bool{
 		"format":             true,
 		"digits":             true,
@@ -1189,10 +1234,11 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 		return confidence, checks
 	}
 
-	// Check area number (first 3 digits)
+	// Check area number (first 3 digits). For an ITIN the caller has already confirmed it
+	// with isITIN, which reads the area and the group together.
 	if len(cleanMatch) >= 3 {
 		area := cleanMatch[0:3]
-		if v.isValidAreaNumber(area) {
+		if itin || v.isValidAreaNumber(area) {
 			checks["valid_area"] = true
 			confidence += 15 // Increased boost for valid area numbers
 		} else {
@@ -1268,6 +1314,17 @@ func (v *Validator) isStrongHyphenatedSSN(match string) bool {
 	return v.isValidAreaNumber(parts[0])
 }
 
+// isStrongHyphenated is isStrongHyphenatedSSN for either identifier. A hyphenated ITIN is the same
+// strong shape as a hyphenated SSN: its 9xx area fails isValidAreaNumber only because that rule is
+// the SSN's, and isITIN has already accepted the area and the group. The spaced and bare forms keep
+// the stricter cap, as they do for an SSN.
+func (v *Validator) isStrongHyphenated(match string, itin bool) bool {
+	if !itin {
+		return v.isStrongHyphenatedSSN(match)
+	}
+	return isSeparatedITINForm(match) && match[3] == '-'
+}
+
 func (v *Validator) isValidSSN(ssn string) bool {
 	if len(ssn) != 9 {
 		return false
@@ -1327,10 +1384,12 @@ func (v *Validator) isTestSSN(ssn string) bool {
 		//
 		// Two neighbours deliberately left out:
 		//   - 987-65-4320..4329, which the SSA reserves for advertising, need no
-		//     entry: area 987 is outside the valid 001-665/667-899 range, so
-		//     isValidSSN already rejects them (verified: 987-65-4325 yields no
-		//     finding). "987654321" below is dead for the same reason and is left
-		//     alone rather than quietly removed.
+		//     entry here. As an SSN, area 987 is outside the valid 001-665/667-899
+		//     range, so isValidSSN rejects them. As an ITIN their group, 65, is
+		//     an ITIN group, so isITIN drops the block explicitly rather than
+		//     relying on a rule about something else (#884); with that drop
+		//     removed, "SSN: 987-65-4325" reports ITIN 100. "987654321" below is
+		//     in that block and is left alone rather than quietly removed.
 		//   - 219-09-9999, also described as voided, is this suite's canonical
 		//     REAL-SSN fixture, and validator_test.go asserts isTestSSN returns
 		//     false for it. Suppressing it is a separate call with a much larger
@@ -1574,6 +1633,14 @@ func (v *Validator) findSSNsInConcatenatedNumbers(line string) []string {
 	// Look for sequences of exactly 18 digits (two 9-digit numbers concatenated)
 	// This is much more restrictive than looking for any 9+ digit sequence
 	digitSequences := reDigitSequences.FindAllString(line, -1)
+	if len(digitSequences) == 0 {
+		return matches
+	}
+
+	// A glued half is bare digits, so it may be an ITIN only under an ITIN label, exactly as a
+	// bare nine-digit candidate on the regex path. Read once per line, and only for a line that
+	// holds an 18-digit run at all.
+	itinLabelled := hasITINLabel(line)
 
 	for _, seq := range digitSequences {
 		// Split into two 9-digit candidates
@@ -1581,7 +1648,7 @@ func (v *Validator) findSSNsInConcatenatedNumbers(line string) []string {
 		candidate2 := seq[9:18]
 
 		// Only accept if both halves could be valid SSNs
-		if v.couldBeSSN(candidate1) && v.couldBeSSN(candidate2) {
+		if v.couldBeSSN(candidate1, itinLabelled) && v.couldBeSSN(candidate2, itinLabelled) {
 			matches = append(matches, candidate1, candidate2)
 		}
 	}
@@ -1589,38 +1656,14 @@ func (v *Validator) findSSNsInConcatenatedNumbers(line string) []string {
 	return matches
 }
 
-// couldBeSSN performs basic checks to see if a 9-digit string could be an SSN
-func (v *Validator) couldBeSSN(candidate string) bool {
-	if len(candidate) != 9 {
-		return false
-	}
-
-	// Check area number (first 3 digits)
-	area := candidate[0:3]
-	if area == "000" || area == "666" {
-		return false
-	}
-
-	// Check for 900-999 area numbers (invalid)
-	if areaNum, err := strconv.Atoi(area); err == nil {
-		if areaNum >= 900 {
-			return false
-		}
-	}
-
-	// Check group number (middle 2 digits)
-	group := candidate[3:5]
-	if group == "00" {
-		return false
-	}
-
-	// Check serial number (last 4 digits)
-	serial := candidate[5:9]
-	if serial == "0000" {
-		return false
-	}
-
-	return true
+// couldBeSSN reports whether one half of a glued 18-digit run could be an identifier this validator
+// reports: an SSN, or, when the line names one, an ITIN.
+//
+// It used to be a copy of isValidSSN's rules, area veto included, so the regex path and this one each
+// enforced the 900-999 rejection on their own (#884). It now calls the same two predicates the regex
+// path calls, so the two paths cannot disagree about a value again.
+func (v *Validator) couldBeSSN(candidate string, itinLabelled bool) bool {
+	return v.isValidSSN(candidate) || (itinLabelled && isITIN(candidate))
 }
 
 // wordRunExtensions are the file types whose text extraction concatenates adjacent runs with no

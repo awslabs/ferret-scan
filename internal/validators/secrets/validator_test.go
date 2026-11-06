@@ -69,8 +69,18 @@ func TestSecretsValidator_AWSKeys(t *testing.T) {
 			wantDetect: false,
 		},
 		{
-			name:       "Wrong prefix similar to AWS",
+			// Inverted by #881: ASIA is the temporary (STS) access key ID and a prefix of the
+			// same table row. This case predated the pairing gate, which already read
+			// `AKIA|ASIA`. How an ASIA finding is scored is aws_temporary_key_test.go's.
+			name:       "Temporary key ID ASIA prefix 20 chars",
 			match:      buildTestToken("ASIA", "1234567890ABCDEF"),
+			wantType:   "AWS_ACCESS_KEY",
+			wantDetect: true,
+		},
+		{
+			// The other IAM unique-ID prefixes name users, roles and policies, not keys.
+			name:       "IAM user unique ID AIDA prefix",
+			match:      buildTestToken("AIDA", "1234567890ABCDEF"),
 			wantType:   "",
 			wantDetect: false,
 		},

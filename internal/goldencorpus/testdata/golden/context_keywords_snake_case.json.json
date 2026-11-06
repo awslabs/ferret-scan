@@ -186,6 +186,7 @@
       "metadata": {
         "card_type": "VISA",
         "confidence_adjustment": 0,
+        "confidence_ceiling": 15,
         "context_confidence": 0.5,
         "context_doctype": "Configuration",
         "context_domain": "Financial",
@@ -206,7 +207,7 @@
           "length": true,
           "luhn": true,
           "not_repeating": true,
-          "not_test": true,
+          "not_test": false,
           "vendor": true
         },
         "validation_path": "document",

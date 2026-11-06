@@ -108,6 +108,9 @@ type SuppressionManager struct {
 	// doc is the file as parsed, which saveConfig patches instead of re-marshalling the struct; nil
 	// when the file did not exist or could not be parsed.
 	doc *yaml.Node
+	// loadErr is why a file that exists could not be read or parsed; nil when it loaded or does not
+	// exist. While it is set every save refuses, so the empty fallback never replaces the file (#880).
+	loadErr error
 	// warnings receives the loader's diagnostics.
 	warnings io.Writer
 }
@@ -166,7 +169,8 @@ func findDefaultSuppressionFile() string {
 // that exists but fails to parse is logged loudly to stderr so the user
 // notices their rules aren't being applied; previously parse errors silently
 // produced an empty rule set, which made suppressions look configured but
-// silently inactive.
+// silently inactive. Such a file, and one that cannot be read, is also
+// recorded in loadErr, so no save writes the empty fallback over it (#880).
 func (sm *SuppressionManager) loadConfig() {
 	if sm.configPath == "" {
 		sm.config = &SuppressionConfig{
@@ -185,6 +189,8 @@ func (sm *SuppressionManager) loadConfig() {
 			fmt.Fprintf(sm.warnings,
 				"warning: cannot read suppression file %q: %v — treating as empty\n",
 				sm.configPath, err)
+			// The file is there but its rules are unknown, so it is not ours to replace.
+			sm.loadErr = &loadFailure{path: sm.configPath, verb: "read", err: err}
 		}
 		sm.config = &SuppressionConfig{
 			Version: "1.0",
@@ -206,6 +212,7 @@ func (sm *SuppressionManager) loadConfig() {
 		fmt.Fprintf(sm.warnings,
 			"warning: suppression file %q is malformed (%v) — treating as empty; existing rules will NOT be applied\n",
 			sm.configPath, err)
+		sm.loadErr = &loadFailure{path: sm.configPath, verb: "parsed", err: err}
 		sm.config = &SuppressionConfig{
 			Version: "1.0",
 			Rules:   []SuppressionRule{},
@@ -541,6 +548,9 @@ func lapsedFindingKey(match detector.Match, identity string) string {
 
 // AddSuppression adds a new suppression rule
 func (sm *SuppressionManager) AddSuppression(match detector.Match, reason, createdBy string, expiresAt *time.Time) error {
+	if sm.loadErr != nil {
+		return sm.loadErr
+	}
 	if sm.config == nil {
 		sm.config = &SuppressionConfig{
 			Version: "1.0",
@@ -611,6 +621,9 @@ func (sm *SuppressionManager) AddSuppression(match detector.Match, reason, creat
 
 // RemoveSuppression removes a suppression rule by ID
 func (sm *SuppressionManager) RemoveSuppression(id string) error {
+	if sm.loadErr != nil {
+		return sm.loadErr
+	}
 	if sm.config == nil {
 		return fmt.Errorf("no suppression config loaded")
 	}
@@ -635,6 +648,15 @@ func (sm *SuppressionManager) ListSuppressions() []SuppressionRule {
 
 // saveConfig saves the suppression configuration to file
 func (sm *SuppressionManager) saveConfig() error {
+	if sm.loadErr != nil {
+		// What the manager holds is the empty fallback for a file it could not load, never the file, so
+		// writing it would replace the operator's rules (#880). The public mutators refuse before they
+		// change anything; this catches any path that reaches the write anyway, and drops what that path
+		// added in memory, so a refused save changes nothing on disk or in memory.
+		sm.config = &SuppressionConfig{Version: "1.0", Rules: []SuppressionRule{}}
+		sm.rebuildHashIndex()
+		return sm.loadErr
+	}
 	if sm.configPath == "" {
 		sm.configPath = paths.GetSuppressionsFile()
 	}
@@ -663,9 +685,10 @@ func (sm *SuppressionManager) saveConfig() error {
 	return nil
 }
 
-// CleanupExpired removes expired suppression rules
+// CleanupExpired removes expired suppression rules. It removes none, and writes nothing, while
+// LoadError is set.
 func (sm *SuppressionManager) CleanupExpired() int {
-	if sm.config == nil {
+	if sm.loadErr != nil || sm.config == nil {
 		return 0
 	}
 
@@ -853,6 +876,9 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 
 // EnableSuppressionByHash enables a suppression rule by hash
 func (sm *SuppressionManager) EnableSuppressionByHash(hash, reason string) error {
+	if sm.loadErr != nil {
+		return sm.loadErr
+	}
 	if sm.config == nil {
 		return fmt.Errorf("no suppression config loaded")
 	}
@@ -874,6 +900,9 @@ func (sm *SuppressionManager) EnableSuppressionByHash(hash, reason string) error
 
 // DisableSuppressionByID disables a suppression rule by ID
 func (sm *SuppressionManager) DisableSuppressionByID(id string) error {
+	if sm.loadErr != nil {
+		return sm.loadErr
+	}
 	if sm.config == nil {
 		return fmt.Errorf("no suppression config loaded")
 	}
@@ -890,6 +919,9 @@ func (sm *SuppressionManager) DisableSuppressionByID(id string) error {
 
 // EditSuppression edits a suppression rule by ID
 func (sm *SuppressionManager) EditSuppression(id, reason, createdBy string, enabled bool, expiresAt *time.Time) error {
+	if sm.loadErr != nil {
+		return sm.loadErr
+	}
 	if sm.config == nil {
 		return fmt.Errorf("no suppression config loaded")
 	}
@@ -913,6 +945,9 @@ func (sm *SuppressionManager) CreateSuppressionFromFinding(hash, reason string, 
 }
 
 func (sm *SuppressionManager) CreateSuppressionFromFindingWithExpiration(hash, reason string, findingData map[string]interface{}, expiresAt *time.Time) error {
+	if sm.loadErr != nil {
+		return sm.loadErr
+	}
 	if sm.config == nil {
 		sm.config = &SuppressionConfig{
 			Version: "1.0",
@@ -1018,6 +1053,9 @@ func (sm *SuppressionManager) GenerateFindingHashFromData(findingData map[string
 
 // CreateSuppressionFromFindingWithState creates a suppression rule with specific enabled state
 func (sm *SuppressionManager) CreateSuppressionFromFindingWithState(hash, reason string, findingData map[string]interface{}, enabled bool) error {
+	if sm.loadErr != nil {
+		return sm.loadErr
+	}
 	if sm.config == nil {
 		sm.config = &SuppressionConfig{
 			Version: "1.0",
