@@ -1136,6 +1136,7 @@
             "metadata": {
               "clean_number": "2125550142",
               "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
               "context_confidence": 1,
               "context_doctype": "Unknown",
               "context_domain": "Government",

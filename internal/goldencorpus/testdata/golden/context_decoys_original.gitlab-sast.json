@@ -159,7 +159,7 @@
     {
       "category": "sast",
       "confidence": "Low",
-      "description": "Ferret Scan detected phone number in this file.\n\n**Location:** <golden:context_decoys_original> (line 6)\n**Confidence:** LOW (15.0%)\n**Detected by:** phone validator\n\n**Context:**\n```\nSKU 313-555-0175 restocked\n```\n\n**Additional Information:**\n- context_impact: -38\n- source: preprocessed_content\n\n**Remediation:**\nRemove phone numbers or replace with example numbers (e.g., 555-0123).",
+      "description": "Ferret Scan detected phone number in this file.\n\n**Location:** <golden:context_decoys_original> (line 6)\n**Confidence:** LOW (15.0%)\n**Detected by:** phone validator\n\n**Context:**\n```\nSKU 313-555-0175 restocked\n```\n\n**Additional Information:**\n- context_impact: -55\n- source: preprocessed_content\n\n**Remediation:**\nRemove phone numbers or replace with example numbers (e.g., 555-0123).",
       "id": "ferret-<HASH>",
       "identifiers": [
         {

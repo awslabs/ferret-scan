@@ -236,6 +236,7 @@
             "metadata": {
               "clean_number": "2125550142",
               "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
               "context_confidence": 1,
               "context_doctype": "Unknown",
               "context_domain": "HR_Payroll",
@@ -308,6 +309,7 @@
             "metadata": {
               "clean_number": "2125550142",
               "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
               "context_confidence": 1,
               "context_doctype": "Unknown",
               "context_domain": "HR_Payroll",
@@ -380,10 +382,11 @@
             "metadata": {
               "clean_number": "3135550175",
               "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
               "context_confidence": 1,
               "context_doctype": "Unknown",
               "context_domain": "HR_Payroll",
-              "context_impact": -38,
+              "context_impact": -55,
               "country": "US/CA",
               "format": "XXX-XXX-XXXX",
               "original_confidence": 15,

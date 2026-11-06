@@ -13,6 +13,8 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
+	"github.com/awslabs/ferret-scan/v2/internal/tabular"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/kwmatch"
 )
 
 // Pre-compiled regex patterns to avoid repeated compilation in hot paths.
@@ -42,6 +44,54 @@ var (
 // (--confidence medium,high, as this repo's own pre-commit hook uses) never sees
 // it, high enough that the finding still exists and is therefore still redacted.
 const reservedFictionalCeiling = 15.0
+
+// uncorroboratedCeiling is the highest confidence a match may carry when nothing but its shape says
+// it is a phone number: no phone word, phrase or label on its line, no phone column header, not a
+// formatted toll-free number and not written in the "+" form. 85 is what such a match scores on its
+// own (100, +5 for a possible NANP number, -20 for no evidence), so the ceiling changes nothing in
+// the validator; it exists to be PUBLISHED as confidence_ceiling, because the document bridge adds
+// +20 to every finding in a CSV-typed document and only a published ceiling survives that. Before
+// it, a bare 10-digit run in any comma-rich line reported 100 HIGH (#882).
+const uncorroboratedCeiling = 85.0
+
+// confidenceCeilingKey is the Match.Metadata key the document bridge reads to bound confidence
+// after its own adjustments (validators.ConfidenceCeilingKey). Duplicated rather than imported, as
+// every validator that publishes one does, so this package does not depend on the bridge.
+const confidenceCeilingKey = "confidence_ceiling"
+
+// phoneEvidenceTokens are words that name a telephone on their own. Each is matched as a whole word
+// on the lower-cased line (kwmatch), never inside a longer word and never inside the match: "string"
+// is not "ring", "network" is not "work", "hotel" is not "tel" and "Ricardo" is not "card" (#882).
+// Whole-word matching also stops a word matching its own inflections, so the inflections that occur
+// are listed rather than implied (PR #169).
+var phoneEvidenceTokens = []string{
+	"phone", "phones", "telephone", "tel", "mobile", "cell", "cellular", "fax", "voicemail",
+	"dial", "call", "calls", "caller", "sms", "hotline", "helpline", "extension", "ext",
+	"landline", "msisdn", "whatsapp",
+}
+
+// phoneEvidencePhrases name a telephone only as a whole: "number", "contact" and "line" do not on
+// their own, "contact number" and "direct line" do. They are matched as LABELS
+// (kwmatch.ContainsLabelLower), so the spellings a JSON key or column uses count too: phoneNumber,
+// mobile_no, contactNo, toll-free. That widening is safe here only because these are positive
+// evidence; kwmatch explains why a suppressor must never get it.
+var phoneEvidencePhrases = []string{
+	"phone number", "phone no", "telephone number", "tel no", "mobile number", "mobile no",
+	"mobile phone", "cell phone", "cell number", "fax number", "fax no", "home phone",
+	"work phone", "office phone", "contact number", "contact no", "contact phone",
+	"direct line", "emergency contact", "toll free",
+}
+
+// genericPhoneLabelWords are the words of phoneLabelWords that are not evidence anywhere on a line
+// ("Work NPA-NXX-XXXX", "Contact Jane at ...") but are when they label the value itself:
+// "Office: (297) 201-0001", "\"work\": \"2972010001\"". The phone words in phoneLabelWords are
+// tokens above and are credited wherever they stand.
+var genericPhoneLabelWords = []string{"contact", "emergency", "support", "office", "home", "work"}
+
+// tollFreeAreaCodes are the NANP toll-free area codes. A toll-free code is evidence only as the
+// match's own area code in a formatted number ("1-800-201-0001", "(888) 201-0001"): inside a bare
+// digit run it is three digits, and the old "800" keyword fired inside "2972800405" (#882).
+var tollFreeAreaCodes = []string{"800", "833", "844", "855", "866", "877", "888"}
 
 // isReservedFictionalNumber reports whether a number falls in a range a
 // numbering authority has permanently withheld from assignment, so it cannot
@@ -83,18 +133,23 @@ func (v *Validator) isReservedFictionalNumber(phone string) bool {
 type Validator struct {
 	patterns []phonePattern
 
-	// Keywords that suggest a phone context
-	positiveKeywords []string
+	// emissionPositiveKeywords is the positive vocabulary of the EMISSION predicate only: the
+	// substring-matched list that decided, before #882, which matches are reported. It no longer
+	// scores anything (phoneEvidenceTokens and phoneEvidencePhrases do); it is kept, unchanged, so
+	// the set of reported findings, and therefore what redaction rewrites, stays exactly what it
+	// was. See emits.
+	emissionPositiveKeywords []string
 
-	// Keywords that suggest this is not a real phone
+	// Keywords that suggest this is not a real phone. Scored as whole words (#882); the emission
+	// predicate still matches them as substrings, as it always has.
 	negativeKeywords []string
 
 	// Lowercased copies of the keyword lists, precomputed once so the per-match
 	// context analysis does not call strings.ToLower(keyword) repeatedly. The
 	// source lists are already lowercase, so these are equal in value; caching
 	// them just removes per-match allocation/work.
-	positiveKeywordsLower []string
-	negativeKeywordsLower []string
+	emissionPositiveKeywordsLower []string
+	negativeKeywordsLower         []string
 
 	// maxKeywordLen is the byte length of the longest keyword across both lists.
 	// It bounds the boundary-probe windows used by the long-line context path.
@@ -170,7 +225,7 @@ func (p phonePattern) lengthAllowed(match string) bool {
 // with predefined patterns, keywords, and validation rules for detecting phone numbers.
 func NewValidator() *Validator {
 	v := &Validator{
-		positiveKeywords: []string{
+		emissionPositiveKeywords: []string{
 			"phone", "telephone", "tel", "call", "mobile", "cell", "cellular",
 			"contact", "number", "fax", "voicemail", "extension", "ext",
 			"dial", "ring", "caller", "emergency", "hotline", "helpline",
@@ -231,9 +286,9 @@ func NewValidator() *Validator {
 	// Precompute lowercased keyword lists and the longest keyword length so the
 	// per-match context analysis avoids repeated strings.ToLower(keyword) work and
 	// can bound its boundary-probe windows.
-	v.positiveKeywordsLower = lowerAll(v.positiveKeywords)
+	v.emissionPositiveKeywordsLower = lowerAll(v.emissionPositiveKeywords)
 	v.negativeKeywordsLower = lowerAll(v.negativeKeywords)
-	for _, kw := range v.positiveKeywordsLower {
+	for _, kw := range v.emissionPositiveKeywordsLower {
 		if len(kw) > v.maxKeywordLen {
 			v.maxKeywordLen = len(kw)
 		}
@@ -391,6 +446,10 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	// Split content into lines for processing
 	lines := strings.Split(content, "\n")
 
+	// The document's column headers, analysed on first use: a document with no phone-shaped value
+	// never pays for it.
+	doc := &docScoring{content: content}
+
 	// Process each pattern type
 	for lineNum, line := range lines {
 		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
@@ -406,23 +465,12 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		//     instead of re-running the clean regex and a full containment scan over
 		//     the whole accumulated match list (this O(M^2) churn was the single-line
 		//     DoS). Semantics are identical to the original isDuplicateMatch.
-		//   - lineIsTabular is a line-level property (delimiters / name-phone
-		//     shape); isTabularData never inspected the individual match, so it is
-		//     computed once per line rather than once per match.
+		//   - ls holds everything else that is a property of the line rather than of
+		//     a match (its keyword evidence, its column bounds, the emission
+		//     predicate's caches), each computed once, on first use, so a line with
+		//     no candidate pays for none of it and a match-dense line stays linear.
 		dedup := newLineDedup()
-		lineIsTabular := v.isTabularDataLine(line)
-
-		// For long lines, the original per-match context analysis re-lowercased
-		// and re-scanned the WHOLE line for every match (O(matches x line length),
-		// the dominant cost of the single-line DoS). Build the per-line keyword
-		// cache once and use the hoisted, boundary-probe context path instead.
-		// Short lines keep the original per-match construction so normal input is
-		// byte-for-byte unchanged.
-		lineLong := len(line) > hoistContextLineThreshold
-		var lineCtx *lineKeywordCtx
-		if lineLong {
-			lineCtx = v.buildLineKeywordCtx(line, strings.ToLower(line))
-		}
+		ls := &lineScoring{v: v, doc: doc, line: line, lineNum: lineNum}
 
 		for _, pattern := range v.patterns {
 			// FindAllStringIndex yields each match's byte offset within the line, so
@@ -460,8 +508,10 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					continue
 				}
 
-				// Calculate confidence
-				confidence, checks := v.CalculateConfidence(match)
+				// Calculate confidence. emissionBase is the same value scored the way it was
+				// before #882 (the country check had two states); only the emission predicate
+				// reads it.
+				confidence, emissionBase, checks, country := v.calculateConfidence(match)
 
 				// Analyze phone structure
 				phoneInfo := v.AnalyzePhoneStructure(match, pattern)
@@ -484,20 +534,26 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				contextInfo.BeforeText = line[start:matchIndex]
 				contextInfo.AfterText = line[matchEnd:end]
 
-				// Analyze context and adjust confidence. Long lines use the hoisted
-				// path (per-line keyword cache + per-match boundary probes); short
-				// lines use the original whole-line construction unchanged.
-				var contextImpact float64
-				if lineLong {
-					contextImpact = v.analyzeContextHoisted(match, contextInfo.BeforeText, contextInfo.AfterText, line, matchIndex, lineCtx)
-				} else {
-					contextImpact = v.AnalyzeContextAt(match, contextInfo, line, matchIndex)
+				// The structural gate: what sits immediately around the match (a resource ID's
+				// hyphen, an ARN's colons, a trailing letter). Both the emission predicate and
+				// the score start from it.
+				structureOK := v.hasPhoneStructureAt(match, line, matchIndex)
+
+				// EMISSION is decided exactly as it was before #882. Redaction rewrites only
+				// reported findings and ignores their confidence, so a change to which matches
+				// are reported changes the redacted bytes, while a change to how they score does
+				// not. This PR moves scores only: measured without this guard, the new
+				// arithmetic below dropped 102 Go-stdlib findings main reports (and flooring
+				// every non-vetoed match instead dropped 24 and added 129).
+				if !ls.emits(match, contextInfo, matchIndex, emissionBase, structureOK) {
+					continue
 				}
 
-				// Check for tabular data and boost confidence (line-level flag)
-				if lineIsTabular {
-					contextImpact += 15 // Boost for tabular data
-				}
+				// SCORE: phone evidence only (#882). Whole-word phone keywords and phrases on the
+				// line outside the match, a phone label on the value, a phone column header, a
+				// formatted toll-free area code.
+				ev := ls.evidence(match, matchIndex, matchEnd, structureOK)
+				contextImpact := ev.impact
 
 				confidence += contextImpact
 
@@ -506,6 +562,17 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					confidence = 100
 				} else if confidence < 0 {
 					confidence = 0
+				}
+
+				// A match nothing corroborates scores 85 at most here, and publishes that bound so
+				// the document bridge's +20 for a CSV-typed document cannot lift it to HIGH. The
+				// "+" form is corroboration: nothing but a phone number is written that way.
+				ceiling := 0.0
+				if !ev.corroborated && !strings.HasPrefix(match, "+") {
+					ceiling = uncorroboratedCeiling
+					if confidence > ceiling {
+						confidence = ceiling
+					}
 				}
 
 				// Reserved-fictional ceiling, applied AFTER context.
@@ -533,7 +600,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				//
 				// Written as a cap, never an assignment: capping can only lower a
 				// score, so it cannot resurrect a finding that context had already
-				// zeroed below.
+				// zeroed below. It is also PUBLISHED (#882): unpublished, the
+				// document bridge's +20 took 415-555-0123 in a CSV to 35.
 				// cleanNew is already computed for dedup, so the substring probe is
 				// free and keeps the regex work off the hot path. It is sound as a
 				// pre-filter: isReservedFictionalNumber strips only a trailing
@@ -543,30 +611,44 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				// this, every phone match on the line would pay a regex replace, a
 				// second cleanPhoneNumber and a regex match — per-match line work is
 				// how this validator family became quadratic before.
-				if confidence > reservedFictionalCeiling &&
-					strings.Contains(cleanNew, "55501") &&
-					v.isReservedFictionalNumber(match) {
-					confidence = reservedFictionalCeiling
-					checks["not_test_number"] = false
+				if strings.Contains(cleanNew, "55501") && v.isReservedFictionalNumber(match) {
+					ceiling = reservedFictionalCeiling
+					if confidence > reservedFictionalCeiling {
+						confidence = reservedFictionalCeiling
+						checks["not_test_number"] = false
+					}
 				}
 
-				// Skip matches with 0% confidence - they are false positives
-				if confidence <= 0 {
-					continue
+				// The emission predicate reported this match, so it is reported with a positive
+				// score even where the new arithmetic would take it to 0: a demotion, never a
+				// removal.
+				if confidence < 1 {
+					confidence = 1
 				}
 
-				// Store keywords found in context (hoisted for long lines).
-				if lineLong {
-					lowerBefore := strings.ToLower(contextInfo.BeforeText)
-					lowerAfter := strings.ToLower(contextInfo.AfterText)
-					probeBefore, probeAfter := boundaryProbes(lowerBefore, lowerAfter, lineCtx)
-					contextInfo.PositiveKeywords = findKeywordsHoisted(v.positiveKeywords, v.positiveKeywordsLower, lineCtx.posInLowerLine, probeBefore, probeAfter)
-					contextInfo.NegativeKeywords = findKeywordsHoisted(v.negativeKeywords, v.negativeKeywordsLower, lineCtx.negInLowerLine, probeBefore, probeAfter)
-				} else {
-					contextInfo.PositiveKeywords = v.findKeywords(contextInfo, v.positiveKeywords)
-					contextInfo.NegativeKeywords = v.findKeywords(contextInfo, v.negativeKeywords)
-				}
+				contextInfo.PositiveKeywords = ev.positive
+				contextInfo.NegativeKeywords = ev.negative
 				contextInfo.ConfidenceImpact = contextImpact
+
+				// A NANP-impossible value (area code 0XX/1XX/N11, exchange 0XX/1XX) is not a
+				// US/Canada number whatever its shape, so it does not carry that label.
+				if country == countryImpossible && phoneInfo["country"] == "US/CA" {
+					phoneInfo["country"] = "Unknown"
+				}
+
+				metadata := map[string]any{
+					"country":           phoneInfo["country"],
+					"format":            phoneInfo["format"],
+					"pattern_name":      phoneInfo["pattern_name"],
+					"clean_number":      phoneInfo["clean_number"],
+					"validation_checks": checks,
+					"context_impact":    contextInfo.ConfidenceImpact,
+					"source":            "preprocessed_content",
+					"original_file":     originalPath,
+				}
+				if ceiling > 0 {
+					metadata[confidenceCeilingKey] = ceiling
+				}
 
 				matches = append(matches, detector.Match{
 					Text:       match,
@@ -576,16 +658,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					Filename:   originalPath,
 					Validator:  "phone",
 					Context:    contextInfo,
-					Metadata: map[string]any{
-						"country":           phoneInfo["country"],
-						"format":            phoneInfo["format"],
-						"pattern_name":      phoneInfo["pattern_name"],
-						"clean_number":      phoneInfo["clean_number"],
-						"validation_checks": checks,
-						"context_impact":    contextInfo.ConfidenceImpact,
-						"source":            "preprocessed_content",
-						"original_file":     originalPath,
-					},
+					Metadata:   metadata,
 				})
 				// Record the accepted match's cleaned digits for subsequent dedup
 				// on this line. Only matches that actually land in `matches`
@@ -757,12 +830,12 @@ type lineKeywordCtx struct {
 // context path. line is the raw line; lowerLine is strings.ToLower(line).
 func (v *Validator) buildLineKeywordCtx(line, lowerLine string) *lineKeywordCtx {
 	lc := &lineKeywordCtx{
-		posInLowerLine: make([]bool, len(v.positiveKeywordsLower)),
-		posInRawLine:   make([]bool, len(v.positiveKeywordsLower)),
+		posInLowerLine: make([]bool, len(v.emissionPositiveKeywordsLower)),
+		posInRawLine:   make([]bool, len(v.emissionPositiveKeywordsLower)),
 		negInLowerLine: make([]bool, len(v.negativeKeywordsLower)),
 		negInRawLine:   make([]bool, len(v.negativeKeywordsLower)),
 	}
-	for i, kw := range v.positiveKeywordsLower {
+	for i, kw := range v.emissionPositiveKeywordsLower {
 		lc.posInLowerLine[i] = strings.Contains(lowerLine, kw)
 		lc.posInRawLine[i] = strings.Contains(line, kw)
 	}
@@ -780,24 +853,114 @@ func (v *Validator) buildLineKeywordCtx(line, lowerLine string) *lineKeywordCtx 
 	return lc
 }
 
-// AnalyzeContext analyzes the context around a match and returns a confidence
-// adjustment. It locates the match within the line; callers on the hot path
-// should use AnalyzeContextAt to pass a precomputed offset instead.
+// AnalyzeContext returns the context adjustment for match on context.FullLine: what the match's
+// line says about it, scored the way ValidateContent scores it (see lineScoring.evidence). It
+// locates the match in the line itself and has no document, so no column header is consulted.
 func (v *Validator) AnalyzeContext(match string, context detector.ContextInfo) float64 {
-	return v.AnalyzeContextAt(match, context, context.FullLine, strings.Index(context.FullLine, match))
+	line := context.FullLine
+	matchIndex := strings.Index(line, match)
+	if matchIndex < 0 {
+		return -100
+	}
+	ls := &lineScoring{v: v, line: line}
+	ev := ls.evidence(match, matchIndex, matchIndex+len(match), v.hasPhoneStructureAt(match, line, matchIndex))
+	return ev.impact
 }
 
-// AnalyzeContextAt is the offset-aware form of AnalyzeContext. matchIndex is the
-// byte offset of match within line (matchIndex < 0 means "not found"), which lets
-// hasPhoneStructure skip its own strings.Index rescan.
-func (v *Validator) AnalyzeContextAt(match string, context detector.ContextInfo, line string, matchIndex int) float64 {
-	// CRITICAL: Check for structural indicators first (highest priority)
-	// This uses what comes BEFORE/AFTER the match rather than keywords
-	if !v.hasPhoneStructureAt(match, line, matchIndex) {
-		// This is NOT a phone number (resource ID, timestamp, etc.)
-		return -100 // Zero out confidence completely
-	}
+// docScoring is the per-document state of the scoring path: the column headers, analysed once and
+// only if some match needs them.
+type docScoring struct {
+	content  string
+	table    *tabular.Table
+	analyzed bool
+}
 
+// tableFor returns the document's table when lineNum is one of its data rows, else nil (no table,
+// or the header row itself, whose cells are column names rather than values).
+func (d *docScoring) tableFor(lineNum int) *tabular.Table {
+	if d == nil {
+		return nil
+	}
+	if !d.analyzed {
+		d.table = tabular.Analyze(d.content)
+		d.analyzed = true
+	}
+	if !d.table.IsTable() || lineNum == d.table.HeaderLine() {
+		return nil
+	}
+	return d.table
+}
+
+// lineScoring holds what is a property of one line rather than of one match, each part computed on
+// first use. The two halves never share state: the emission predicate's caches reproduce the
+// pre-#882 arithmetic exactly, the evidence cache feeds the score.
+type lineScoring struct {
+	v       *Validator
+	doc     *docScoring
+	line    string
+	lineNum int
+
+	// Emission predicate (pre-#882 arithmetic).
+	tabularDone bool
+	tabular     bool
+	legacyCtx   *lineKeywordCtx
+
+	// Score.
+	lower      string
+	ev         *lineEvidence
+	boundsDone bool
+	table      *tabular.Table
+	bounds     *tabular.LineBounds
+}
+
+// emits reports whether the match is reported, decided with the arithmetic that decided it before
+// #882: substring keywords against the raw-case line, the +15 for a delimiter-rich line, the
+// two-state country check (emissionBase) and the -100 structural veto. Only the sign of that sum
+// is used, so its parts are evaluated only when they can change it: a match whose base is above 80
+// is reported whatever its keywords (they move a score by -80 at most), and a structural veto
+// leaves only the delimiter boost to look at.
+func (ls *lineScoring) emits(match string, context detector.ContextInfo, matchIndex int, emissionBase float64, structureOK bool) bool {
+	if !structureOK {
+		if emissionBase > 100 {
+			return true
+		}
+		if emissionBase <= 85 {
+			return false
+		}
+		return ls.isTabularLine() && emissionBase-85 > 0
+	}
+	if emissionBase-80 > 0 {
+		return true
+	}
+	var impact float64
+	if len(ls.line) > hoistContextLineThreshold {
+		if ls.legacyCtx == nil {
+			ls.legacyCtx = ls.v.buildLineKeywordCtx(ls.line, strings.ToLower(ls.line))
+		}
+		impact = ls.v.emissionKeywordImpactHoisted(context.BeforeText, context.AfterText, ls.legacyCtx)
+	} else {
+		impact = ls.v.emissionKeywordImpact(context)
+	}
+	if ls.isTabularLine() {
+		impact += 15
+	}
+	return emissionBase+impact > 0
+}
+
+// isTabularLine is isTabularDataLine for this line, computed once.
+func (ls *lineScoring) isTabularLine() bool {
+	if !ls.tabularDone {
+		ls.tabular = ls.v.isTabularDataLine(ls.line)
+		ls.tabularDone = true
+	}
+	return ls.tabular
+}
+
+// emissionKeywordImpact is the keyword half of the pre-#882 context analysis, unchanged and used
+// only to decide emission (see emits). It matched keywords as substrings of the context and gave
+// the full weight only when the keyword also occurred in the raw-case line, which is why "string"
+// counted as "ring" and "Employee" counted for less than "employee".
+func (v *Validator) emissionKeywordImpact(context detector.ContextInfo) float64 {
 	// Combine all context text for analysis
 	var sb strings.Builder
 	sb.WriteString(context.BeforeText)
@@ -811,7 +974,7 @@ func (v *Validator) AnalyzeContextAt(match string, context detector.ContextInfo,
 	var hasPositiveKeywords bool = false
 
 	// Check for positive keywords (increase confidence)
-	for _, keyword := range v.positiveKeywords {
+	for _, keyword := range v.emissionPositiveKeywords {
 		if strings.Contains(fullContext, strings.ToLower(keyword)) {
 			hasPositiveKeywords = true
 			// Give more weight to keywords that are closer to the match
@@ -824,9 +987,8 @@ func (v *Validator) AnalyzeContextAt(match string, context detector.ContextInfo,
 	}
 
 	// Apply moderate penalty if NO positive phone context keywords are found
-	// Structural analysis handles most false positives, so this is less critical
 	if !hasPositiveKeywords {
-		confidenceImpact -= 20 // -20% penalty for no phone context (reduced from -70%)
+		confidenceImpact -= 20
 	}
 
 	// Check for negative keywords (decrease confidence)
@@ -843,32 +1005,12 @@ func (v *Validator) AnalyzeContextAt(match string, context detector.ContextInfo,
 
 	// Cap the impact to reasonable bounds
 	if confidenceImpact > 40 {
-		confidenceImpact = 40 // Maximum +40% boost
+		confidenceImpact = 40
 	} else if confidenceImpact < -80 {
-		confidenceImpact = -80 // Maximum -80% reduction
+		confidenceImpact = -80
 	}
 
 	return confidenceImpact
-}
-
-// findKeywords returns a list of keywords found in the context
-func (v *Validator) findKeywords(context detector.ContextInfo, keywords []string) []string {
-	var sb strings.Builder
-	sb.WriteString(context.BeforeText)
-	sb.WriteString(" ")
-	sb.WriteString(context.FullLine)
-	sb.WriteString(" ")
-	sb.WriteString(context.AfterText)
-	fullContext := strings.ToLower(sb.String())
-
-	var found []string
-	for _, keyword := range keywords {
-		if strings.Contains(fullContext, strings.ToLower(keyword)) {
-			found = append(found, keyword)
-		}
-	}
-
-	return found
 }
 
 // boundaryProbes builds the two short lowercased probe strings that reproduce the
@@ -892,15 +1034,10 @@ func keywordInFullContext(inLowerLine bool, lowerKw, probeBefore, probeAfter str
 	return strings.Contains(probeBefore, lowerKw) || strings.Contains(probeAfter, lowerKw)
 }
 
-// analyzeContextHoisted reproduces AnalyzeContextAt's keyword scoring for long
-// lines using the per-line keyword cache and per-match boundary probes, avoiding
-// the O(matches x line length) whole-line rescans. The structural gate
-// (hasPhoneStructureAt) and the arithmetic/caps are identical to AnalyzeContextAt.
-func (v *Validator) analyzeContextHoisted(match string, before, after, line string, matchIndex int, lc *lineKeywordCtx) float64 {
-	if !v.hasPhoneStructureAt(match, line, matchIndex) {
-		return -100
-	}
-
+// emissionKeywordImpactHoisted reproduces emissionKeywordImpact for long lines using the per-line
+// keyword cache and per-match boundary probes, avoiding the O(matches x line length) whole-line
+// rescans. The arithmetic and caps are identical to emissionKeywordImpact.
+func (v *Validator) emissionKeywordImpactHoisted(before, after string, lc *lineKeywordCtx) float64 {
 	lowerBefore := strings.ToLower(before)
 	lowerAfter := strings.ToLower(after)
 	probeBefore, probeAfter := boundaryProbes(lowerBefore, lowerAfter, lc)
@@ -908,7 +1045,7 @@ func (v *Validator) analyzeContextHoisted(match string, before, after, line stri
 	var confidenceImpact float64
 	var hasPositiveKeywords bool
 
-	for i, kw := range v.positiveKeywordsLower {
+	for i, kw := range v.emissionPositiveKeywordsLower {
 		if keywordInFullContext(lc.posInLowerLine[i], kw, probeBefore, probeAfter) {
 			hasPositiveKeywords = true
 			// Same-line bonus mirrors the original strings.Contains(FullLine,
@@ -944,23 +1081,266 @@ func (v *Validator) analyzeContextHoisted(match string, before, after, line stri
 	return confidenceImpact
 }
 
-// findKeywordsHoisted is the long-line equivalent of findKeywords: it returns the
-// original (source-cased) keywords present in the lowercased fullContext, using
-// the per-line cache plus per-match boundary probes. keywords is the source list
-// and lowerKeywords/inLowerLine are its precomputed lowercased forms and per-line
-// presence flags (parallel slices).
-func findKeywordsHoisted(keywords, lowerKeywords []string, inLowerLine []bool, probeBefore, probeAfter string) []string {
-	var found []string
-	for i, lowerKw := range lowerKeywords {
-		if keywordInFullContext(inLowerLine[i], lowerKw, probeBefore, probeAfter) {
-			found = append(found, keywords[i])
+// occurrence records where a keyword occurs on a line as a whole word: the end of its leftmost
+// occurrence and the start of its rightmost. That is enough to answer, in O(1) per match, whether
+// any occurrence lies outside a match's span: the occurrences that overlap a contiguous span are a
+// contiguous run of them, so one lies outside exactly when the leftmost ends before the span or the
+// rightmost starts after it.
+type occurrence struct {
+	found     bool
+	firstEnd  int
+	lastStart int
+}
+
+// outside reports whether the keyword occurs anywhere on the line outside [start, end).
+func (o occurrence) outside(start, end int) bool {
+	return o.found && (o.firstEnd <= start || o.lastStart >= end)
+}
+
+// findOccurrence scans lower once for keyword as a whole word (kwmatch's boundary rule; a
+// multi-word keyword needs a separator between its words).
+func findOccurrence(lower, keyword string) occurrence {
+	var o occurrence
+	kwmatch.ContainsFunc(lower, keyword, func(start, end int) bool {
+		if !o.found {
+			o.found = true
+			o.firstEnd = end
+		}
+		o.lastStart = start
+		return false // keep scanning: the rightmost occurrence is wanted too
+	})
+	return o
+}
+
+// lineEvidence is the keyword evidence of one line, computed once (O(vocabulary x line)) so each
+// match on it costs O(vocabulary). A per-match search of the line is the shape that made this
+// validator quadratic on a single dense line (TestPhoneValidator_SingleLineDoSRegression).
+type lineEvidence struct {
+	tokens   []occurrence // parallel to phoneEvidenceTokens
+	phrases  []bool       // parallel to phoneEvidencePhrases
+	negative []occurrence // parallel to Validator.negativeKeywordsLower
+}
+
+func (v *Validator) buildLineEvidence(lower string) *lineEvidence {
+	le := &lineEvidence{
+		tokens:   make([]occurrence, len(phoneEvidenceTokens)),
+		phrases:  make([]bool, len(phoneEvidencePhrases)),
+		negative: make([]occurrence, len(v.negativeKeywordsLower)),
+	}
+	for i, kw := range phoneEvidenceTokens {
+		le.tokens[i] = findOccurrence(lower, kw)
+	}
+	for i, kw := range phoneEvidencePhrases {
+		le.phrases[i] = kwmatch.ContainsLabelLower(lower, kw)
+	}
+	for i, kw := range v.negativeKeywordsLower {
+		le.negative[i] = findOccurrence(lower, kw)
+	}
+	return le
+}
+
+// matchEvidence is what the scoring path concluded about one match.
+type matchEvidence struct {
+	impact       float64  // the context adjustment, published as context_impact
+	corroborated bool     // some phone evidence beyond the match's own shape
+	positive     []string // the evidence credited, for Context.PositiveKeywords
+	negative     []string // the negative keywords credited, for Context.NegativeKeywords
+}
+
+// evidence scores the match from phone evidence alone (#882):
+//
+//   - +15 for each phone word (phoneEvidenceTokens) on the line outside the match, each phone
+//     phrase (phoneEvidencePhrases), a phone label naming the value ("Office: ..."), a phone column
+//     header (tabular.HeaderAt) and a formatted toll-free area code; -20 when there is none;
+//   - -35 for each negative keyword on the line, as a whole word outside the match;
+//   - the sum bounded to [-80, +40], as before;
+//   - -100 when the structural gate fails, unless the match is a whole quoted string and the
+//     evidence above names a phone ("phone = '2972010001'", a quoted cell under a phone column).
+//
+// Matching is on the lower-cased line, so case no longer decides weight, and never inside the
+// match, so a digit run cannot corroborate itself.
+func (ls *lineScoring) evidence(match string, matchIndex, matchEnd int, structureOK bool) matchEvidence {
+	if ls.ev == nil {
+		ls.lower = strings.ToLower(ls.line)
+		ls.ev = ls.v.buildLineEvidence(ls.lower)
+	}
+
+	var me matchEvidence
+	for i, o := range ls.ev.tokens {
+		if o.outside(matchIndex, matchEnd) {
+			me.positive = append(me.positive, phoneEvidenceTokens[i])
 		}
 	}
-	return found
+	// A phrase is never inside a match: a match is digits, separators and at most an extension
+	// marker, and no phrase contains one.
+	for i, ok := range ls.ev.phrases {
+		if ok {
+			me.positive = append(me.positive, phoneEvidencePhrases[i])
+		}
+	}
+	if label := valueLabel(ls.line, matchIndex); label != "" {
+		for _, w := range genericPhoneLabelWords {
+			if labelMatchesWord(label, w) {
+				me.positive = append(me.positive, w)
+				break
+			}
+		}
+	}
+	if h := ls.phoneHeaderAt(matchIndex); h != "" {
+		me.positive = append(me.positive, h)
+	}
+	named := len(me.positive) > 0
+	if formattedTollFree(match) {
+		me.positive = append(me.positive, "toll-free")
+	}
+	for i, o := range ls.ev.negative {
+		if o.outside(matchIndex, matchEnd) {
+			me.negative = append(me.negative, ls.v.negativeKeywords[i])
+		}
+	}
+	me.corroborated = len(me.positive) > 0
+
+	// The gate refuses an unseparated run followed by a quote, because a closing quote is not one
+	// of its terminators, and that took every quoted phone number in JSON, SQL and CSV to 5. A whole
+	// quoted string is a value like any other, so it passes when something names it a phone.
+	if !structureOK && !(named && isWholeQuoted(ls.line, matchIndex, matchEnd)) {
+		me.impact = -100
+		return me
+	}
+
+	var impact float64
+	if len(me.positive) == 0 {
+		impact = -20
+	} else {
+		impact = 15 * float64(len(me.positive))
+	}
+	impact -= 35 * float64(len(me.negative))
+	if impact > 40 {
+		impact = 40
+	} else if impact < -80 {
+		impact = -80
+	}
+	me.impact = impact
+	return me
+}
+
+// phoneHeaderAt returns the column header of the field holding offset off when that header names a
+// phone, else "". Bounds are computed once per line and HeaderAt is a binary search, so a dense
+// line stays linear. There is deliberately no "header contradicts" arm: a column name is chosen by
+// whoever wrote the file, so it may add evidence but never take a finding away (#293).
+func (ls *lineScoring) phoneHeaderAt(off int) string {
+	if !ls.boundsDone {
+		ls.boundsDone = true
+		if t := ls.doc.tableFor(ls.lineNum); t != nil {
+			ls.table = t
+			ls.bounds = t.Bounds(ls.line)
+		}
+	}
+	if ls.bounds == nil {
+		return ""
+	}
+	h := ls.table.HeaderAt(ls.bounds, off)
+	if h == "" || !namesPhone(h) {
+		return ""
+	}
+	return h
+}
+
+// namesPhone reports whether a lower-cased header cell names a phone. Headers are stored
+// lower-cased with camelCase split (tabular.NormalizeHeader), so "mobileNumber" arrives as
+// "mobile number".
+func namesPhone(header string) bool {
+	for _, kw := range phoneEvidenceTokens {
+		if kwmatch.ContainsLower(header, kw) {
+			return true
+		}
+	}
+	for _, kw := range phoneEvidencePhrases {
+		if kwmatch.ContainsLabelLower(header, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// valueLabel returns the lower-cased word labelling the value that starts at matchIndex, in the
+// "label: value" and "label = value" shapes with optional quotes on either side ("Office: ...",
+// "\"work\": \"...\"", "home = '...'"), or "" when the value is not labelled that way.
+func valueLabel(line string, matchIndex int) string {
+	i := matchIndex - 1
+	if i >= 0 && (line[i] == '"' || line[i] == '\'') {
+		i--
+	}
+	for i >= 0 && (line[i] == ' ' || line[i] == '\t') {
+		i--
+	}
+	if i < 0 || (line[i] != ':' && line[i] != '=') {
+		return ""
+	}
+	i--
+	for i >= 0 && (line[i] == ' ' || line[i] == '\t') {
+		i--
+	}
+	if i >= 0 && (line[i] == '"' || line[i] == '\'') {
+		i--
+	}
+	end := i + 1
+	for i >= 0 && (isWordByteASCII(line[i]) || line[i] == '-' || line[i] == '.') {
+		i--
+	}
+	if i+1 >= end {
+		return ""
+	}
+	return strings.ToLower(line[i+1 : end])
+}
+
+// isWholeQuoted reports whether the match is exactly the content of a quoted string: the same quote
+// character immediately before and after it.
+func isWholeQuoted(line string, matchIndex, matchEnd int) bool {
+	if matchIndex < 1 || matchEnd >= len(line) {
+		return false
+	}
+	q := line[matchIndex-1]
+	return (q == '"' || q == '\'') && line[matchEnd] == q
+}
+
+// formattedTollFree reports whether the match is a formatted NANP number whose own area code is
+// toll-free: "1-800-201-0001", "(888) 201-0001", "+1 877 201 0001". A bare run is not formatted,
+// so "8772010001" and the "800" inside "2972800405" are not evidence.
+func formattedTollFree(match string) bool {
+	if !strings.ContainsAny(match, "()-. ") && !strings.HasPrefix(match, "+") {
+		return false
+	}
+	digits := make([]byte, 0, 11)
+	for i := 0; i < len(match); i++ {
+		if match[i] >= '0' && match[i] <= '9' {
+			digits = append(digits, match[i])
+		}
+	}
+	if len(digits) == 11 && digits[0] == '1' {
+		digits = digits[1:]
+	}
+	if len(digits) != 10 {
+		return false
+	}
+	for _, code := range tollFreeAreaCodes {
+		if string(digits[:3]) == code {
+			return true
+		}
+	}
+	return false
 }
 
 // CalculateConfidence calculates the confidence score for a potential phone number
 func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool) {
+	confidence, _, checks, _ := v.calculateConfidence(match)
+	return confidence, checks
+}
+
+// calculateConfidence is CalculateConfidence that also returns the emission base (the same score
+// with the two-state country check used before #882, read only by the emission predicate) and the
+// country check's outcome.
+func (v *Validator) calculateConfidence(match string) (float64, float64, map[string]bool, countryState) {
 	// Find the best matching pattern for this phone number
 	var bestPattern phonePattern
 	found := false
@@ -985,8 +1365,9 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 	return v.calculateConfidenceWithPattern(match, bestPattern)
 }
 
-// calculateConfidenceWithPattern calculates confidence with a specific pattern
-func (v *Validator) calculateConfidenceWithPattern(match string, pattern phonePattern) (float64, map[string]bool) {
+// calculateConfidenceWithPattern calculates confidence with a specific pattern. It returns the
+// score, the emission base (see calculateConfidence), the checks and the country check's outcome.
+func (v *Validator) calculateConfidenceWithPattern(match string, pattern phonePattern) (float64, float64, map[string]bool, countryState) {
 	checks := map[string]bool{
 		"valid_format":      true,
 		"reasonable_length": true,
@@ -1058,23 +1439,41 @@ func (v *Validator) calculateConfidenceWithPattern(match string, pattern phonePa
 		checks["not_repeating"] = false
 	}
 
-	// Check country/format validity (15%)
-	if v.isValidCountryFormat(match, pattern) {
+	// Check country/format validity. Three outcomes score, a fourth does not (#882): a valid
+	// format +5; a format this check rejects -10, as before; a US/Canada-length number the North
+	// American plan cannot assign 0, where the old check gave it the +5 and the US/CA label for
+	// having ten digits; a pattern the check has no rule for 0, and no check is reported, where the
+	// old code fell through to "valid". The emission base keeps the old two states.
+	emissionBase := confidence
+	country := v.countryFormat(match, pattern)
+	switch country {
+	case countryValid:
 		checks["valid_country"] = true
-		confidence += 5 // Small boost for valid country format
-	} else {
+		confidence += 5
+		emissionBase += 5
+	case countryInvalid:
 		confidence -= 10
+		emissionBase -= 10
+	case countryImpossible:
+		emissionBase += 5
+	case countryNotChecked:
+		delete(checks, "valid_country")
+		emissionBase += 5
 	}
 
 	// Boost confidence for well-formatted international numbers
 	if strings.HasPrefix(match, "+") && len(cleanMatch) >= 10 {
 		confidence += 10
+		emissionBase += 10
 	}
 
 	if confidence < 0 {
 		confidence = 0
 	}
-	return confidence, checks
+	if emissionBase < 0 {
+		emissionBase = 0
+	}
+	return confidence, emissionBase, checks, country
 }
 
 // AnalyzePhoneStructure breaks down the phone number into components
@@ -1246,8 +1645,24 @@ func (v *Validator) isRepeatingNumber(cleanNumber string) bool {
 	return false
 }
 
-func (v *Validator) isValidCountryFormat(phone string, pattern phonePattern) bool {
-	// Basic validation based on pattern country
+// countryState is the outcome of the country/format check.
+type countryState int
+
+const (
+	// countryValid: the number has the shape its pattern's numbering plan requires.
+	countryValid countryState = iota
+	// countryInvalid: it does not (a US/Canada pattern match that is not 10 digits).
+	countryInvalid
+	// countryImpossible: it has a US/Canada length but the North American plan cannot assign it,
+	// so it is not a US/Canada number. Reported and scored, never dropped: a 0/1-led ten-digit
+	// run can be a real number of another plan (#859 relies on that).
+	countryImpossible
+	// countryNotChecked: there is no rule for this pattern.
+	countryNotChecked
+)
+
+// countryFormat checks the match against the numbering plan of the pattern that scored it.
+func (v *Validator) countryFormat(phone string, pattern phonePattern) countryState {
 	switch pattern.country {
 	case "US/CA":
 		// US/Canada numbers should be 10 digits (excluding country code). Strip a
@@ -1260,18 +1675,40 @@ func (v *Validator) isValidCountryFormat(phone string, pattern phonePattern) boo
 		if len(clean) == 11 && strings.HasPrefix(clean, "1") {
 			clean = clean[1:]
 		}
-		return len(clean) == 10
+		if len(clean) != 10 {
+			return countryInvalid
+		}
+		if !nanpPossible(clean) {
+			return countryImpossible
+		}
+		return countryValid
 	case "UK":
 		// UK numbers vary but should follow basic format
 		if strings.HasPrefix(phone, "+44") || strings.HasPrefix(phone, "0") {
-			return true
+			return countryValid
 		}
+		return countryNotChecked
 	case "International", "Europe", "Mobile":
 		// Basic international format validation
-		return strings.HasPrefix(phone, "+") || strings.HasPrefix(phone, "00")
+		if strings.HasPrefix(phone, "+") || strings.HasPrefix(phone, "00") {
+			return countryValid
+		}
+		return countryInvalid
 	}
+	return countryNotChecked
+}
 
-	return true // Default to valid for unknown patterns
+// nanpPossible reports whether a ten-digit national number can be assigned under the North
+// American Numbering Plan: area code NXX other than N11, exchange NXX, N being 2-9. "197-201-0001"
+// and "(097) 201-0001" cannot; they used to pass the country check for having ten digits.
+func nanpPossible(d string) bool {
+	if len(d) != 10 {
+		return false
+	}
+	if d[0] < '2' || d[0] > '9' || (d[1] == '1' && d[2] == '1') {
+		return false
+	}
+	return d[3] >= '2' && d[3] <= '9'
 }
 
 // initSortedCountryCodes creates a sorted slice of country codes (longest first) for optimized lookup
@@ -1440,11 +1877,11 @@ func (v *Validator) looksLikeInvalidNumber(match string) bool {
 	return false
 }
 
-// isTabularDataLine is the line-level tabular check, computed once per line on
-// the hot path. It inspects only the line's delimiters / fixed-width spacing /
-// name-phone shape — identical logic to the original isTabularData, with the
-// regex scans (FindAllString / MatchString) run once per line instead of once
-// per match.
+// isTabularDataLine is the line-level tabular check of the EMISSION predicate (lineScoring.emits),
+// computed at most once per line. It inspects only the line's delimiters / fixed-width spacing /
+// name-phone shape and never reads a header, which is why it no longer scores anything: a tab or two
+// commas are not evidence that a digit run is a phone number (#882); the column header is
+// (lineScoring.phoneHeaderAt).
 func (v *Validator) isTabularDataLine(line string) bool {
 	// Check for common tabular delimiters
 	tabCount := strings.Count(line, "\t")

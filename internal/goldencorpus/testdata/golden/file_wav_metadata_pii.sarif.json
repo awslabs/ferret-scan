@@ -306,10 +306,11 @@
             "metadata": {
               "clean_number": "2125550142",
               "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
               "context_confidence": 0,
               "context_doctype": "Configuration",
               "context_domain": "Unknown",
-              "context_impact": -3,
+              "context_impact": -20,
               "country": "US/CA",
               "format": "XXX-XXX-XXXX",
               "original_confidence": 15,
@@ -336,12 +337,6 @@
               },
               "validation_path": "document"
             },
-            "negativeKeywords": [
-              "example"
-            ],
-            "positiveKeywords": [
-              "contact"
-            ],
             "validator": "phone"
           },
           "rank": 32.5,

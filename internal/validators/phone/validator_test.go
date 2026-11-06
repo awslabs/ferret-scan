@@ -891,7 +891,7 @@ func TestPhoneValidator_LowSeverityFindings(t *testing.T) {
 	}
 
 	// L30: a bare leading "1" must be stripped for US/CA 10-digit validation.
-	if !v.isValidCountryFormat("1-800-555-1234", phonePattern{country: "US/CA"}) {
+	if v.countryFormat("1-800-555-1234", phonePattern{country: "US/CA"}) != countryValid {
 		t.Error("L30: bare-1 toll-free number should be a valid US/CA format")
 	}
 }
