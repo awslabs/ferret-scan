@@ -759,9 +759,6 @@ func TestSSNValidator_NewValidator(t *testing.T) {
 	if len(validator.negativeKeywords) == 0 {
 		t.Fatal("NewValidator() has no negative keywords")
 	}
-	if len(validator.invalidPatterns) == 0 {
-		t.Fatal("NewValidator() has no invalid patterns")
-	}
 	if len(validator.hrKeywords) == 0 {
 		t.Fatal("NewValidator() has no HR keywords")
 	}

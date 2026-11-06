@@ -1,6 +1,6 @@
 # SSN Validator
 
-The SSN (Social Security Number) validator detects Social Security Numbers in various formats using pattern matching, validation rules, and contextual analysis.
+The SSN (Social Security Number) validator detects Social Security Numbers in various formats using pattern matching, validation rules, and contextual analysis. It also reports IRS Individual Taxpayer Identification Numbers under their own type, `ITIN` (see [ITIN](#itin)).
 
 ## Features
 
@@ -25,9 +25,40 @@ The validator implements official SSN validation rules:
 1. **Area Number** (first 3 digits): Must be 001-665 or 667-899
    - `000` is invalid
    - `666` is invalid
-   - `900-999` are invalid
+   - `900-999` are never an SSN; a value there is checked as an [ITIN](#itin) instead
 2. **Group Number** (middle 2 digits): Cannot be `00`
 3. **Serial Number** (last 4 digits): Cannot be `0000`
+
+### ITIN
+
+An IRS Individual Taxpayer Identification Number is written like an SSN, but it begins with `9`
+and its 4th and 5th digits are 50-65, 70-88, 90-92 or 94-99
+([IRS Publication 4757](https://www.irs.gov/pub/irs-pdf/p4757.pdf)). Group 93 (the ATIN) is not
+reported. A value is reported as type `ITIN`, under `--checks SSN`, when:
+
+- its digits pass that rule, its serial is not `0000`, and it is neither in the SSA advertising
+  block `987-65-4320`..`4329` nor the repdigit `999-99-9999`; and
+- it is written `9XX-XX-XXXX` or `9XX XX XXXX`, or, as nine bare digits (or one half of a glued
+  18-digit run in a Word document), its line or its column header says `ITIN` or
+  `Individual Taxpayer Identification Number`.
+
+The second condition is the form gate. A bare nine-digit run beginning with 9 is common in code and
+data, and a Chilean mobile is `+56 9XXXXXXXX`, so the bare form needs the label.
+
+An ITIN is scored on the SSN curve: its 9xx area counts as a valid area, and every other term,
+keyword and penalty is the SSN's. `ITIN`, `Individual Taxpayer Identification Number` and `W-7` are
+extra positive keywords for an ITIN only; they never move an SSN's confidence.
+
+```
+ITIN: 912-70-3456        -> ITIN, HIGH
+SSN: 912-70-3456         -> ITIN, HIGH (an ITIN group under an SSN label is still an ITIN)
+912-70-3456              -> ITIN, MEDIUM
+ITIN: 912703456          -> ITIN, HIGH
+912703456                -> not reported (bare, no ITIN label)
+Contacto: +56 912703456  -> not reported by this validator (a phone number)
+912-93-3456              -> not reported (group 93)
+987-65-4325              -> not reported (SSA advertising block)
+```
 
 ### Contextual Keywords
 

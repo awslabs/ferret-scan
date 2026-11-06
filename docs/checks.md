@@ -74,6 +74,7 @@ registry yet; the detection itself is unaffected.
 - [INSURANCE_MEMBER_ID](#insurance_member_id)
 - [INTELLECTUAL_PROPERTY](#intellectual_property)
 - [IP_ADDRESS](#ip_address)
+- [ITIN](#itin)
 - [JCB](#jcb)
 - [JWT_TOKEN](#jwt_token)
 - [LAST_MODIFIED_BY](#last_modified_by)
@@ -570,6 +571,14 @@ Content that may contain intellectual property markers (copyright notices, trade
 An IP address was detected in the scanned content. IP addresses can be considered personally identifiable information under GDPR and other privacy regulations.
 
 *What to do:* IP addresses are considered personal data under GDPR and similar regulations. Evaluate whether this IP address should be hardcoded. Consider using configuration files, environment variables, or service discovery mechanisms instead. If this is for testing, clearly document it as test data.
+
+## ITIN
+
+**Social Security Number Detected**
+
+A Social Security Number (SSN) pattern was detected in the scanned content. SSNs are highly sensitive personally identifiable information (PII) that must be protected under various regulations.
+
+*What to do:* Social Security Numbers are protected under numerous regulations including GDPR, HIPAA, and various state privacy laws. SSNs should never be stored in source code, configuration files, or logs. Remove this SSN immediately and ensure it is stored in a secure, encrypted system with appropriate access controls. Consider implementing tokenization or other data protection mechanisms.
 
 ## JCB
 

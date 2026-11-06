@@ -361,6 +361,7 @@ var knownDetectionTypes = []string{
 	"CLOUD_RESOURCE_ID",     // family type, emitted directly by its validator
 	"METADATA",              // family type, emitted directly by its validator
 	"SOCIAL_MEDIA_CLUSTER",  // SOCIAL_MEDIA cluster consolidation type
+	"ITIN",                  // SSN sub-type: the IRS Individual Taxpayer Identification Number (#884)
 }
 
 // KnownTypes returns every detection type this tool can report, sorted.
