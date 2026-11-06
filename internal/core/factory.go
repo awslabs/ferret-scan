@@ -77,10 +77,35 @@ func CheckNames() []string {
 	return names
 }
 
+// ValidatorOverrides are per-run validator settings that outrank both the config file and the active
+// profile: the command line. The zero value, and a nil pointer, override nothing.
+//
+// They are a third pass rather than an edit to the config handed to the first one, which is what the CLI
+// used to do with --disable-ip-types. Written into the global config, the flag lost to any profile that
+// set the same key, because the profile pass runs after the global one and Configure replaces the whole
+// set; and the --stdin path, which never made the edit, ignored the flag outright (#887). As a pass of its
+// own it runs last on every path that builds validators, so the documented precedence (config, then
+// profile, then flag) holds by construction.
+type ValidatorOverrides struct {
+	// DisabledIPTypes, when non-nil, REPLACES the INTELLECTUAL_PROPERTY validator's disabled sub-types
+	// after the config and profile passes, as --disable-ip-types always has without a profile. A non-nil
+	// empty slice therefore re-enables every sub-type; nil leaves the configured set alone. Only that
+	// key is handed to the validator, so whatever else config or profile set (internal_urls, the
+	// pattern overrides) is kept.
+	DisabledIPTypes []string
+}
+
 // BuildValidatorSet constructs the standard set of validators filtered by the
 // enabled checks map. Pass nil for cfg to skip validator-specific configuration.
-// Pass nil for profile to skip profile-specific overrides.
+// Pass nil for profile to skip profile-specific overrides. It is
+// BuildValidatorSetWithOverrides with no overrides.
 func BuildValidatorSet(enabledChecks map[string]bool, cfg *config.Config, profile *config.Profile) map[string]detector.Validator {
+	return BuildValidatorSetWithOverrides(enabledChecks, cfg, profile, nil)
+}
+
+// BuildValidatorSetWithOverrides is BuildValidatorSet with a third configuration pass, applied after the
+// config and profile passes: overrides, which come from the command line. Pass nil for none.
+func BuildValidatorSetWithOverrides(enabledChecks map[string]bool, cfg *config.Config, profile *config.Profile, overrides *ValidatorOverrides) map[string]detector.Validator {
 	result := make(map[string]detector.Validator)
 
 	for name, newValidator := range validatorConstructors {
@@ -106,7 +131,58 @@ func BuildValidatorSet(enabledChecks map[string]bool, cfg *config.Config, profil
 		configureConfigurableValidators(result, &config.Config{Validators: profile.Validators})
 	}
 
+	// Command-line overrides, last, so they outrank both passes above. Only the validator an override
+	// names is reconfigured, and only with the overriding key, so nothing else either pass set is lost.
+	if overrides != nil && overrides.DisabledIPTypes != nil {
+		if v, ok := result["INTELLECTUAL_PROPERTY"].(*intellectualproperty.Validator); ok {
+			types := make([]any, 0, len(overrides.DisabledIPTypes))
+			for _, t := range overrides.DisabledIPTypes {
+				types = append(types, t)
+			}
+			v.Configure(&config.Config{Validators: map[string]map[string]interface{}{
+				"intellectual_property": {"disabled_types": types},
+			}})
+		}
+	}
+
 	return result
+}
+
+// DisabledDetectionTypes asks each configured validator which detection sub-types configuration switched
+// off, and which `disabled_types` entries matched nothing.
+//
+// It asks the VALIDATORS rather than re-reading config, and that is the whole design. Only the
+// intellectual-property validator honours `disabled_types`; the key is inert under any other validator's
+// section. A config-derived disclosure would therefore announce reduced coverage that did not happen, and a
+// disclosure naming a cause that did not occur sends the operator to fix the wrong thing.
+//
+// Only validators actually in the run are present in the map, so a `disabled_types` block for a validator
+// excluded by --checks is correctly silent: nothing was disabled because nothing ran.
+//
+// Both maps are keyed by the check name the operator would type in --checks, not by the config section
+// name, because the disclosure is read alongside the flags rather than alongside the YAML. It lives here,
+// beside the passes that decide the answer, so that ScanContent can report it for the validators IT built
+// (ScanResult.DisabledDetectionTypes): the CLI's --stdin path has no validator set of its own to ask.
+func DisabledDetectionTypes(validators map[string]detector.Validator) (disabled, unrecognised map[string][]string) {
+	for name, v := range validators {
+		ip, ok := v.(*intellectualproperty.Validator)
+		if !ok {
+			continue
+		}
+		if off := ip.DisabledSubTypes(); len(off) > 0 {
+			if disabled == nil {
+				disabled = make(map[string][]string)
+			}
+			disabled[name] = off
+		}
+		if bad := ip.UnrecognisedDisabledSubTypes(); len(bad) > 0 {
+			if unrecognised == nil {
+				unrecognised = make(map[string][]string)
+			}
+			unrecognised[name] = bad
+		}
+	}
+	return disabled, unrecognised
 }
 
 // configureConfigurableValidators hands cfg to every validator that reads the

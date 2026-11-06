@@ -9,44 +9,20 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/awslabs/ferret-scan/v2/internal/core"
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/intellectualproperty"
 )
 
 // collectDisabledDetectionTypes asks each configured validator which detection sub-types config
-// switched off, and which `disabled_types` entries matched nothing.
+// switched off, and which `disabled_types` entries matched nothing. It is core.DisabledDetectionTypes,
+// which carries the reasoning: the VALIDATORS are asked, never the YAML.
 //
-// It asks the VALIDATORS rather than re-reading config, and that is the whole design. Only the
-// intellectual-property validator honours `disabled_types`; the key is inert under any other
-// validator's section. A config-derived disclosure would therefore announce reduced coverage that
-// did not happen, and a disclosure naming a cause that did not occur sends the operator to fix the
-// wrong thing — the same failure as a true disclosure under a false heading.
-//
-// Only validators actually in the run are present in the map, so a `disabled_types` block for a
-// validator excluded by --checks is correctly silent: nothing was disabled because nothing ran.
-//
-// Both maps are keyed by the check name the operator would type in --checks, not by the config
-// section name, because the disclosure is read alongside the flags rather than alongside the YAML.
+// The implementation moved to core so that core.ScanContent can answer the same question for the
+// validators it builds; the --stdin path reads that answer off the ScanResult, and this file path reads
+// it off its own set, so the two cannot disagree about one configuration (#887).
 func collectDisabledDetectionTypes(validators map[string]detector.Validator) (disabled, unrecognised map[string][]string) {
-	for name, v := range validators {
-		ip, ok := v.(*intellectualproperty.Validator)
-		if !ok {
-			continue
-		}
-		if off := ip.DisabledSubTypes(); len(off) > 0 {
-			if disabled == nil {
-				disabled = make(map[string][]string)
-			}
-			disabled[name] = off
-		}
-		if bad := ip.UnrecognisedDisabledSubTypes(); len(bad) > 0 {
-			if unrecognised == nil {
-				unrecognised = make(map[string][]string)
-			}
-			unrecognised[name] = bad
-		}
-	}
-	return disabled, unrecognised
+	return core.DisabledDetectionTypes(validators)
 }
 
 // reportDisabledDetectionTypes writes the coverage disclosure for narrowed detection.

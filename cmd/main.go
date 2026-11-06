@@ -749,36 +749,6 @@ func processPreprocessOnly(supportedFiles []string, fileRouter *router.FileRoute
 	return nil
 }
 
-// handleProfiles handles profile listing and selection
-func handleProfiles(cfg *config.Config, listProfiles bool, profileName string, precommitConfig *precommit.PrecommitConfig) *config.Profile {
-	// List profiles if requested, from the configuration actually loaded: this
-	// used to test the --config flag, so an auto-discovered config's profiles were
-	// reported as "No configuration file found" (#768).
-	if listProfiles {
-		writeProfileList(os.Stdout, cfg)
-		os.Exit(0)
-	}
-
-	// Apply profile settings if specified
-	var activeProfile *config.Profile
-	if profileName != "" {
-		if cfg == nil {
-			printPrecommitError(precommitConfig,
-				fmt.Sprintf("Cannot use profile '%s' - no configuration loaded", profileName),
-				"Check that config file exists and is readable")
-			os.Exit(1)
-		}
-		activeProfile = cfg.GetProfile(profileName)
-		if activeProfile == nil {
-			printPrecommitError(precommitConfig,
-				fmt.Sprintf("Profile '%s' not found in config file", profileName),
-				"Check available profiles with --help or verify config file")
-			os.Exit(1)
-		}
-	}
-	return activeProfile
-}
-
 // getBoolFlag safely gets the value of a boolean flag pointer, returning false if nil
 func getBoolFlag(flag *bool) bool {
 	if flag != nil {
@@ -1213,12 +1183,23 @@ func main() {
 		return
 	}
 
+	// --list-profiles is informational, like --help and --version: it reads the configuration, prints
+	// its profiles and exits without scanning. It is answered here, before the input dispatch, because
+	// it used to be answered after it: `--stdin --list-profiles` read stdin and scanned it, printing
+	// findings where the profile list belonged (#887). It still outranks --help and --version, as it
+	// did when handleProfiles answered it ahead of them.
+	if flags.listProfiles {
+		writeProfileList(os.Stdout, loadConfiguration(flags.configFile))
+		os.Exit(0)
+	}
+
 	// Handle stdin mode early - bypasses file discovery entirely.
 	// --stdin or --file - both trigger this path. Mutual-exclusion checks
 	// live inside runStdinScan to keep main.go's flag parsing flat.
 	// --help and --version always fall through to their dedicated handlers
 	// below regardless of --stdin, so users can inspect the CLI surface
-	// without piping anything.
+	// without piping anything. Everything the two paths share before
+	// reading their input is prepareRun's, which both call.
 	stdinFromFile := flags.inputFile == "-"
 	if (*stdinMode || stdinFromFile) && !*showHelp && !*showVersion {
 		exitCode := runStdinScan(stdinScanInputs{
@@ -1249,60 +1230,18 @@ func main() {
 		}
 	}
 
-	// Load configuration
-	cfg := loadConfiguration(flags.configFile)
-
-	// Initialize pre-commit detector early to check for automatic profile selection
-	precommitDetector := precommit.NewPrecommitDetectorWithFlag(flags.precommitMode)
-	var precommitConfig *precommit.PrecommitConfig
-
-	// Apply pre-commit optimizations if detected or explicitly enabled
-	if precommitDetector.IsPrecommitEnvironment() {
-		precommitConfig = precommitDetector.GetOptimizedConfig()
-		refusePrecommitConfigError(precommitDetector)
+	// The front half --stdin shares: configuration, pre-commit detection, the profile (refused when it
+	// does not exist), the resolved settings, the redaction strategy, the generated-rule expiry and
+	// debug mode. See prepareRun.
+	run, prepErr := prepareRun(flags, fileRun, mainDebugObs)
+	if prepErr != nil {
+		os.Exit(1)
 	}
-
-	// Determine profile name - use pre-commit profile automatically if in pre-commit environment and no explicit profile
-	effectiveProfileName := flags.profileName
-	if effectiveProfileName == "" && precommitDetector.IsPrecommitEnvironment() {
-		suggestedProfile := precommitDetector.GetSuggestedProfile()
-		if suggestedProfile != "" && cfg != nil && cfg.GetProfile(suggestedProfile) != nil {
-			effectiveProfileName = suggestedProfile
-		}
-	}
-
-	// Handle profile operations
-	activeProfile := handleProfiles(cfg, flags.listProfiles, effectiveProfileName, precommitConfig)
-
-	// Resolve final configuration values using extracted flags
-	finalConfig := resolveConfiguration(cfg, activeProfile, &configFlags{
-		outputFormat:        flags.outputFormat,
-		confidenceLevels:    flags.confidenceLevels,
-		checksToRun:         flags.checksToRun,
-		verbose:             flags.verbose,
-		debug:               flags.debug,
-		noColor:             flags.noColor,
-		recursive:           flags.recursive,
-		enablePreprocessors: flags.enablePreprocessors,
-		preprocessOnly:      flags.preprocessOnly,
-		precommitMode:       flags.precommitMode,
-		// Redaction flags
-		enableRedaction:      flags.enableRedaction,
-		redactionOutputDir:   flags.redactionOutputDir,
-		redactionStrategy:    flags.redactionStrategy,
-		redactionAuditLog:    flags.redactionAuditLog,
-		excludePatterns:      flags.excludePatterns,
-		respectGitignore:     flags.respectGitignore,
-		showMatch:            flags.showMatch,
-		quiet:                flags.quiet,
-		showSuppressed:       flags.showSuppressed,
-		generateSuppressions: flags.generateSuppressions,
-		failOnIncomplete:     flags.failOnIncomplete,
-		suppressionFile:      flags.suppressionFile,
-		suppressionExpiresIn: flags.suppressionExpiresIn,
-		disableIPTypes:       flags.disableIPTypes,
-		activeProfileName:    effectiveProfileName,
-	})
+	cfg := run.cfg
+	precommitConfig := run.precommitConfig
+	effectiveProfileName := run.effectiveProfileName
+	activeProfile := run.activeProfile
+	finalConfig := run.final
 
 	// Reject an --exclude pattern the matcher could never apply, before any scanning.
 	//
@@ -1317,14 +1256,6 @@ func main() {
 				"(e.g. '.git', '*.log', 'build/')")
 		os.Exit(1)
 	}
-
-	// Parse the redaction strategy name that won the precedence above, for BOTH
-	// paths (--stdin calls the same helper), before anything is scanned, written
-	// or printed. See applyRedactionStrategy for what this replaces.
-	applyRedactionStrategy(finalConfig, precommitConfig)
-
-	// Use the pre-commit detector initialized earlier (no need to reinitialize)
-	// precommitConfig is already initialized above
 
 	// Apply additional pre-commit optimizations to final config
 	if precommitConfig != nil {
@@ -1373,28 +1304,6 @@ func main() {
 			mainDebugObs.LogDetail("precommit", fmt.Sprintf("Quiet mode: %v, No color: %v, Format: %s",
 				precommitConfig.QuietMode, precommitConfig.NoColor, precommitConfig.Format))
 		}
-	}
-
-	// Check if FERRET_DEBUG environment variable is set
-	if os.Getenv("FERRET_DEBUG") != "" {
-		finalConfig.debug = true
-	}
-
-	// Name the profile that shaped this run, and what it supplied (#768). The
-	// --stdin path logs the same record.
-	if finalConfig.debug {
-		profileObs := mainDebugObs
-		if profileObs == nil {
-			profileObs = observability.NewDebugObserver(os.Stderr)
-		}
-		for _, line := range profileDebugRecord(cfg, effectiveProfileName, flags.profileName, flags.precommitMode) {
-			profileObs.LogDetail("profile", line)
-		}
-	}
-
-	// Set environment variable for validators to detect debug mode
-	if finalConfig.debug {
-		os.Setenv("FERRET_DEBUG", "1")
 	}
 
 	// Validate flag combinations
@@ -1498,34 +1407,11 @@ func main() {
 		mainDebugObs.LogDetail("config", fmt.Sprintf("Enabled checks: %v", enabledChecks))
 	}
 
-	// Build the filtered validator set via the shared factory
-	// Inject --disable-ip-types CLI flag into config so Configure() picks it up
-	if finalConfig.disableIPTypes != "" {
-		if cfg == nil {
-			cfg = &config.Config{}
-		}
-		if cfg.Validators == nil {
-			cfg.Validators = make(map[string]map[string]interface{})
-		}
-		if cfg.Validators["intellectual_property"] == nil {
-			cfg.Validators["intellectual_property"] = make(map[string]interface{})
-		}
-		// Parse comma-separated types into a []any for YAML-compatible config
-		var types []any
-		for _, t := range strings.Split(finalConfig.disableIPTypes, ",") {
-			trimmed := strings.TrimSpace(t)
-			if trimmed != "" {
-				types = append(types, trimmed)
-			}
-		}
-		cfg.Validators["intellectual_property"]["disabled_types"] = types
-
-		if mainDebugObs != nil {
-			mainDebugObs.LogDetail("config", fmt.Sprintf("CLI --disable-ip-types: %v", types))
-		}
-	}
-
-	standardValidators := core.BuildValidatorSet(enabledChecks, cfg, activeProfile)
+	// Build the filtered validator set via the shared factory. --disable-ip-types is the factory's third
+	// pass, after config and profile, rather than an edit to the global config: written into the config,
+	// it lost to a profile that set disabled_types too, since the profile pass ran after it and replaces
+	// the whole set (#887). --stdin hands the same override to core.ScanContent.
+	standardValidators := core.BuildValidatorSetWithOverrides(enabledChecks, cfg, activeProfile, run.validatorOverrides)
 
 	// Coverage disclosure for detection that config switched off (#293 direction 3). Asked of the
 	// CONFIGURED validators, so it reports what they will actually not do rather than what the YAML
@@ -1883,18 +1769,10 @@ func main() {
 	}
 
 	// Initialize suppression manager. The path comes from resolveConfiguration so
-	// that suppressions.file in the config file is honored, not just the flag.
+	// that suppressions.file in the config file is honored, not just the flag. The
+	// expiry for generated rules was parsed (and a bad spelling refused) by prepareRun.
 	suppressionManager := suppressions.NewSuppressionManager(finalConfig.suppressionFile)
-	if finalConfig.suppressionExpiresIn != "" {
-		spec, err := suppressions.ParseExpirySpec(finalConfig.suppressionExpiresIn)
-		if err != nil {
-			printPrecommitError(precommitConfig, err.Error(),
-				"Use a number of days (30), days or weeks (30d, 4w), a Go duration (720h), an "+
-					"absolute date (2026-12-31), or 'never'")
-			os.Exit(1)
-		}
-		suppressionManager.SetGeneratedExpirySpec(spec)
-	}
+	suppressionManager.SetGeneratedExpirySpec(run.generatedExpiry)
 	if mainDebugObs != nil {
 		mainDebugObs.LogDetail("main", "Suppression manager initialized")
 	}
@@ -2284,12 +2162,13 @@ func main() {
 					mainDebugObs.LogDetail("main", "Redaction completed inline during parallel processing")
 				}
 
-				// Export redaction audit log if specified
+				// Export redaction audit log if specified. A log that cannot be written or validated
+				// fails the run (exit 1), as an --output that cannot be written does; see
+				// exportRedactionAuditLog.
 				if finalConfig.redactionAuditLog != "" {
-					if err := redactionManager.ExportAuditLog(finalConfig.redactionAuditLog); err != nil {
-						fmt.Fprintf(os.Stderr, "Warning: Failed to export redaction audit log: %v\n", err)
-					} else if !finalConfig.quiet {
-						fmt.Fprintf(os.Stderr, "Redaction audit log exported to: %s\n", finalConfig.redactionAuditLog)
+					if err := exportRedactionAuditLog(redactionManager, finalConfig.redactionAuditLog,
+						finalConfig.quiet, precommitConfig); err != nil {
+						os.Exit(1)
 					}
 				}
 			}
@@ -2640,31 +2519,14 @@ func main() {
 	// bottom of main. Before this, the formatter derived its own answer from `Confidence >= 90`
 	// while the exit code came from FERRET_PRECOMMIT_EXIT_ON, so `EXIT_ON=none` printed
 	// "commit blocked for security" and exited 0.
-	// Say when a rule that WOULD have suppressed a finding was skipped for being expired.
-	//
-	// IsSuppressed passes over an expired rule with a bare `continue`, so a baseline could stop working
-	// entirely and every run still looked normal. That is exactly what happened to this repository's
-	// own committed baseline: all 245 rules carried a one-week expiry, and had been inert for about
-	// four months while the file's header claimed contributors and CI shared it (#696).
-	//
-	// Counted at MATCH time rather than by walking the file, because this is the number an operator can
-	// act on: "3 findings are in your report that your own rules were meant to suppress" is actionable,
-	// where "the file holds 245 expired rules" does not say whether any of them mattered.
+	// Say when a rule that WOULD have suppressed a finding was skipped for being expired; see
+	// writeExpiredRulesWarning, which --stdin prints too.
 	//
 	// Emitted here, well after the suppression loop, rather than beside it: the loop's neighbourhood is
 	// where the redaction disclosure for #697 lives, and two independent notes inserted at the same
 	// anchor is a merge conflict for no reason.
-	if n, oldest := suppressionManager.ExpiredSkips(); n > 0 {
-		when := ""
-		if oldest != nil {
-			when = fmt.Sprintf(", oldest expired %s", oldest.Format("2006-01-02"))
-		}
-		fmt.Fprintf(os.Stderr,
-			"WARNING: %d finding(s) are reported because their suppression rule has EXPIRED%s. "+
-				"An expired rule is skipped, so a baseline can stop working without any other sign. "+
-				"Remove the expires_at field, regenerate the rules, or run `ferret-scan-suppress "+
-				"--action cleanup` to drop them.\n", n, when)
-	}
+	expiredSkips, oldestExpiry := suppressionManager.ExpiredSkips()
+	writeExpiredRulesWarning(os.Stderr, expiredSkips, oldestExpiry)
 
 	precommitDecision := precommit.Resolve(unsuppressedMatches, precommitConfig)
 	formatterOptions.PrecommitBlockMessage = precommitDecision.Message
