@@ -96,7 +96,7 @@ pre-commit mode say:
 | a top-level key other than `version` and `rules` | named and ignored; with no `rules:` key the file loads 0 rules |
 | a missing, non-hex or upper-case `hash` | named; the rule loads but can never match |
 | an `id` two rules share | named; both rules apply |
-| a YAML syntax error | the whole file is treated as empty, as before |
+| a YAML syntax error, YAML of the wrong shape (`rules: "…"`), or a file that cannot be read | **no rule** is applied, and the file is **never rewritten** (see [Saving](#saving)) |
 
 A rule that is not applied stays in the file and in the web UI's list; its finding is reported until
 the key is fixed. Refusing is deliberate: an ignored misspelling of `expires_at` used to turn a lapsed
@@ -110,7 +110,15 @@ Every writer (`--generate-suppressions` and every web UI action) saves by patchi
 a field is rewritten only when its value changed, new rules are appended, and a removed rule takes its
 own lines with it. Comments, key order, unknown keys and untouched rules are kept byte for byte, so
 regenerating a committed baseline changes only `last_seen_at` lines and appends the new rules. A file
-that did not exist, or could not be parsed, is written fresh.
+that does not exist yet is written fresh.
+
+A file that exists but does not parse (or cannot be read) is **never rewritten**. It loads as empty, so
+its rules are not applied, and saving that empty state would replace the operator's rules. Every
+writer refuses instead and the file stays byte-identical until it is fixed or moved aside:
+`--generate-suppressions` reports `suppression file <path> could not be parsed (<yaml error>); fix it
+or move it aside before regenerating; nothing was written`, and every web UI action that writes
+answers 409 Conflict with the same text (#880). Moving the file aside counts as a missing file, so the
+next save starts a new one.
 
 ## Web UI Integration
 

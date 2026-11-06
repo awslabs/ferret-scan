@@ -1353,6 +1353,22 @@ func (ws *WebServer) suppressionEndpoint(method string, decode bool,
 	}
 }
 
+// suppressionMutation is suppressionEndpoint for a POST that writes the suppression file. While the
+// file exists but could not be read or parsed, the manager holds the empty fallback rather than the
+// file, so the request is refused with 409 Conflict and the manager's refusal text, before the handler
+// runs, and the file stays byte-identical. A create used to write the fallback plus the new rule over
+// the operator's file, and an enable on the empty list reported success (#880).
+func (ws *WebServer) suppressionMutation(
+	fn func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error),
+) http.HandlerFunc {
+	return ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+		if err := mgr.LoadError(); err != nil {
+			return nil, &statusError{status: http.StatusConflict, msg: err.Error()}
+		}
+		return fn(req, mgr)
+	})
+}
+
 // respondJSON writes payload as the JSON response body with Content-Type set.
 func (ws *WebServer) respondJSON(w http.ResponseWriter, payload any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -1378,7 +1394,7 @@ func (ws *WebServer) handleSuppressions(w http.ResponseWriter, r *http.Request) 
 // expiry, anything else is a 400. It used to be ignored, so the add dialog's one-week default — which
 // #696 had removed everywhere else — reached the request and was dropped on the floor.
 func (ws *WebServer) handleSuppressionsCreate(w http.ResponseWriter, r *http.Request) {
-	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+	ws.suppressionMutation(func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
 		if req.ExpiresAt.Err != nil {
 			return nil, badRequest(req.ExpiresAt.Err)
 		}
@@ -1396,7 +1412,7 @@ func (ws *WebServer) handleSuppressionsCreate(w http.ResponseWriter, r *http.Req
 // request said, so every edit — including one that only changed the reason, and the undo of an edit —
 // made the rule permanent (#866).
 func (ws *WebServer) handleSuppressionsEdit(w http.ResponseWriter, r *http.Request) {
-	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+	ws.suppressionMutation(func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
 		if req.ExpiresAt.Err != nil {
 			return nil, badRequest(req.ExpiresAt.Err)
 		}
@@ -1419,7 +1435,7 @@ func (ws *WebServer) handleSuppressionsEdit(w http.ResponseWriter, r *http.Reque
 
 // handleSuppressionsRemove removes a suppression rule (POST /suppressions/remove).
 func (ws *WebServer) handleSuppressionsRemove(w http.ResponseWriter, r *http.Request) {
-	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+	ws.suppressionMutation(func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
 		if err := requireUniqueIDs(mgr, req.ID); err != nil {
 			return nil, err
 		}
@@ -1432,7 +1448,7 @@ func (ws *WebServer) handleSuppressionsRemove(w http.ResponseWriter, r *http.Req
 
 // handleSuppressionsEnable enables a suppression rule (POST /suppressions/enable).
 func (ws *WebServer) handleSuppressionsEnable(w http.ResponseWriter, r *http.Request) {
-	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+	ws.suppressionMutation(func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
 		if err := requireUniqueIDs(mgr, req.ID); err != nil {
 			return nil, err
 		}
@@ -1452,7 +1468,7 @@ func (ws *WebServer) handleSuppressionsEnable(w http.ResponseWriter, r *http.Req
 
 // handleSuppressionsDisable disables a suppression rule (POST /suppressions/disable).
 func (ws *WebServer) handleSuppressionsDisable(w http.ResponseWriter, r *http.Request) {
-	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+	ws.suppressionMutation(func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
 		if err := requireUniqueIDs(mgr, req.ID); err != nil {
 			return nil, err
 		}
@@ -1465,7 +1481,7 @@ func (ws *WebServer) handleSuppressionsDisable(w http.ResponseWriter, r *http.Re
 
 // handleSuppressionsBulkEnable enables multiple suppression rules (POST /suppressions/bulk-enable).
 func (ws *WebServer) handleSuppressionsBulkEnable(w http.ResponseWriter, r *http.Request) {
-	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+	ws.suppressionMutation(func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
 		if err := requireUniqueIDs(mgr, req.IDs...); err != nil {
 			return nil, err
 		}
@@ -1486,7 +1502,7 @@ func (ws *WebServer) handleSuppressionsBulkEnable(w http.ResponseWriter, r *http
 
 // handleSuppressionsBulkDisable disables multiple suppression rules (POST /suppressions/bulk-disable).
 func (ws *WebServer) handleSuppressionsBulkDisable(w http.ResponseWriter, r *http.Request) {
-	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+	ws.suppressionMutation(func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
 		if err := requireUniqueIDs(mgr, req.IDs...); err != nil {
 			return nil, err
 		}
@@ -1501,7 +1517,7 @@ func (ws *WebServer) handleSuppressionsBulkDisable(w http.ResponseWriter, r *htt
 
 // handleSuppressionsBulkDelete deletes multiple suppression rules (POST /suppressions/bulk-delete).
 func (ws *WebServer) handleSuppressionsBulkDelete(w http.ResponseWriter, r *http.Request) {
-	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+	ws.suppressionMutation(func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
 		if err := requireUniqueIDs(mgr, req.IDs...); err != nil {
 			return nil, err
 		}
@@ -1528,7 +1544,7 @@ func (ws *WebServer) handleSuppressionsBulkDelete(w http.ResponseWriter, r *http
 // preserve each rule's Reason, CreatedBy, and Enabled state — only the
 // expiration changes.
 func (ws *WebServer) handleSuppressionsBulkUpdateExpiration(w http.ResponseWriter, r *http.Request) {
-	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+	ws.suppressionMutation(func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
 		if len(req.IDs) == 0 {
 			return nil, fmt.Errorf("no suppression IDs supplied")
 		}
@@ -1572,7 +1588,7 @@ func (ws *WebServer) handleSuppressionsBulkUpdateExpiration(w http.ResponseWrite
 // request was created. Failures used to be skipped silently and success reported regardless, so an
 // undo-delete restored 0 rules while the UI said it had restored them (#866).
 func (ws *WebServer) handleSuppressionsBulkCreate(w http.ResponseWriter, r *http.Request) {
-	ws.suppressionEndpoint("POST", true, func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
+	ws.suppressionMutation(func(req suppressionRequest, mgr *suppressions.SuppressionManager) (any, error) {
 		requested := len(req.Rules) + len(req.Findings)
 		created := 0
 		failed := []string{}
