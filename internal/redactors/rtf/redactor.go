@@ -68,6 +68,18 @@ type RTFRedactor struct {
 	// missing.
 	inner    *plaintext.PlainTextRedactor
 	observer observability.Observer
+
+	// scope is the synthetic strategy's memory, shared with inner: the span pass below writes the
+	// value the verbatim pass wrote, so a value split across a formatting run reads as the same
+	// value as its contiguous copies (#886).
+	scope redactors.SyntheticScope
+}
+
+// SetSyntheticScope sets the scope both passes draw synthetic values from
+// (redactors.SyntheticScopeUser).
+func (r *RTFRedactor) SetSyntheticScope(scope redactors.SyntheticScope) {
+	r.scope = scope
+	r.inner.SetSyntheticScope(scope)
 }
 
 // NewRTFRedactor creates an RTF redactor.
@@ -138,7 +150,12 @@ func (r *RTFRedactor) RedactDocument(originalPath string, outputPath string,
 	// those, leaving the control words between them in place so the document's formatting survives. It
 	// runs on the inner pass's OUTPUT rather than the original, so the two compose instead of fighting
 	// over offsets.
-	if spanned, handled := redactViaSpans(string(out), matches, strategy); len(handled) > 0 {
+	spanned, handled, spanErr := redactViaSpans(string(out), matches, strategy, r.scope)
+	if spanErr != nil {
+		_ = os.Remove(written)
+		return nil, fmt.Errorf("redacting %s across formatting runs: %w", filepath.Base(outputPath), spanErr)
+	}
+	if len(handled) > 0 {
 		if err := os.WriteFile(written, []byte(spanned), 0o600); err != nil {
 			return nil, fmt.Errorf("writing span-redacted RTF %s: %w", filepath.Base(outputPath), err)
 		}

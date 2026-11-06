@@ -8,11 +8,17 @@ package replacement
 
 import (
 	"crypto/rand"
+	"encoding/binary"
+	"errors"
 	"fmt"
-	"math/big"
+	"io"
+	"math"
+	"net/netip"
 	"regexp"
+	"sort"
 	"strings"
-	"time"
+	"sync"
+	"unicode"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
@@ -21,47 +27,59 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/textnorm"
 )
 
-// nameDB caches the loaded name databases so they are only decompressed once.
-var (
-	nameDBOnce  = struct{ done bool }{}
-	cachedFirst []string
-	cachedLast  []string
-)
-
-func loadNames() ([]string, []string) {
-	if nameDBOnce.done {
-		return cachedFirst, cachedLast
-	}
-	nameDBOnce.done = true
-
-	db, err := personname.LoadNameDatabases()
-	if err != nil || db == nil {
-		return nil, nil
-	}
-
-	first := make([]string, 0, len(db.FirstNames))
-	for n := range db.FirstNames {
-		if len(n) > 0 {
-			first = append(first, strings.ToUpper(n[:1])+n[1:])
-		}
-	}
-	last := make([]string, 0, len(db.LastNames))
-	for n := range db.LastNames {
-		if len(n) > 0 {
-			last = append(last, strings.ToUpper(n[:1])+n[1:])
-		}
-	}
-
-	cachedFirst = first
-	cachedLast = last
-	return first, last
+// nameLists is the embedded name databases, title-cased and SORTED.
+//
+// Sorted because the databases are maps: ranging one gives a different order in every process, so an
+// index drawn into an unsorted list named a different person in every run, and a seeded draw could
+// never be reproduced.
+type nameLists struct {
+	first, last []string
 }
 
-// Generate returns a replacement string for originalText of the given dataType
-// using the requested strategy. It never returns an error — on any failure it
-// falls back to the simple placeholder so callers stay clean.
-func Generate(originalText, dataType string, strategy redactors.RedactionStrategy) string {
-	return Render(originalText, dataType, strategy).Text
+// nameDB loads the name lists once, for every goroutine.
+//
+// It used to be a hand-rolled once whose done flag was set BEFORE the lists were assigned, so a
+// goroutine arriving in between read nil lists and SyntheticName returned the simple placeholder with
+// a nil error: one name in 24 files came out as [PERSON-NAME-REDACTED] in 1 to 7 of the 24, at exit 0
+// (#886), and 32 goroutines making the first call together got 31 placeholders. sync.OnceValues makes
+// every caller wait for the one load, and a failed load is an error, never a placeholder.
+var nameDB = sync.OnceValues(loadNameLists)
+
+func loadNameLists() (*nameLists, error) {
+	db, err := personname.LoadNameDatabases()
+	if err != nil {
+		return nil, fmt.Errorf("loading the name databases for synthetic names: %w", err)
+	}
+	if db == nil || len(db.FirstNames) == 0 || len(db.LastNames) == 0 {
+		return nil, errors.New("the name databases for synthetic names are empty")
+	}
+	titled := func(set map[string]bool) []string {
+		out := make([]string, 0, len(set))
+		for n := range set {
+			if len(n) > 0 {
+				out = append(out, strings.ToUpper(n[:1])+n[1:])
+			}
+		}
+		sort.Strings(out)
+		return out
+	}
+	return &nameLists{first: titled(db.FirstNames), last: titled(db.LastNames)}, nil
+}
+
+// Generate returns the replacement for originalText, a value of dataType, under strategy.
+//
+// scope is the synthetic strategy's memory for the invocation (see redactors.SyntheticScope): under
+// synthetic, one value receives one replacement however many times and wherever it occurs, and a nil
+// scope is an error (redactors.ErrNoSyntheticScope). simple and format_preserving never read it.
+//
+// A synthetic generator that fails returns its error. It used to return the simple placeholder in its
+// place, at a nil error, so a run asked for synthetic values silently wrote placeholders (#886).
+func Generate(originalText, dataType string, strategy redactors.RedactionStrategy, scope redactors.SyntheticScope) (string, error) {
+	r, err := Render(originalText, dataType, strategy, scope)
+	if err != nil {
+		return "", err
+	}
+	return r.Text, nil
 }
 
 // ─── Renderings and the bytes they keep ──────────────────────────────────────
@@ -109,23 +127,59 @@ type Rendering struct {
 func (r Rendering) Kept() int { return r.kept }
 
 // Render is Generate together with the original bytes the replacement keeps.
-func Render(original, dataType string, strategy redactors.RedactionStrategy) Rendering {
+func Render(original, dataType string, strategy redactors.RedactionStrategy, scope redactors.SyntheticScope) (Rendering, error) {
 	switch strategy {
 	case redactors.RedactionSimple:
-		return Rendering{Text: simpleFor(dataType, original)}
+		return Rendering{Text: simpleFor(dataType, original)}, nil
 	case redactors.RedactionFormatPreserving:
 		text := FormatPreserving(original, dataType)
-		return newRendering(text, original, formatPreservingCopies(original, dataType), false)
+		return newRendering(text, original, formatPreservingCopies(original, dataType), false), nil
 	case redactors.RedactionSynthetic:
-		text, err := Synthetic(original, dataType)
+		text, err := syntheticIn(scope, original, dataType)
 		if err != nil {
-			return Rendering{Text: simpleFor(dataType, original)}
+			return Rendering{}, err
 		}
 		folded := textnorm.Fold(original)
-		return newRendering(text, folded, syntheticCopies(folded, dataType, text), folded != original)
+		return newRendering(text, folded, syntheticCopies(folded, dataType), folded != original), nil
 	default:
-		return Rendering{Text: simpleFor(dataType, original)}
+		return Rendering{}, fmt.Errorf("redaction strategy %d is not one of %s",
+			int(strategy), strings.Join(redactors.RedactionStrategyNames, ", "))
 	}
+}
+
+// memberCopies is the original bytes a member's own rendering keeps, without drawing a synthetic
+// value: which bytes a synthetic generator copies is a property of the value's shape (its separators,
+// a card's issuer prefix, a name's title), never of the random digits it writes. The overlap-group
+// rule asks this of every member, and drawing would hand a value that is never written a replacement
+// of its own in the scope.
+func memberCopies(original, dataType string, strategy redactors.RedactionStrategy) (copies []Copy, normalized bool) {
+	switch strategy {
+	case redactors.RedactionSynthetic:
+		folded := textnorm.Fold(original)
+		return valueCopies(folded, syntheticCopies(folded, dataType)), folded != original
+	case redactors.RedactionFormatPreserving:
+		text := FormatPreserving(original, dataType)
+		return newRendering(text, original, formatPreservingCopies(original, dataType), false).Copies, false
+	default:
+		return nil, false // simple copies nothing
+	}
+}
+
+// valueCopies keeps the copies that lie inside value and hold part of it.
+func valueCopies(value string, copies []Copy) []Copy {
+	var out []Copy
+	for _, c := range copies {
+		if c.Len <= 0 || c.In < 0 || c.In+c.Len > len(value) {
+			continue
+		}
+		for p := c.In; p < c.In+c.Len; p++ {
+			if isValueByte(value[p]) {
+				out = append(out, c)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // newRendering keeps only the copies that hold part of the value and counts what they keep.
@@ -248,7 +302,10 @@ func formatPreservingCopies(original, dataType string) []Copy {
 
 // syntheticCopies mirrors the synthetic generators: the bytes each writes back from the value
 // rather than generating. value is the folded spelling Synthetic generated from.
-func syntheticCopies(value, dataType, text string) []Copy {
+//
+// They depend on the value's shape alone, never on what was drawn, which is what lets memberCopies
+// answer for a member without drawing for it.
+func syntheticCopies(value, dataType string) []Copy {
 	switch {
 	case isCreditCardType(dataType):
 		// syntheticCreditCard keeps the issuer prefix (up to four digits) and every non-digit rune.
@@ -270,19 +327,25 @@ func syntheticCopies(value, dataType, text string) []Copy {
 			}
 			return index[i] < prefix
 		})
-	case dataType == "SSN", dataType == "PHONE":
+	case dataType == "SSN":
 		// Digits are regenerated one for one; everything else is written back.
 		return runsWhere(value, func(i int) bool { return value[i] < '0' || value[i] > '9' })
+	case dataType == "PHONE":
+		// As SSN, except that an eleven-digit number's leading NANP trunk prefix "1" is written
+		// back too: it is the same for every number written that way, and it is not part of the
+		// ten digits that identify the line (see phoneKey).
+		_, trunk := phoneKey(digitsOf(value))
+		first := strings.IndexFunc(value, func(r rune) bool { return r >= '0' && r <= '9' })
+		return runsWhere(value, func(i int) bool {
+			return value[i] < '0' || value[i] > '9' || (trunk && i == first)
+		})
 	case dataType == "PERSON_NAME":
-		// SyntheticName keeps a leading title ("Dr.") when it produced a name at all.
-		fields := strings.Fields(value)
-		if len(fields) == 0 || !strings.HasSuffix(fields[0], ".") || len(fields[0]) > 5 {
+		// The generator keeps a leading title ("Dr.") and writes it first.
+		sh := parseName(value)
+		if sh.title == "" {
 			return nil
 		}
-		if !strings.HasPrefix(text, fields[0]+" ") && text != fields[0] {
-			return nil // the placeholder fallback: nothing of the value was kept
-		}
-		return []Copy{{In: strings.Index(value, fields[0]), Out: 0, Len: len(fields[0])}}
+		return []Copy{{In: strings.Index(value, sh.title), Out: 0, Len: len(sh.title)}}
 	case dataType == "GITHUB_TOKEN":
 		if len(value) >= 4 {
 			return []Copy{{In: 0, Out: 0, Len: 4}}
@@ -325,10 +388,13 @@ func syntheticCopies(value, dataType, text string) []Copy {
 //
 // The representative and its tie-breaks are redactors.ResolveOverlaps'; nothing here reads the order
 // matches arrived in.
-func RenderGroup(g redactors.OverlapGroup, matches []detector.Match, strategy redactors.RedactionStrategy) Rendering {
+//
+// scope is Render's: synthetic draws the union's replacement from it, so every occurrence of the same
+// union is given the same one.
+func RenderGroup(g redactors.OverlapGroup, matches []detector.Match, strategy redactors.RedactionStrategy, scope redactors.SyntheticScope) (Rendering, error) {
 	rep := matches[g.Representative]
 	if !g.IsGroup() {
-		return Render(rep.Text, rep.Type, strategy)
+		return Render(rep.Text, rep.Type, strategy, scope)
 	}
 
 	switch g.Kind {
@@ -344,27 +410,33 @@ func RenderGroup(g redactors.OverlapGroup, matches []detector.Match, strategy re
 				anyGuard = true
 			}
 		}
-		r := Render(g.Text, rep.Type, strategy)
-		if !anyGuard {
-			return r
+		r, err := Render(g.Text, rep.Type, strategy, scope)
+		if err != nil || !anyGuard {
+			return r, err
 		}
-		return withhold(r, g.Text, strategy, simpleFor(rep.Type, rep.Text), func(p int) bool { return !guarded[p] })
+		return withhold(r, g.Text, strategy, simpleFor(rep.Type, rep.Text), func(p int) bool { return !guarded[p] }), nil
 
 	case redactors.GroupIdentical:
-		r := Render(g.Text, rep.Type, strategy)
-		return withhold(r, g.Text, strategy, simpleFor(rep.Type, rep.Text), keptByEveryCoveringMember(g, matches, strategy))
+		r, err := Render(g.Text, rep.Type, strategy, scope)
+		if err != nil {
+			return r, err
+		}
+		return withhold(r, g.Text, strategy, simpleFor(rep.Type, rep.Text), keptByEveryCoveringMember(g, matches, strategy)), nil
 
 	case redactors.GroupPartial:
 		if t, ok := sharedType(g, matches); ok {
-			r := Render(g.Text, t, strategy)
-			return withhold(r, g.Text, strategy, simpleFor(rep.Type, rep.Text), keptByEveryCoveringMember(g, matches, strategy))
+			r, err := Render(g.Text, t, strategy, scope)
+			if err != nil {
+				return r, err
+			}
+			return withhold(r, g.Text, strategy, simpleFor(rep.Type, rep.Text), keptByEveryCoveringMember(g, matches, strategy)), nil
 		}
 		if strategy == redactors.RedactionFormatPreserving {
-			return Rendering{Text: strings.Repeat("*", len(g.Text))}
+			return Rendering{Text: strings.Repeat("*", len(g.Text))}, nil
 		}
-		return Rendering{Text: simpleFor(rep.Type, rep.Text)}
+		return Rendering{Text: simpleFor(rep.Type, rep.Text)}, nil
 	}
-	return Render(g.Text, rep.Type, strategy)
+	return Render(g.Text, rep.Type, strategy, scope)
 }
 
 // sharedType returns the members' Type when they all have the same one.
@@ -392,11 +464,11 @@ func keptByEveryCoveringMember(g redactors.OverlapGroup, matches []detector.Matc
 		for p := off; p < g.Spans[k].End-g.Start && p < n; p++ {
 			cover[p]++
 		}
-		r := Render(matches[i].Text, matches[i].Type, strategy)
-		if r.Normalized {
+		copies, normalized := memberCopies(matches[i].Text, matches[i].Type, strategy)
+		if normalized {
 			continue
 		}
-		for _, c := range r.Copies {
+		for _, c := range copies {
 			for q := 0; q < c.Len; q++ {
 				if p := off + c.In + q; p >= 0 && p < n {
 					kept[p]++
@@ -734,60 +806,193 @@ func preserveIP(original string) string {
 
 // ─── Synthetic ───────────────────────────────────────────────────────────────
 
-// Synthetic generates realistic-looking but fake data of the same type.
+// Synthetic generates realistic-looking but fake data of the same type: ONE draw, with no memory.
+//
+// Two calls on one value return two different values. That is the generator a redaction draws from,
+// without the scope that gives a value one replacement per invocation; every redactor renders through
+// Generate, Render or RenderGroup with a scope instead (#886). This stays for a caller that needs an
+// independent draw: pkg/redact's gate samples it to show the generators are not constant and never
+// write a value that could be live.
 func Synthetic(original, dataType string) (string, error) {
-	// Generate from the CANONICAL form of the value.
-	//
-	// Every generator below rebuilds a value by walking the original and substituting the parts it
-	// recognises — digitRe is [0-9], the passport generator copies A-Z. None of them recognises a
-	// fullwidth digit or a Unicode dash, so for a value written with those the walk substitutes
-	// nothing and returns the original UNCHANGED. The residue guard then correctly refuses to write a
-	// file that still holds the reported value, so `--redaction-strategy synthetic` failed outright on
-	// a document whose digits came from a CJK-locale form.
-	//
-	// Measured: with the normalization pass of #671 making these values reportable, three of ninety
-	// substituted fixtures — SSN, VISA and PHONE with fullwidth digits — were refused under synthetic
-	// while simple and format_preserving redacted them cleanly. Before #671 they were never reported
-	// at all, so the refusal is new only in the sense that the value is finally visible.
-	//
-	// Folding here rather than widening each generator's character class: a synthetic replacement is a
-	// realistic-looking SUBSTITUTE, not a byte-shape copy, so it has no reason to preserve the exotic
-	// spelling of the value it replaces. format_preserving, which does have that reason, is untouched.
-	original = textnorm.Fold(original)
-
-	if isCreditCardType(dataType) {
-		return syntheticCreditCard(original)
+	g := generatorFor(dataType, textnorm.Fold(original))
+	stored, err := g.drawFrom(rand.Reader, 0)
+	if err != nil {
+		return "", err
 	}
+	return g.render(stored), nil
+}
+
+// syntheticIn is the scoped draw: the replacement scope holds for the value, drawn there on first use
+// and written in this occurrence's shape.
+func syntheticIn(scope redactors.SyntheticScope, original, dataType string) (string, error) {
+	if scope == nil {
+		return "", redactors.ErrNoSyntheticScope
+	}
+	g := generatorFor(dataType, textnorm.Fold(original))
+	stored, err := scope.Resolve(g.family, g.key, g.distinct, g.drawFrom)
+	if err != nil {
+		return "", err
+	}
+	return g.render(stored), nil
+}
+
+// synthGen is one value's synthetic generator: the family and canonical key the scope files it under,
+// how to draw a replacement, and how to write that replacement in this occurrence's shape.
+//
+// What is stored and what is written differ wherever two spellings are one value. The SSN family
+// stores nine digits and writes them into each occurrence's own separators; the name family stores a
+// first and last name and writes them in each occurrence's order, comma and case. Elsewhere the
+// stored value is what is written.
+type synthGen struct {
+	family string
+	key    string
+	// distinct is redactors.SyntheticScope's: whether the replacement must be unique in its family.
+	distinct bool
+	draw     func(s *source, attempt int) (string, error)
+	render   func(stored string) string
+}
+
+// drawFrom is the redactors.SyntheticDraw a scope calls. A failed read of the random source is
+// returned as the error; it used to be replaced by the clock (time.Now().UnixNano() % max).
+func (g synthGen) drawFrom(rnd io.Reader, attempt int) (string, error) {
+	s := &source{r: rnd}
+	v, err := g.draw(s, attempt)
+	if err == nil {
+		err = s.err
+	}
+	if err != nil {
+		return "", err
+	}
+	return v, nil
+}
+
+func verbatim(stored string) string { return stored }
+
+// generatorFor returns the generator for a value of dataType, given the value's FOLDED spelling.
+//
+// Folded (textnorm.Fold) because every generator rebuilds a value by walking it and substituting the
+// parts it recognises -- ASCII digits, the passport generator's A-Z. None recognises a fullwidth digit
+// or a Unicode dash, so for a value written with those the walk substituted nothing and returned the
+// original UNCHANGED, and the residue guard then correctly refused the file: measured, three of ninety
+// substituted fixtures (SSN, VISA and PHONE with fullwidth digits) were refused under synthetic while
+// simple and format_preserving redacted them cleanly (#671). A synthetic replacement is a
+// realistic-looking substitute, not a byte-shape copy, so it has no reason to keep the exotic spelling.
+//
+// The family follows the renderers' dispatch (#864): every card brand is one family, every email type
+// another, every social media platform a third, each credential type its own, and every other type its
+// own. The canonical key merges only the spellings the type treats as one value, and each occurrence
+// is written in its own shape:
+//
+//	family       canonical key                                 each occurrence written as
+//	CREDIT_CARD  its digits                                    the replacement's digits in its own separators
+//	SSN          its digits                                    the same
+//	PHONE        its digits, an 11-digit NANP "1" dropped      the same, the "1" kept where it has one
+//	EMAIL        the address, lower-cased                      the replacement address
+//	PERSON_NAME  tokens case-folded, "Last, First" read as     the replacement name in its own order,
+//	             "First Last", the title left out              comma, case and title
+//	IP_ADDRESS   net/netip's canonical form                    the replacement address
+//	(any other)  the folded value                              the replacement
+//
+// An email address's local part is case-sensitive by RFC 5321, but relying on that "impedes
+// interoperability and is discouraged" (§2.4); one address written in two cases is one person here.
+func generatorFor(dataType, value string) synthGen {
+	switch {
+	case isCreditCardType(dataType):
+		key := digitsOf(value)
+		return synthGen{family: "CREDIT_CARD", key: key, distinct: true,
+			draw:   func(s *source, _ int) (string, error) { return cardDigits(key, s), nil },
+			render: func(stored string) string { return writeDigits(value, stored) }}
 	// By family (#864): every email type gets a random address at example.com, every social media
 	// platform a fake profile on its own host, every secret type a token of its own shape.
-	switch {
-	case isEmailType(dataType, original):
-		return syntheticEmail(original)
-	case isSocialMediaType(dataType, original):
-		return syntheticSocialMedia(original)
+	case isEmailType(dataType, value):
+		key := strings.ToLower(value)
+		return synthGen{family: "EMAIL", key: key, distinct: true,
+			draw:   func(s *source, _ int) (string, error) { return syntheticEmail(key, s), nil },
+			render: verbatim}
+	case isSocialMediaType(dataType, value):
+		return synthGen{family: "SOCIAL_MEDIA", key: value, distinct: true,
+			draw:   func(s *source, _ int) (string, error) { return syntheticSocialMedia(value, s), nil },
+			render: verbatim}
 	case secretTypes[dataType]:
-		return syntheticSecret(original, dataType)
+		return synthGen{family: dataType, key: value, distinct: true,
+			draw:   func(s *source, _ int) (string, error) { return syntheticSecret(value, dataType, s), nil },
+			render: verbatim}
 	}
 	switch dataType {
 	case "SSN":
-		return syntheticSSN(original)
+		return synthGen{family: "SSN", key: digitsOf(value), distinct: true,
+			draw:   func(s *source, _ int) (string, error) { return ssnDigits(s), nil },
+			render: func(stored string) string { return writeDigits(value, stored) }}
 	case "PHONE":
-		return syntheticPhone(original)
+		key, trunk := phoneKey(digitsOf(value))
+		return synthGen{family: "PHONE", key: key, distinct: true,
+			draw: func(s *source, _ int) (string, error) { return phoneDigits(len(key), s), nil },
+			render: func(stored string) string {
+				if trunk {
+					stored = "1" + stored
+				}
+				return writeDigits(value, stored)
+			}}
 	case "IP_ADDRESS":
-		return syntheticIP()
+		return synthGen{family: "IP_ADDRESS", key: ipKey(value), distinct: true, draw: drawIP, render: verbatim}
 	case "PERSON_NAME":
-		return SyntheticName(original)
+		sh := parseName(value)
+		return synthGen{family: "PERSON_NAME", key: sh.key(), distinct: true,
+			draw:   func(s *source, _ int) (string, error) { return drawName(len(sh.tokens), s) },
+			render: sh.render}
 	case "PASSPORT":
-		return syntheticPassport(original)
+		return synthGen{family: "PASSPORT", key: value, distinct: true,
+			draw:   func(s *source, _ int) (string, error) { return syntheticPassport(value, s), nil },
+			render: verbatim}
 	case "INTELLECTUAL_PROPERTY":
-		return syntheticIntellectualProperty(original)
+		// Only a patent number stands in for an identity. The other arms write a generic notice
+		// ("© 2013 Redacted Corporation. All rights reserved.", "CONFIDENTIAL", "[IP-REDACTED]") from
+		// at most 26 choices, and two notices sharing one merges nothing a reader joins on; held to
+		// one-to-one, the second distinct trademark of a run would refuse its file.
+		arm := intellectualPropertyArm(value)
+		return synthGen{family: "INTELLECTUAL_PROPERTY", key: value, distinct: arm == ipPatent,
+			draw:   func(s *source, _ int) (string, error) { return syntheticIntellectualProperty(arm, s), nil },
+			render: verbatim}
 	default:
-		return randomString(len(original))
+		return synthGen{family: dataType, key: value, distinct: true,
+			draw:   func(s *source, _ int) (string, error) { return randomString(len(value), s), nil },
+			render: verbatim}
 	}
 }
 
-// syntheticCreditCard produces a card-SHAPED value that is deliberately Luhn-INVALID and
-// keeps the original's issuer prefix.
+// digitsOf returns the ASCII digits of s, in order.
+func digitsOf(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] >= '0' && s[i] <= '9' {
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
+}
+
+// writeDigits writes digits into value's shape: each ASCII digit of value takes the next of digits
+// ("0" once they run out), and every other byte is written back unchanged.
+func writeDigits(value, digits string) string {
+	b := make([]byte, len(value))
+	di := 0
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		if c >= '0' && c <= '9' {
+			c = '0'
+			if di < len(digits) {
+				c = digits[di]
+				di++
+			}
+		}
+		b[i] = c
+	}
+	return string(b)
+}
+
+// cardDigits draws the digits of a card-SHAPED value that is deliberately Luhn-INVALID and
+// keeps the original's issuer prefix. key is the original's digits; writeDigits puts the
+// result into each occurrence's own grouping and separators.
 //
 // Two defects were fixed here, both measured (#669).
 //
@@ -810,13 +1015,11 @@ func Synthetic(original, dataType string) (string, error) {
 // An alternative was the brands' published test numbers, but those are FEWER than the
 // values needing replacement and are themselves Luhn-valid, so a document with several
 // cards would repeat one — losing the distinctness the synthetic strategy exists to keep.
-func syntheticCreditCard(original string) (string, error) {
+func cardDigits(key string, s *source) string {
 	// Take the issuer prefix from the ORIGINAL so the brand is preserved.
-	var origDigits []int
-	for _, c := range original {
-		if c >= '0' && c <= '9' {
-			origDigits = append(origDigits, int(c-'0'))
-		}
+	origDigits := make([]int, len(key))
+	for i := 0; i < len(key); i++ {
+		origDigits[i] = int(key[i] - '0')
 	}
 	// A card shorter than a plausible IIN cannot carry a brand; fall back to a Visa-shaped
 	// prefix rather than indexing past the end.
@@ -836,119 +1039,222 @@ func syntheticCreditCard(original string) (string, error) {
 		target = 12 // shortest real card length; keeps luhn arithmetic meaningful
 	}
 	for len(digits) < target-1 {
-		digits = append(digits, secureRandom(10))
+		digits = append(digits, s.intn(10))
 	}
 	digits = append(digits, invalidLuhnDigit(digits))
 
-	di := 0
-	var b strings.Builder
-	for _, c := range original {
-		if c >= '0' && c <= '9' {
-			if di < len(digits) {
-				b.WriteString(fmt.Sprintf("%d", digits[di]))
-				di++
-			} else {
-				b.WriteByte('0')
-			}
-		} else {
-			b.WriteRune(c)
-		}
+	b := make([]byte, len(digits))
+	for i, d := range digits {
+		b[i] = byte('0' + d) // #nosec G115 -- d is a decimal digit
 	}
-	return b.String(), nil
+	return string(b)
 }
 
-// syntheticSSN writes a value that is neither an SSN nor an ITIN.
+// ssnDigits draws nine digits that are neither an SSN nor an ITIN.
 //
 // The areas used to be {000, 666, 900, 999} with any group. 000 and 666 are never issued as anything.
 // The 9xx areas are never an SSN, but they are where the IRS issues ITINs, and the SSN validator now
 // reports an ITIN (#884): a 9xx area with a group in 50-65, 70-88, 90-92 or 94-99 is one. So a 9xx
-// area is now drawn only with a group in 01-49, which no ITIN carries.
-func syntheticSSN(original string) (string, error) {
+// area is drawn only with a group in 01-49, which no ITIN carries. The digits come from the run's
+// scope source, so one original maps to one replacement per run (#886).
+func ssnDigits(s *source) string {
 	var area, group string
-	if secureRandom(2) == 0 {
-		area = []string{"000", "666"}[secureRandom(2)]
-		group = fmt.Sprintf("%02d", secureRandom(100))
+	if s.intn(2) == 0 {
+		area = []string{"000", "666"}[s.intn(2)]
+		group = fmt.Sprintf("%02d", s.intn(100))
 	} else {
-		area = fmt.Sprintf("9%02d", secureRandom(100))
-		group = fmt.Sprintf("%02d", 1+secureRandom(49))
+		area = fmt.Sprintf("9%02d", s.intn(100))
+		group = fmt.Sprintf("%02d", 1+s.intn(49))
 	}
-	serial := fmt.Sprintf("%04d", secureRandom(10000))
-	syn := area + group + serial
-
-	di := 0
-	return digitRe.ReplaceAllStringFunc(original, func(_ string) string {
-		if di < len(syn) {
-			r := string(syn[di])
-			di++
-			return r
-		}
-		return "0"
-	}), nil
+	return area + group + fmt.Sprintf("%04d", s.intn(10000))
 }
 
-func syntheticEmail(original string) (string, error) {
-	parts := strings.SplitN(original, "@", 2)
+// minSyntheticLocal is the shortest local part a synthetic address gets.
+//
+// The local part is lower-case alphanumeric, 36 symbols, and every synthetic address is at
+// example.com, so a one-character local part had 36 possible replacements: one-to-one (#886) would
+// have refused the file holding a run's 37th distinct one-character address. Four characters give
+// 1,679,616.
+const minSyntheticLocal = 4
+
+// syntheticEmail draws a random lower-case local part of the original's length (at least
+// minSyntheticLocal; eight when the value has no usable local part) at example.com.
+func syntheticEmail(value string, s *source) string {
 	userLen := 8
-	if len(parts) == 2 && len(parts[0]) > 0 {
-		userLen = len(parts[0])
+	if at := strings.IndexByte(value, '@'); at > 0 {
+		userLen = max(at, minSyntheticLocal)
 	}
-	user, err := randomString(userLen)
-	if err != nil {
-		return "user@example.com", nil
-	}
-	return strings.ToLower(user) + "@example.com", nil
+	return strings.ToLower(randomString(userLen, s)) + "@example.com"
 }
 
-func syntheticPhone(original string) (string, error) {
-	cleaned := nonDigit.ReplaceAllString(original, "")
-	syn := "555"
-	for len(syn) < len(cleaned) {
-		syn += fmt.Sprintf("%d", secureRandom(10))
+// phoneKey is the canonical form of a phone number's digits: an eleven-digit number starting with
+// the NANP trunk prefix "1" is the ten-digit number after it, so "+1 312 555 0142" and
+// "(312) 555-0142" are one line. trunk reports that the prefix was dropped.
+func phoneKey(digits string) (key string, trunk bool) {
+	if len(digits) == 11 && digits[0] == '1' {
+		return digits[1:], true
 	}
-	di := 0
-	return digitRe.ReplaceAllStringFunc(original, func(_ string) string {
-		if di < len(syn) {
-			r := string(syn[di])
-			di++
-			return r
-		}
-		return "0"
-	}), nil
+	return digits, false
 }
 
-func syntheticIP() (string, error) {
-	return fmt.Sprintf("192.168.%d.%d", secureRandom(256), secureRandom(256)), nil
+// phoneDigits draws n digits in the NANP 555 fictional exchange: "555" and n-3 random digits.
+func phoneDigits(n int, s *source) string {
+	var b strings.Builder
+	b.WriteString("555")
+	for b.Len() < n {
+		b.WriteByte(byte('0' + s.intn(10))) // #nosec G115 -- s.intn(10) is in [0, 9]
+	}
+	return b.String()
 }
 
-// SyntheticName returns a realistic random name drawn from the embedded name
-// databases (~5 200 first names, ~2 100 last names). It preserves the
-// structure of the original: single token, two-part, three-part, and any
-// title prefix (Dr., Mr., Ms., etc.).
-func SyntheticName(original string) (string, error) {
-	first, last := loadNames()
-	if len(first) == 0 || len(last) == 0 {
-		return "[PERSON-NAME-REDACTED]", nil
+// ipKey is an address's canonical spelling (net/netip; an IPv4-mapped IPv6 address is its IPv4
+// address), or the value itself when it does not parse.
+func ipKey(value string) string {
+	if a, err := netip.ParseAddr(value); err == nil {
+		return a.Unmap().String()
 	}
+	return value
+}
 
-	parts := strings.Fields(original)
-	title := ""
-	nameParts := parts
-	if len(parts) > 0 && strings.HasSuffix(parts[0], ".") && len(parts[0]) <= 5 {
-		title = parts[0] + " "
-		nameParts = parts[1:]
+// rfc1918Size counts the addresses of 10.0.0.0/8, 172.16.0.0/12 and 192.168.0.0/16.
+const rfc1918Size = 1<<24 + 1<<20 + 1<<16 // 17,891,328
+
+// drawIP draws a private (RFC 1918) address.
+//
+// A value's first draw is in 192.168.0.0/16, as every synthetic address was before (#886). That range
+// holds 65,536 addresses, too few to give every address of a large log one of its own, so a re-draw --
+// which happens only when the address drawn is already another value's -- is taken from all
+// 17,891,328 addresses of RFC 1918, and may start 10. or 172.16-31.
+func drawIP(s *source, attempt int) (string, error) {
+	if attempt == 0 {
+		return fmt.Sprintf("192.168.%d.%d", s.intn(256), s.intn(256)), nil
 	}
-
-	f := first[secureRandom(len(first))]
-	l := last[secureRandom(len(last))]
-
-	switch len(nameParts) {
-	case 0, 1:
-		return title + f, nil
-	case 2:
-		return title + f + " " + l, nil
+	i := s.intn(rfc1918Size)
+	switch {
+	case i < 1<<24:
+		return fmt.Sprintf("10.%d.%d.%d", i>>16, i>>8&0xff, i&0xff), nil
+	case i < 1<<24+1<<20:
+		i -= 1 << 24
+		return fmt.Sprintf("172.%d.%d.%d", 16+i>>16, i>>8&0xff, i&0xff), nil
 	default:
-		mid := strings.ToUpper(first[secureRandom(len(first))][:1]) + "."
-		return title + f + " " + mid + " " + l, nil
+		i -= 1<<24 + 1<<20
+		return fmt.Sprintf("192.168.%d.%d", i>>8, i&0xff), nil
+	}
+}
+
+// SyntheticName returns one random name for original, drawn from the embedded name databases (5,301
+// first names, 2,333 last names). It keeps the original's title (Dr., Mr., Ms., ...), its number of
+// tokens (one; two; three or more, written First M. Last), a "Last, First" order and an all-upper or
+// all-lower case. It is an error, never a placeholder, when the databases cannot be loaded.
+func SyntheticName(original string) (string, error) {
+	g := generatorFor("PERSON_NAME", original)
+	stored, err := g.drawFrom(rand.Reader, 0)
+	if err != nil {
+		return "", err
+	}
+	return g.render(stored), nil
+}
+
+// nameShape is how one occurrence of a PERSON_NAME is written.
+type nameShape struct {
+	title  string   // a leading title ("Dr."), written back unchanged
+	tokens []string // the name's tokens in First ... Last order
+	comma  bool     // written "Last, First ..."
+	upper  bool     // every letter is upper case
+	lower  bool     // every letter is lower case
+}
+
+// parseName reads a name's title, tokens, order and case. The title rule is the generator's
+// historical one: a first token ending in "." of at most five bytes.
+func parseName(value string) nameShape {
+	var sh nameShape
+	fields := strings.Fields(value)
+	if len(fields) > 0 && strings.HasSuffix(fields[0], ".") && len(fields[0]) <= 5 {
+		sh.title = fields[0]
+		fields = fields[1:]
+	}
+	rest := strings.Join(fields, " ")
+	if i := strings.IndexByte(rest, ','); i >= 0 {
+		last := strings.Fields(rest[:i])
+		first := strings.Fields(strings.ReplaceAll(rest[i+1:], ",", " "))
+		if len(last) > 0 && len(first) > 0 {
+			sh.comma = true
+			sh.tokens = append(first, last...)
+		}
+	}
+	if !sh.comma {
+		sh.tokens = strings.Fields(strings.ReplaceAll(rest, ",", " "))
+	}
+	hasUpper, hasLower := false, false
+	for _, r := range rest {
+		switch {
+		case unicode.IsUpper(r):
+			hasUpper = true
+		case unicode.IsLower(r):
+			hasLower = true
+		}
+	}
+	sh.upper = hasUpper && !hasLower
+	sh.lower = hasLower && !hasUpper
+	return sh
+}
+
+// key is the canonical spelling: the tokens in First ... Last order, case-folded, single-spaced.
+func (sh nameShape) key() string {
+	return strings.ToLower(strings.Join(sh.tokens, " "))
+}
+
+// render writes a stored name (first, middle initial, last, NUL-separated) in this occurrence's
+// order, case and title.
+func (sh nameShape) render(stored string) string {
+	p := strings.SplitN(stored, "\x00", 3)
+	for len(p) < 3 {
+		p = append(p, "")
+	}
+	first, mid, last := p[0], p[1], p[2]
+	var parts []string
+	if sh.comma && last != "" {
+		parts = append(parts, last+",", first)
+		if mid != "" {
+			parts = append(parts, mid)
+		}
+	} else {
+		for _, x := range []string{first, mid, last} {
+			if x != "" {
+				parts = append(parts, x)
+			}
+		}
+	}
+	name := strings.Join(parts, " ")
+	switch {
+	case sh.upper:
+		name = strings.ToUpper(name)
+	case sh.lower:
+		name = strings.ToLower(name)
+	}
+	if sh.title != "" {
+		name = sh.title + " " + name
+	}
+	return name
+}
+
+// drawName draws a stored name for a value of n tokens: a first name; a first and last name; or, for
+// three or more, a first name, a middle initial and a last name.
+func drawName(n int, s *source) (string, error) {
+	db, err := nameDB()
+	if err != nil {
+		return "", err
+	}
+	first := db.first[s.intn(len(db.first))]
+	switch {
+	case n <= 1:
+		return first + "\x00\x00", nil
+	case n == 2:
+		return first + "\x00\x00" + db.last[s.intn(len(db.last))], nil
+	default:
+		last := db.last[s.intn(len(db.last))]
+		mid := strings.ToUpper(db.first[s.intn(len(db.first))][:1]) + "."
+		return first + "\x00" + mid + "\x00" + last, nil
 	}
 }
 
@@ -968,21 +1274,21 @@ const awsExampleMarker = "EXAMPLE"
 // which types actually stop being reported.
 const exampleBody = "EXAMPLE"
 
-func syntheticSecret(original, dataType string) (string, error) {
+func syntheticSecret(original, dataType string, s *source) string {
 	const hexChars = "0123456789abcdef"
 	const alphaNum = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 	randHex := func(n int) string {
 		b := make([]byte, n)
 		for i := range b {
-			b[i] = hexChars[secureRandom(len(hexChars))]
+			b[i] = hexChars[s.intn(len(hexChars))]
 		}
 		return string(b)
 	}
 	randAlphaNum := func(n int) string {
 		b := make([]byte, n)
 		for i := range b {
-			b[i] = alphaNum[secureRandom(len(alphaNum))]
+			b[i] = alphaNum[s.intn(len(alphaNum))]
 		}
 		return string(b)
 	}
@@ -1001,47 +1307,47 @@ func syntheticSecret(original, dataType string) (string, error) {
 		upper := "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 		b := make([]byte, 9)
 		for i := range b {
-			b[i] = upper[secureRandom(len(upper))]
+			b[i] = upper[s.intn(len(upper))]
 		}
-		return "AKIA" + string(b) + awsExampleMarker, nil
+		return "AKIA" + string(b) + awsExampleMarker
 	case "GITHUB_TOKEN":
 		// Preserve prefix (ghp_, gho_, etc.) from original
 		prefix := "ghp_"
 		if len(original) >= 4 {
 			prefix = original[:4]
 		}
-		return prefix + exampleBody + randAlphaNum(29), nil
+		return prefix + exampleBody + randAlphaNum(29)
 	case "GOOGLE_CLOUD_API_KEY":
-		return "AIza" + exampleBody + randAlphaNum(28), nil
+		return "AIza" + exampleBody + randAlphaNum(28)
 	case "STRIPE_API_KEY":
 		prefix := "sk_test_"
 		if strings.HasPrefix(original, "pk_") {
 			prefix = "pk_test_"
 		}
-		return prefix + exampleBody + randAlphaNum(17), nil
+		return prefix + exampleBody + randAlphaNum(17)
 	case "GITLAB_TOKEN":
-		return "glpat-" + exampleBody + randAlphaNum(13), nil
+		return "glpat-" + exampleBody + randAlphaNum(13)
 	case "DOCKER_TOKEN":
-		return "dckr_pat_" + randAlphaNum(36), nil
+		return "dckr_pat_" + randAlphaNum(36)
 	case "SLACK_TOKEN":
 		prefix := "xoxb-"
 		if strings.HasPrefix(original, "xoxp-") {
 			prefix = "xoxp-"
 		}
-		return prefix + randAlphaNum(12) + "-" + randAlphaNum(12) + "-" + randAlphaNum(24), nil
+		return prefix + randAlphaNum(12) + "-" + randAlphaNum(12) + "-" + randAlphaNum(24)
 	case "JWT_TOKEN":
 		// Generate a fake but structurally valid JWT (3 base64url parts)
 		header := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
 		payload := "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlJlZGFjdGVkIiwiaWF0IjoxNTE2MjM5MDIyfQ"
 		sig := randAlphaNum(43)
-		return header + "." + payload + "." + sig, nil
+		return header + "." + payload + "." + sig
 	case "SSH_PRIVATE_KEY", "CERTIFICATE", "PGP_PRIVATE_KEY":
 		// Return a clearly fake but structurally similar placeholder
-		return "[PRIVATE-KEY-REDACTED-" + randHex(8) + "]", nil
+		return "[PRIVATE-KEY-REDACTED-" + randHex(8) + "]"
 	default:
 		// Generic: preserve length and rough character class of original
 		if len(original) == 0 {
-			return "[SECRET-REDACTED]", nil
+			return "[SECRET-REDACTED]"
 		}
 		// Detect if original looks like hex
 		isHex := true
@@ -1052,21 +1358,21 @@ func syntheticSecret(original, dataType string) (string, error) {
 			}
 		}
 		if isHex && len(original) >= 16 {
-			return randHex(len(original)), nil
+			return randHex(len(original))
 		}
-		return randAlphaNum(len(original)), nil
+		return randAlphaNum(len(original))
 	}
 }
 
 // syntheticPassport generates a realistic-looking but fake passport number.
 // It detects the country format from the original and generates a matching fake.
-func syntheticPassport(original string) (string, error) {
+func syntheticPassport(original string, s *source) string {
 	upper := strings.ToUpper(strings.ReplaceAll(original, " ", ""))
 
 	upper26 := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	randLetter := func() byte { return upper26[secureRandom(26)] }
-	// #nosec G115 -- secureRandom(10) returns [0,9]; '0' + 9 = 57, fits in byte
-	randDigit := func() byte { return byte('0' + secureRandom(10)) }
+	randLetter := func() byte { return upper26[s.intn(26)] }
+	// #nosec G115 -- s.intn(10) returns [0,9]; '0' + 9 = 57, fits in byte
+	randDigit := func() byte { return byte('0' + s.intn(10)) }
 
 	switch {
 	case len(upper) == 9 && upper[0] >= 'A' && upper[0] <= 'Z' && isAllDigits(upper[1:]):
@@ -1075,7 +1381,7 @@ func syntheticPassport(original string) (string, error) {
 		for i := 0; i < 8; i++ {
 			b = append(b, randDigit())
 		}
-		return string(b), nil
+		return string(b)
 
 	case len(upper) == 9 && isAllDigits(upper):
 		// UK format: #########
@@ -1083,7 +1389,7 @@ func syntheticPassport(original string) (string, error) {
 		for i := range b {
 			b[i] = randDigit()
 		}
-		return string(b), nil
+		return string(b)
 
 	case len(upper) == 8 && upper[0] >= 'A' && upper[0] <= 'Z' && upper[1] >= 'A' && upper[1] <= 'Z' && isAllDigits(upper[2:]):
 		// Canada format: LL######
@@ -1091,16 +1397,16 @@ func syntheticPassport(original string) (string, error) {
 		for i := 0; i < 6; i++ {
 			b = append(b, randDigit())
 		}
-		return string(b), nil
+		return string(b)
 
 	case len(upper) == 9 && upper[0] >= 'A' && upper[0] <= 'Z' && upper[1] >= 'A' && upper[1] <= 'Z':
 		// EU format: LL + 7 alphanumeric
 		alphaNum := "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 		b := []byte{randLetter(), randLetter()}
 		for i := 0; i < 7; i++ {
-			b = append(b, alphaNum[secureRandom(len(alphaNum))])
+			b = append(b, alphaNum[s.intn(len(alphaNum))])
 		}
-		return string(b), nil
+		return string(b)
 
 	default:
 		// Generic: same length, same character class pattern
@@ -1116,12 +1422,12 @@ func syntheticPassport(original string) (string, error) {
 				b[i] = byte(c)
 			}
 		}
-		return string(b), nil
+		return string(b)
 	}
 }
 
 // syntheticSocialMedia generates a fake but realistic-looking social media URL or handle.
-func syntheticSocialMedia(original string) (string, error) {
+func syntheticSocialMedia(original string, s *source) string {
 	lower := strings.ToLower(original)
 
 	// Detect platform and generate matching fake
@@ -1129,65 +1435,91 @@ func syntheticSocialMedia(original string) (string, error) {
 		"user_redacted", "profile_hidden", "account_removed",
 		"redacted_user", "hidden_profile",
 	}
-	fakeUser := fakeUsernames[secureRandom(len(fakeUsernames))]
-	fakeNum := secureRandom(9999)
+	fakeUser := fakeUsernames[s.intn(len(fakeUsernames))]
+	fakeNum := s.intn(9999)
 	fakeHandle := fmt.Sprintf("%s_%04d", fakeUser, fakeNum)
 
 	switch {
 	case strings.Contains(lower, "linkedin.com"):
-		return fmt.Sprintf("https://www.linkedin.com/in/%s", fakeHandle), nil
+		return fmt.Sprintf("https://www.linkedin.com/in/%s", fakeHandle)
 	case strings.Contains(lower, "twitter.com") || strings.Contains(lower, "x.com"):
-		return fmt.Sprintf("https://x.com/%s", fakeHandle), nil
+		return fmt.Sprintf("https://x.com/%s", fakeHandle)
 	case strings.Contains(lower, "github.com"):
-		return fmt.Sprintf("https://github.com/%s", fakeHandle), nil
+		return fmt.Sprintf("https://github.com/%s", fakeHandle)
 	case strings.Contains(lower, "facebook.com") || strings.Contains(lower, "fb.com"):
-		return fmt.Sprintf("https://www.facebook.com/%s", fakeHandle), nil
+		return fmt.Sprintf("https://www.facebook.com/%s", fakeHandle)
 	case strings.Contains(lower, "instagram.com"):
-		return fmt.Sprintf("https://www.instagram.com/%s/", fakeHandle), nil
+		return fmt.Sprintf("https://www.instagram.com/%s/", fakeHandle)
 	case strings.Contains(lower, "youtube.com"):
-		return fmt.Sprintf("https://www.youtube.com/@%s", fakeHandle), nil
+		return fmt.Sprintf("https://www.youtube.com/@%s", fakeHandle)
 	case strings.Contains(lower, "tiktok.com"):
-		return fmt.Sprintf("https://www.tiktok.com/@%s/", fakeHandle), nil
+		return fmt.Sprintf("https://www.tiktok.com/@%s/", fakeHandle)
 	case strings.Contains(lower, "reddit.com"):
-		return fmt.Sprintf("https://www.reddit.com/user/%s", fakeHandle), nil
+		return fmt.Sprintf("https://www.reddit.com/user/%s", fakeHandle)
 	case strings.HasPrefix(original, "@"):
 		// Plain handle
-		return "@" + fakeHandle, nil
+		return "@" + fakeHandle
 	default:
-		return "@" + fakeHandle, nil
+		return "@" + fakeHandle
+	}
+}
+
+// ipArm is the kind of INTELLECTUAL_PROPERTY value syntheticIntellectualProperty writes for.
+type ipArm int
+
+const (
+	ipNotice ipArm = iota // anything else: "[IP-REDACTED]"
+	ipCopyright
+	ipPatent
+	ipTrademark
+	ipConfidential
+)
+
+// intellectualPropertyArm classifies an INTELLECTUAL_PROPERTY value, in the generator's order.
+func intellectualPropertyArm(original string) ipArm {
+	lower := strings.ToLower(original)
+	switch {
+	case strings.Contains(lower, "©") || strings.Contains(lower, "copyright") || strings.Contains(lower, "(c)"):
+		return ipCopyright
+	case strings.Contains(lower, "patent") || strings.HasPrefix(strings.ToUpper(original), "US") ||
+		strings.HasPrefix(strings.ToUpper(original), "EP"):
+		return ipPatent
+	case strings.Contains(lower, "™") || strings.Contains(lower, "®") ||
+		strings.Contains(lower, "(tm)") || strings.Contains(lower, "(r)"):
+		return ipTrademark
+	case strings.Contains(lower, "confidential") || strings.Contains(lower, "proprietary") ||
+		strings.Contains(lower, "trade secret") || strings.Contains(lower, "restricted"):
+		return ipConfidential
+	default:
+		return ipNotice
 	}
 }
 
 // syntheticIntellectualProperty generates a fake but structurally valid IP reference.
-func syntheticIntellectualProperty(original string) (string, error) {
-	lower := strings.ToLower(original)
+func syntheticIntellectualProperty(arm ipArm, s *source) string {
+	switch arm {
+	case ipCopyright:
+		year := 2000 + s.intn(26) // 2000–2025
+		return fmt.Sprintf("© %d Redacted Corporation. All rights reserved.", year)
 
-	switch {
-	case strings.Contains(lower, "©") || strings.Contains(lower, "copyright") || strings.Contains(lower, "(c)"):
-		year := 2000 + secureRandom(26) // 2000–2025
-		return fmt.Sprintf("© %d Redacted Corporation. All rights reserved.", year), nil
-
-	case strings.Contains(lower, "patent") || strings.HasPrefix(strings.ToUpper(original), "US") ||
-		strings.HasPrefix(strings.ToUpper(original), "EP"):
+	case ipPatent:
 		prefixes := []string{"US", "EP", "WO", "JP", "CN"}
-		prefix := prefixes[secureRandom(len(prefixes))]
-		num := 1000000 + secureRandom(8999999)
-		return fmt.Sprintf("%s%d", prefix, num), nil
+		prefix := prefixes[s.intn(len(prefixes))]
+		num := 1000000 + s.intn(8999999)
+		return fmt.Sprintf("%s%d", prefix, num)
 
-	case strings.Contains(lower, "™") || strings.Contains(lower, "®") ||
-		strings.Contains(lower, "(tm)") || strings.Contains(lower, "(r)"):
-		return "[TRADEMARK-REDACTED]™", nil
+	case ipTrademark:
+		return "[TRADEMARK-REDACTED]™"
 
-	case strings.Contains(lower, "confidential") || strings.Contains(lower, "proprietary") ||
-		strings.Contains(lower, "trade secret") || strings.Contains(lower, "restricted"):
+	case ipConfidential:
 		labels := []string{
 			"CONFIDENTIAL", "PROPRIETARY", "INTERNAL USE ONLY",
 			"RESTRICTED", "COMPANY CONFIDENTIAL",
 		}
-		return labels[secureRandom(len(labels))], nil
+		return labels[s.intn(len(labels))]
 
 	default:
-		return "[IP-REDACTED]", nil
+		return "[IP-REDACTED]"
 	}
 }
 
@@ -1208,27 +1540,46 @@ var (
 	digitRe  = regexp.MustCompile(`\d`)
 )
 
-func secureRandom(max int) int {
-	if max <= 0 {
-		return 0
-	}
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(max)))
-	if err != nil {
-		return int(time.Now().UnixNano()) % max
-	}
-	return int(n.Int64())
+// source is the randomness one synthetic draw reads: crypto/rand.Reader in a real run, a stream
+// derived from a seed under redactors.NewSeededSyntheticScope in a test.
+//
+// The first failed read is kept in err and every later draw returns 0; the generator's caller returns
+// err (synthGen.drawFrom). The previous helper replaced a failed crypto/rand read with
+// time.Now().UnixNano() % max, a value an observer of the clock can predict.
+type source struct {
+	r   io.Reader
+	err error
 }
 
-func randomString(length int) (string, error) {
+// intn returns a uniform value in [0, n), by rejection sampling over 64 random bits.
+func (s *source) intn(n int) int {
+	if n <= 1 || s.err != nil {
+		return 0
+	}
+	bound := uint64(n)
+	limit := math.MaxUint64 - math.MaxUint64%bound // [0, limit) holds whole cycles of bound
+	var b [8]byte
+	for {
+		if _, err := io.ReadFull(s.r, b[:]); err != nil {
+			s.err = fmt.Errorf("reading randomness for a synthetic value: %w", err)
+			return 0
+		}
+		if v := binary.BigEndian.Uint64(b[:]); v < limit {
+			return int(v % bound) // #nosec G115 -- v % bound < n, which is an int
+		}
+	}
+}
+
+func randomString(length int, s *source) string {
 	if length <= 0 {
-		return "", nil
+		return ""
 	}
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, length)
 	for i := range b {
-		b[i] = charset[secureRandom(len(charset))]
+		b[i] = charset[s.intn(len(charset))]
 	}
-	return string(b), nil
+	return string(b)
 }
 
 // invalidLuhnDigit returns a final digit that makes the sequence FAIL the Luhn check.

@@ -105,6 +105,14 @@ func svgRedactWellFormed(t *testing.T, data []byte) error {
 	}
 }
 
+// scopedSVGRedactor is an SVG redactor with a synthetic scope of its own, as a RedactionManager
+// would hand it at registration (#886): without one, synthetic refuses.
+func scopedSVGRedactor() *SVGRedactor {
+	r := NewSVGRedactor(nil, nil)
+	r.SetSyntheticScope(redactors.NewSyntheticScope())
+	return r
+}
+
 // TestAllThreeStrategiesRemoveEveryValueAndKeepTheDrawing is the sink assertion.
 func TestAllThreeStrategiesRemoveEveryValueAndKeepTheDrawing(t *testing.T) {
 	for _, strategy := range []redactors.RedactionStrategy{
@@ -118,7 +126,7 @@ func TestAllThreeStrategiesRemoveEveryValueAndKeepTheDrawing(t *testing.T) {
 				t.Fatalf("mkdir: %v", err)
 			}
 
-			res, err := NewSVGRedactor(nil, nil).RedactDocument(in, out, svgRedactMatches(), strategy)
+			res, err := scopedSVGRedactor().RedactDocument(in, out, svgRedactMatches(), strategy)
 			if err != nil {
 				t.Fatalf("redaction failed: %v", err)
 			}
@@ -175,7 +183,8 @@ func TestSyntheticIsRandomPerRun(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(out), 0o700); err != nil {
 			t.Fatalf("mkdir: %v", err)
 		}
-		if _, err := NewSVGRedactor(nil, nil).RedactDocument(
+		// A redactor and a scope per run: a run is one invocation, and the next one draws afresh.
+		if _, err := scopedSVGRedactor().RedactDocument(
 			in, out, svgRedactMatches(), redactors.RedactionSynthetic); err != nil {
 			t.Fatalf("run %d: %v", i, err)
 		}

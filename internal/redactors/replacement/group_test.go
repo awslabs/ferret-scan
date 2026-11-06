@@ -20,7 +20,7 @@ func TestRenderTextIsGenerate(t *testing.T) {
 	}
 	for _, c := range values {
 		for _, st := range []redactors.RedactionStrategy{redactors.RedactionSimple, redactors.RedactionFormatPreserving} {
-			if got, want := Render(c.v, c.typ, st).Text, Generate(c.v, c.typ, st); got != want {
+			if got, want := rend(t, c.v, c.typ, st).Text, gen(t, c.v, c.typ, st); got != want {
 				t.Errorf("Render(%q,%s,%s).Text = %q, Generate = %q", c.v, c.typ, st, got, want)
 			}
 		}
@@ -51,7 +51,7 @@ func TestRenderCopiesAreTheBytesKeptByConstruction(t *testing.T) {
 		{"4532-0151-1283-0366", "VISA", redactors.RedactionSimple, ""},
 	}
 	for _, c := range cases {
-		r := Render(c.v, c.typ, c.st)
+		r := rend(t, c.v, c.typ, c.st)
 		var kept strings.Builder
 		for _, cp := range r.Copies {
 			if got, want := r.Text[cp.Out:cp.Out+cp.Len], c.v[cp.In:cp.In+cp.Len]; got != want {
@@ -190,10 +190,10 @@ func TestRenderGroupRuleTable(t *testing.T) {
 			orders = append(orders, rev)
 			for _, ms := range orders {
 				g, ms := group(t, r.line, append([]detector.Match(nil), ms...)...)
-				if got := RenderGroup(g, ms, redactors.RedactionSimple).Text; got != r.simple {
+				if got := rendGroup(t, g, ms, redactors.RedactionSimple).Text; got != r.simple {
 					t.Errorf("simple: got %q, want %q", got, r.simple)
 				}
-				if got := RenderGroup(g, ms, redactors.RedactionFormatPreserving).Text; got != r.fp {
+				if got := rendGroup(t, g, ms, redactors.RedactionFormatPreserving).Text; got != r.fp {
 					t.Errorf("format_preserving: got %q, want %q", got, r.fp)
 				}
 				// synthetic: a plausible fake may regenerate freely, but it must not COPY a value byte the
@@ -203,7 +203,7 @@ func TestRenderGroupRuleTable(t *testing.T) {
 				// last four) trips one run in seven -- measured 14 of 100 on Linux, and it is what failed the
 				// Windows leg of #811. No row in this table copies any value byte under synthetic: the card's
 				// issuer prefix, the only candidate, is hidden by its SECRETS co-member.
-				syn := RenderGroup(g, ms, redactors.RedactionSynthetic)
+				syn := rendGroup(t, g, ms, redactors.RedactionSynthetic)
 				var synKept strings.Builder
 				for _, c := range syn.Copies {
 					for q := 0; q < c.Len; q++ {
@@ -226,13 +226,13 @@ func TestRenderGroupRuleTable(t *testing.T) {
 func TestRenderGroupSyntheticFallsBackToThePlaceholder(t *testing.T) {
 	g, ms := group(t, `secret = "4532-0000-0000-0009"`,
 		m("VISA", "4532-0000-0000-0009", "creditcard", 85), m("API_KEY_OR_SECRET", "4532-0000-0000-0009", "secrets", 75))
-	if got := RenderGroup(g, ms, redactors.RedactionSynthetic).Text; got != "[CREDIT-CARD-REDACTED]" {
+	if got := rendGroup(t, g, ms, redactors.RedactionSynthetic).Text; got != "[CREDIT-CARD-REDACTED]" {
 		t.Fatalf("synthetic card over a secret must fall back to the placeholder, got %q", got)
 	}
 	// Two cards on the same bytes both keep the issuer prefix, so the fake is allowed to.
 	g, ms = group(t, "card 4532-0000-0000-0009",
 		m("VISA", "4532-0000-0000-0009", "creditcard", 85), m("CREDIT_CARD", "4532-0000-0000-0009", "creditcard", 60))
-	if got := RenderGroup(g, ms, redactors.RedactionSynthetic).Text; !strings.HasPrefix(got, "4532-") || got == "4532-0000-0000-0009" {
+	if got := rendGroup(t, g, ms, redactors.RedactionSynthetic).Text; !strings.HasPrefix(got, "4532-") || got == "4532-0000-0000-0009" {
 		t.Fatalf("two cards agree on the prefix, so a synthetic card is expected, got %q", got)
 	}
 }
@@ -251,7 +251,7 @@ func TestRenderGroupDoesNotOverMergeAdjacentValues(t *testing.T) {
 	}
 	var got []string
 	for _, g := range gs {
-		got = append(got, RenderGroup(g, ms, redactors.RedactionFormatPreserving).Text)
+		got = append(got, rendGroup(t, g, ms, redactors.RedactionFormatPreserving).Text)
 	}
 	if strings.Join(got, "|") != "****-****-****-0366|***-***-0142" {
 		t.Fatalf("each adjacent value keeps its own rendering, got %v", got)
@@ -264,7 +264,7 @@ func TestRenderGroupSingleIsRender(t *testing.T) {
 	ms[0].LineNumber, ms[0].Context.FullLine = 1, "ssn 449-87-4100"
 	g := redactors.ResolveOverlaps(ms)[0]
 	for _, st := range []redactors.RedactionStrategy{redactors.RedactionSimple, redactors.RedactionFormatPreserving} {
-		if got, want := RenderGroup(g, ms, st).Text, Generate("449-87-4100", "SSN", st); got != want {
+		if got, want := rendGroup(t, g, ms, st).Text, gen(t, "449-87-4100", "SSN", st); got != want {
 			t.Errorf("%s: got %q, want %q", st, got, want)
 		}
 	}

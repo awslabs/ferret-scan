@@ -58,7 +58,11 @@ func TestEveryProducerSpellingOfAValueIsActuallyRemoved(t *testing.T) {
 			continue
 		}
 
-		out, handled := redactViaSpans(src, []detector.Match{{Text: value, Type: "SSN"}}, redactors.RedactionSimple)
+		out, handled, err := redactViaSpans(src, []detector.Match{{Text: value, Type: "SSN"}}, redactors.RedactionSimple, nil)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
 		if !handled[value] {
 			t.Errorf("%s: the span map could not locate a value the extractor DID produce, so redaction "+
 				"falls back to refusing the file", name)

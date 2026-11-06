@@ -75,6 +75,13 @@ func NewSVGRedactor(outputManager *redactors.OutputStructureManager, observer ob
 	}
 }
 
+// SetSyntheticScope hands the manager's synthetic scope to the inner redactor, which writes every
+// replacement (redactors.SyntheticScopeUser), so a value in a drawing gets the replacement it gets
+// in every other file of the run.
+func (r *SVGRedactor) SetSyntheticScope(scope redactors.SyntheticScope) {
+	r.inner.SetSyntheticScope(scope)
+}
+
 // GetName returns the name of the redactor.
 func (r *SVGRedactor) GetName() string { return "svg_redactor" }
 

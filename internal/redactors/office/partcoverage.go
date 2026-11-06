@@ -6,6 +6,7 @@ package office
 import (
 	"bytes"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"path"
 	"strings"
@@ -112,17 +113,20 @@ func isProvablyBinaryPart(name string) bool {
 // # Replacements are REUSED, never regenerated
 //
 // The replacement for a value is taken from what the located route already recorded. Regenerating
-// would break the synthetic strategy, whose generator is nondeterministic by design: the same SSN
+// used to break the synthetic strategy, whose generator drew a new value per call: the same SSN
 // would be replaced by one synthetic value in the slide and a different one in the notes, which
-// reads as two distinct values to anyone reading the redacted document.
+// reads as two distinct values to anyone reading the redacted document. A value no route recorded
+// is generated through the redactor's synthetic scope, which gives it the replacement it has in
+// every other part and file of the run (#886); a replacement that cannot be generated is returned
+// as the error, so the document is refused for that reason rather than for the residue it leaves.
 func (or *OfficeRedactor) recordCoverageForRemainingParts(
 	contents *OfficeZipContents,
 	matches []detector.Match,
 	strategy redactors.RedactionStrategy,
 	pending map[string]*partReplacements,
-) {
+) error {
 	if contents == nil || len(matches) == 0 {
-		return
+		return nil
 	}
 
 	// Replacements already chosen by the located/split routes, so a value is masked identically
@@ -155,7 +159,7 @@ func (or *OfficeRedactor) recordCoverageForRemainingParts(
 		values = append(values, v)
 	}
 	if len(values) == 0 {
-		return
+		return nil
 	}
 
 	// Stage 1: one trie pass per part. Replacing every value with nothing and comparing is a
@@ -166,9 +170,9 @@ func (or *OfficeRedactor) recordCoverageForRemainingParts(
 	}
 	probe := strings.NewReplacer(probeArgs...)
 
-	replacementFor := func(value string) (string, bool) {
+	replacementFor := func(value string) (string, bool, error) {
 		if repl, ok := chosen[value]; ok {
-			return repl, true
+			return repl, true, nil
 		}
 		// A value no route recorded: generate once and remember it, so every part that holds it
 		// gets the same mask.
@@ -178,12 +182,12 @@ func (or *OfficeRedactor) recordCoverageForRemainingParts(
 			}
 			repl, err := or.generateReplacement(value, m.Type, strategy)
 			if err != nil {
-				return "", false
+				return "", false, fmt.Errorf("generating a replacement for a %s value found in another part: %w", m.Type, err)
 			}
 			chosen[value] = repl
-			return repl, true
+			return repl, true, nil
 		}
-		return "", false
+		return "", false, nil
 	}
 
 	for _, name := range contents.orderedNames() {
@@ -235,7 +239,10 @@ func (or *OfficeRedactor) recordCoverageForRemainingParts(
 					continue // this route already covers it
 				}
 			}
-			repl, ok := replacementFor(v)
+			repl, ok, err := replacementFor(v)
+			if err != nil {
+				return err
+			}
 			if !ok {
 				continue // no replacement: leave it reported, and let the residue guard refuse
 			}
@@ -257,6 +264,7 @@ func (or *OfficeRedactor) recordCoverageForRemainingParts(
 			pr.addSplit(v, repl)
 		}
 	}
+	return nil
 }
 
 // attributeValuesText returns every attribute value in an XML part, newline-separated.
