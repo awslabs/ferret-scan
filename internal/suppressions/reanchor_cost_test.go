@@ -4,6 +4,8 @@
 package suppressions
 
 import (
+	"crypto/sha256"
+	"encoding"
 	"fmt"
 	"math"
 	"path/filepath"
@@ -60,12 +62,15 @@ func TestTheSearchStaysWithinItsLimit(t *testing.T) {
 }
 
 // TestAComparisonAllocatesNothing: each comparison restores the saved state into one reused hash.
-// Measured 0 allocations; hashing the whole composite instead allocates 1 per comparison (and costs the
-// line's length), which is what this catches.
+// Measured 0 allocations. A form built without its saved state, so that every comparison hashes the
+// whole composite (and costs the line's length), fails here before any timing is read.
 func TestAComparisonAllocatesNothing(t *testing.T) {
+	if _, ok := sha256.New().(encoding.BinaryMarshaler); !ok {
+		t.Skip("this build's SHA-256 cannot save its state; comparisons take the slow path")
+	}
 	form := (&SuppressionManager{}).newLineOpenForm(onLongLine(64<<10), hashVersionCurrent)
 	if form.state == nil {
-		t.Skip("this build cannot save a SHA-256 state; comparisons take the slow path")
+		t.Fatal("the hash can save its state, and the form did not: every comparison hashes the whole composite")
 	}
 	hasher := newAnchorHasher()
 	line := 0
@@ -76,8 +81,8 @@ func TestAComparisonAllocatesNothing(t *testing.T) {
 
 // TestAComparisonCostsTheSameOnALongLine: a comparison costs the same for a finding on an 8 KiB line
 // (the most of the line the identity hashes) as for one on a short line. Each reading is the minimum of
-// 2,000 calls. Measured 0.9-1.1x; 36-61x with the saved state dropped, so every comparison hashes the
-// whole composite. The threshold is 4x.
+// 2,000 calls. Measured 0.94-1.00x (0.91-1.00x under -race); 27.1x with the saved state dropped, so that
+// every comparison hashes the whole composite. The threshold is 4x.
 func TestAComparisonCostsTheSameOnALongLine(t *testing.T) {
 	sm := &SuppressionManager{}
 	long := sm.newLineOpenForm(onLongLine(64<<10), hashVersionCurrent)
