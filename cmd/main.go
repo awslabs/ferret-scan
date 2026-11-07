@@ -1032,6 +1032,21 @@ func extractAllFlags(flags flagPointers) extractedFlags {
 	}
 }
 
+// appendCommaList returns the Set function for a comma-separated list flag. Each occurrence of the flag
+// appends to the value instead of replacing it, so `--exclude a --exclude b` is `--exclude a,b`. These
+// flags used to be flag.String, which keeps only the last occurrence and says nothing: the documented
+// `--exclude '.git/**' --exclude 'build/**'` scanned .git/ (#943).
+func appendCommaList(dst *string) func(string) error {
+	return func(v string) error {
+		if *dst == "" {
+			*dst = v
+		} else if v != "" {
+			*dst += "," + v
+		}
+		return nil
+	}
+}
+
 // parseExcludePatterns parses comma-separated exclude patterns
 func parseExcludePatterns(excludeStr string) []string {
 	if excludeStr == "" {
@@ -1056,8 +1071,10 @@ func main() {
 	profileName := flag.String("profile", "", "Profile name to use from config file")
 	listProfiles := flag.Bool("list-profiles", false, "List available profiles in config file")
 	outputFormat := flag.String("format", "", "Output format: text, json, csv, yaml, junit, gitlab-sast, sarif (default: text)")
-	confidenceLevels := flag.String("confidence", "", "Confidence levels to display: high, medium, low, or combinations like 'high,medium'")
-	checksToRun := flag.String("checks", "", "Specific checks to run: "+strings.Join(core.CheckNames(), ", ")+", all (default: all)")
+	confidenceLevels := new(string)
+	flag.Func("confidence", "Confidence levels to display: high, medium, low, or combinations like 'high,medium' (repeatable; values append)", appendCommaList(confidenceLevels))
+	checksToRun := new(string)
+	flag.Func("checks", "Specific checks to run: "+strings.Join(core.CheckNames(), ", ")+", all (default: all; repeatable, values append)", appendCommaList(checksToRun))
 	verbose := flag.Bool("verbose", false, "Display detailed information for each finding")
 	debug := flag.Bool("debug", false, "Enable debug logging to show preprocessing and validation flow")
 	outputFile := flag.String("output", "", "Path to output file (if not specified, output to stdout)")
@@ -1090,15 +1107,18 @@ func main() {
 	redactionAuditLog := flag.String("redaction-audit-log", "", "Path to save redaction audit log file (JSON format for compliance)")
 
 	// Exclusion flag
-	excludePatterns := flag.String("exclude", "", "Comma-separated list of patterns to exclude from scanning (e.g., '.git,*.log,temp/')")
+	excludePatterns := new(string)
+	flag.Func("exclude", "Comma-separated list of patterns to exclude from scanning (e.g., '.git,*.log,temp/'); repeatable, values append: --exclude a --exclude b is --exclude a,b", appendCommaList(excludePatterns))
 
 	// Gitignore flag — opt-in. Off by default because .gitignore commonly hides
 	// files with high secret-scanning value (.env, *.pem, credentials/).
 	respectGitignore := flag.Bool("respect-gitignore", false, "Honor .gitignore files, .git/info/exclude, and global git excludes when scanning (opt-in; .git directory is always skipped when enabled)")
 
 	// IP sub-type control flag
-	disableIPTypes := flag.String("disable-ip-types", "", "Comma-separated list of IP sub-types to disable: copyright,patent,trademark,trade_secret,internal_url")
-	validatorBudget := flag.String("validator-budget", "", "Per-validator time budget as NAME=DURATION pairs. DURATION takes any Go duration unit — ms, s, m, h (e.g. 'SSN=500ms,IP_ADDRESS=2m'). Use 'all=<dur>' for every validator; specific names override it. A validator exceeding its budget is stopped and the scan is marked incomplete. METADATA (also covered by all=) is checked between metadata items: one already running finishes first. Default: no budget.")
+	disableIPTypes := new(string)
+	flag.Func("disable-ip-types", "Comma-separated list of IP sub-types to disable: copyright,patent,trademark,trade_secret,internal_url (repeatable; values append)", appendCommaList(disableIPTypes))
+	validatorBudget := new(string)
+	flag.Func("validator-budget", "Per-validator time budget as NAME=DURATION pairs. DURATION takes any Go duration unit — ms, s, m, h (e.g. 'SSN=500ms,IP_ADDRESS=2m'). Use 'all=<dur>' for every validator; specific names override it. A validator exceeding its budget is stopped and the scan is marked incomplete. METADATA (also covered by all=) is checked between metadata items: one already running finishes first. Default: no budget. Repeatable; values append.", appendCommaList(validatorBudget))
 	maxLiveBytes := flag.String("max-live-bytes", "", "Cap total extracted content held in memory across concurrently scanned files, e.g. '256MB' or '1GB' (units: B, KB, MB, GB; bare number = bytes). Bounds peak memory on constrained hosts (e.g. Lambda) so many large files cannot multiply memory. Default: no cap (bounded only by the per-file size limit × worker count — 100MB, or 500MB for a video container, though a video's peak is set by its metadata rather than its length).")
 
 	// Web server flags

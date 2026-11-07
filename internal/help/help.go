@@ -102,6 +102,7 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Fprintln(w, "  --list-profiles\t\tList available profiles in config file")
 	fmt.Fprintln(w, "  --recursive\t\tRecursively scan directories")
 	fmt.Fprintln(w, "  --exclude\t<patterns>\tComma-separated list of patterns to exclude from scanning (e.g., '.git,*.log,temp/')")
+	fmt.Fprintln(w, "\t\t\tNote: Repeatable; values append: --exclude .git --exclude '*.log' is --exclude '.git,*.log'")
 	fmt.Fprintln(w, "\t\t\tNote: Uses glob patterns, not regex - dots and other characters are literal (use '.git', not '\\.git')")
 	fmt.Fprintln(w, "  --respect-gitignore\t\tHonor .gitignore, .git/info/exclude, and global git excludes when scanning (opt-in; .git always skipped when enabled)")
 	fmt.Fprintln(w, "\t\t\tNote: .gitignore often hides .env, *.pem, and credential files — leave off for deep audits")
@@ -116,10 +117,10 @@ func (h *System) ShowGeneralHelp() {
 	// --checks flag help and the two parseChecksToRun sites in cmd/main.go) are
 	// sourced from core.CheckNames(); this is the one that cannot be. Keep the
 	// no-space comma separators to match historical output.
-	fmt.Fprintln(w, "  --checks\t<checks>\tSpecific checks to run: BANK_ACCOUNT,CLOUD_RESOURCES,CREDIT_CARD,DATE_OF_BIRTH,DRIVERS_LICENSE,EMAIL,INTELLECTUAL_PROPERTY,IP_ADDRESS,MEDICAL_ID,METADATA,OTP,PASSPORT,PERSON_NAME,PHONE,PHYSICAL_ADDRESS,SECRETS,SOCIAL_MEDIA,SSN,VIN,all (default: all)")
+	fmt.Fprintln(w, "  --checks\t<checks>\tSpecific checks to run: BANK_ACCOUNT,CLOUD_RESOURCES,CREDIT_CARD,DATE_OF_BIRTH,DRIVERS_LICENSE,EMAIL,INTELLECTUAL_PROPERTY,IP_ADDRESS,MEDICAL_ID,METADATA,OTP,PASSPORT,PERSON_NAME,PHONE,PHYSICAL_ADDRESS,SECRETS,SOCIAL_MEDIA,SSN,VIN,all (default: all; repeatable, values append)")
 	fmt.Fprintln(w, "\t\t\tNote: INTELLECTUAL_PROPERTY requires configuration for internal URL detection")
 	fmt.Fprintln(w, "\t\t\tNote: METADATA validator now includes enhanced preprocessor-aware validation for images, documents, audio, and video")
-	fmt.Fprintln(w, "  --confidence\t<levels>\tConfidence levels to display: high,medium,low,all (default: all)")
+	fmt.Fprintln(w, "  --confidence\t<levels>\tConfidence levels to display: high,medium,low,all (default: all; repeatable, values append)")
 	fmt.Fprintln(w, "  --verbose\t\tDisplay detailed information for each finding")
 	fmt.Fprintln(w, "  --debug\t\tEnable debug logging to show preprocessing, content routing, and validation flow")
 	fmt.Fprintln(w, "  --output\t<path>\tPath to output file (if not specified, output to stdout)")
@@ -138,8 +139,8 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Fprintln(w, "  --quiet\t\tSuppress progress output (useful for scripts and CI/CD)")
 	fmt.Fprintln(w, "  --pre-commit-mode\t\tEnable pre-commit optimizations (quiet mode, no colors, appropriate exit codes)")
 	fmt.Fprintln(w, "  --fail-on-incomplete\t\tExit non-zero (3) if any file was not fully scanned -- coverage cut short (timeout, cancellation, or budget) or the file could not be opened at all. Default off: both conditions only warn on stderr.")
-	fmt.Fprintln(w, "  --disable-ip-types\t<types>\tComma-separated list of IP sub-types to skip: copyright,patent,trademark,trade_secret,internal_url")
-	fmt.Fprintln(w, "  --validator-budget\t<spec>\tPer-validator time budget as NAME=DURATION pairs; DURATION accepts any Go unit — ms, s, m, h (e.g. 'SSN=500ms,IP_ADDRESS=2m'). Use 'all=<dur>' for every validator, specific names override. Over-budget validators are stopped and the scan is marked incomplete. METADATA (also covered by all=) is checked between metadata items: one already running finishes first. Default: none.")
+	fmt.Fprintln(w, "  --disable-ip-types\t<types>\tComma-separated list of IP sub-types to skip: copyright,patent,trademark,trade_secret,internal_url (repeatable; values append)")
+	fmt.Fprintln(w, "  --validator-budget\t<spec>\tPer-validator time budget as NAME=DURATION pairs; DURATION accepts any Go unit — ms, s, m, h (e.g. 'SSN=500ms,IP_ADDRESS=2m'). Use 'all=<dur>' for every validator, specific names override. Over-budget validators are stopped and the scan is marked incomplete. METADATA (also covered by all=) is checked between metadata items: one already running finishes first. Default: none. Repeatable; values append.")
 	fmt.Fprintln(w, "  --max-live-bytes\t<size>\tCap total extracted content held in memory across concurrently scanned files, e.g. '256MB' or '1GB' (units: B, KB, MB, GB; bare number = bytes). Bounds peak memory on constrained hosts so many large files cannot multiply memory. Default: no cap.")
 	fmt.Fprintln(w, "  --enable-redaction\t\tEnable redaction of sensitive data found in documents")
 	fmt.Fprintln(w, "  --redaction-output-dir\t<path>\tDirectory where redacted files will be stored (default: ./redacted)")
