@@ -585,13 +585,19 @@ var (
 // form with a six-digit extension, is under 40.
 const parenWindow = 64
 
-// lineFinding is a finding accepted on the current line: main's (from the patterns of
-// NewValidator) or a wider reading's.
+// lineFinding is one of main's findings on the current line (from the patterns of NewValidator).
+// The finding itself is stored once, in the caller's slice of matches (lineResolver.ms); this is
+// what the resolution needs beside it.
 type lineFinding struct {
-	m            detector.Match
 	start, end   int
 	corroborated bool
 	replacedBy   int // index of the wide reading that replaced it, or -1
+}
+
+// acceptedReading is a wide reading the resolution accepted.
+type acceptedReading struct {
+	m          detector.Match
+	start, end int
 }
 
 // rawCand is a match of one of NewValidator's patterns, before main's checks decided whether it is
@@ -618,11 +624,15 @@ type lineResolver struct {
 	// raw holds the pattern matches main's checks or dedup set aside; the matches it accepted are
 	// found. A finding never contains another (main's dedup refuses a match whose digits contain an
 	// accepted one's), so only a set-aside match can be wider than a finding.
-	raw   []rawCand
-	found []lineFinding
-	order []int
-	maxE  []int
-	wide  []wideCand
+	raw     []rawCand
+	found   []lineFinding
+	ms      []detector.Match // the line's findings, parallel to found
+	line    string
+	order   []int
+	starts  []int // found[order[k]].start
+	maxE    []int
+	indexed bool
+	wide    []wideCand
 
 	// seen holds the texts reported on the line so far (main's findings and the readings accepted,
 	// recorded in acceptedTexts), built on the first new reading; skipped the new readings not
@@ -635,6 +645,7 @@ type lineResolver struct {
 func (r *lineResolver) reset() {
 	r.raw = r.raw[:0]
 	r.found = r.found[:0]
+	r.indexed = false
 	r.wide = r.wide[:0]
 	r.seen = nil
 	r.acceptedTexts = r.acceptedTexts[:0]
@@ -647,7 +658,7 @@ func (r *lineResolver) alreadyReported(text string) bool {
 	if r.seen == nil {
 		r.seen = make(map[string]struct{}, len(r.found)+len(r.acceptedTexts)+8)
 		for i := range r.found {
-			r.seen[r.found[i].m.Text] = struct{}{}
+			r.seen[r.ms[i].Text] = struct{}{}
 		}
 		for _, t := range r.acceptedTexts {
 			r.seen[t] = struct{}{}
@@ -665,12 +676,56 @@ func (r *lineResolver) reported(text string) {
 	}
 }
 
+// index lists the line's findings by start in order, and sets maxE[k] to the largest end among the
+// first k of them. Built on the first overlap query, so a line nothing is checked against pays
+// nothing for it.
+func (r *lineResolver) index() {
+	r.indexed = true
+	r.order = r.order[:0]
+	for i := range r.found {
+		r.order = append(r.order, i)
+	}
+	sort.SliceStable(r.order, func(a, b int) bool {
+		fa, fb := &r.found[r.order[a]], &r.found[r.order[b]]
+		if fa.start != fb.start {
+			return fa.start < fb.start
+		}
+		return fa.end < fb.end
+	})
+	r.maxE = r.maxE[:0]
+	r.starts = r.starts[:0]
+	m := -1
+	for _, i := range r.order {
+		if r.found[i].end > m {
+			m = r.found[i].end
+		}
+		r.maxE = append(r.maxE, m)
+		r.starts = append(r.starts, r.found[i].start)
+	}
+}
+
+// firstStartingAtOrAfter returns the position in order of the first finding starting at or after s.
+func (r *lineResolver) firstStartingAtOrAfter(s int) int {
+	lo, hi := 0, len(r.starts)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		if r.starts[mid] < s {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	return lo
+}
+
 // overlap classifies the line's findings against the span [s, e): the ones it contains, and
-// whether any overlaps it without being contained. order lists the findings by start and maxE[k]
-// is the largest end among the first k of them, so a span costs a binary search plus the findings
-// that start inside it.
+// whether any overlaps it without being contained. A span costs a binary search over the index
+// plus the findings that start inside it.
 func (r *lineResolver) overlap(s, e int) (contained []int, partial bool) {
-	k := sort.Search(len(r.order), func(i int) bool { return r.found[r.order[i]].start >= s })
+	if !r.indexed {
+		r.index()
+	}
+	k := r.firstStartingAtOrAfter(s)
 	if k > 0 && r.maxE[k-1] > s {
 		return nil, true
 	}
@@ -699,19 +754,24 @@ func (r *lineResolver) sameSpan(contained []int, s, e int) bool {
 
 // resolve turns main's findings on a line into the line's findings, appended to dst: the gate judges
 // main's international ones, then every wider or new reading is tried, leftmost and widest first.
-func (v *Validator) resolve(ls *lineScoring, r *lineResolver, originalPath string, dst []detector.Match) []detector.Match {
+//
+// matches[base:] are main's findings on the line, parallel to r.found; the result is matches with
+// that segment rewritten, which on a line nothing widens is matches as it was.
+func (v *Validator) resolve(ls *lineScoring, r *lineResolver, originalPath string, matches []detector.Match, base int) []detector.Match {
 	line := ls.line
+	r.ms = matches[base:]
+	r.line = line
 
 	// Main's findings in the "+" and "00" forms that the gate refuses are capped, never removed. A
 	// length the table does not list is outweighed by a phone word on the line ("call +1 449-87-4100"),
 	// an unassigned code or more than 15 digits never is.
 	for i := range r.found {
-		f := &r.found[i]
-		if !isIntlText(f.m.Text) {
+		m := &r.ms[i]
+		if !isIntlText(m.Text) {
 			continue
 		}
-		if num := judgeIntlText(f.m.Text); num.verdict == gateCode || (num.verdict == gateLength && !f.corroborated) {
-			capAtGate(&f.m)
+		if num := judgeIntlText(m.Text); num.verdict == gateCode || (num.verdict == gateLength && !r.found[i].corroborated) {
+			capAtGate(m)
 		}
 	}
 
@@ -719,33 +779,23 @@ func (v *Validator) resolve(ls *lineScoring, r *lineResolver, originalPath strin
 	// or bracketed form can start: the line is main's as it stands.
 	wideSource := mayHoldWideReading(line)
 	if !wideSource && (len(r.found) == 0 || len(r.raw) == 0) {
-		return v.assemble(r, nil, dst)
-	}
-
-	r.order = r.order[:0]
-	for i := range r.found {
-		r.order = append(r.order, i)
-	}
-	sort.SliceStable(r.order, func(a, b int) bool {
-		fa, fb := &r.found[r.order[a]], &r.found[r.order[b]]
-		if fa.start != fb.start {
-			return fa.start < fb.start
-		}
-		return fa.end < fb.end
-	})
-	r.maxE = r.maxE[:0]
-	m := -1
-	for _, i := range r.order {
-		if r.found[i].end > m {
-			m = r.found[i].end
-		}
-		r.maxE = append(r.maxE, m)
+		return matches
 	}
 
 	// Pattern matches main's checks or its first-pattern-wins dedup set aside, wider than a finding
 	// they contain: the extension, the "1-" of a toll-free number, the "+1" or "+39" whose tail
-	// US_Dashed claimed.
+	// US_Dashed claimed. A match no longer than the shortest finding cannot contain one, which is
+	// every repeat main's dedup set aside on a dense line, so those cost no lookup.
+	shortest := -1
+	for i := range r.found {
+		if l := r.found[i].end - r.found[i].start; shortest < 0 || l < shortest {
+			shortest = l
+		}
+	}
 	for _, c := range r.raw {
+		if c.end-c.start <= shortest {
+			continue
+		}
 		contained, partial := r.overlap(c.start, c.end)
 		if partial || len(contained) == 0 || r.sameSpan(contained, c.start, c.end) {
 			continue
@@ -762,7 +812,7 @@ func (v *Validator) resolve(ls *lineScoring, r *lineResolver, originalPath strin
 		v.scanWideReadings(line, r)
 	}
 	if len(r.wide) == 0 {
-		return v.assemble(r, nil, dst)
+		return matches
 	}
 
 	sort.SliceStable(r.wide, func(a, b int) bool {
@@ -780,7 +830,7 @@ func (v *Validator) resolve(ls *lineScoring, r *lineResolver, originalPath strin
 	// dedup never reported a repeat: redaction's completeness sweep masks every occurrence of a
 	// reported text (plaintext.redactText, redactverify.SweepRemaining), and the Office redactors
 	// replace by value. The skipped spans are kept, because they are occurrences of that text.
-	var accepted []lineFinding
+	var accepted []acceptedReading
 	lastEnd := -1
 	for wi := range r.wide {
 		w := &r.wide[wi]
@@ -806,7 +856,7 @@ func (v *Validator) resolve(ls *lineScoring, r *lineResolver, originalPath strin
 	if len(accepted) > 0 {
 		r.keepRepeatedTexts(accepted, r.skipped)
 	}
-	return v.assemble(r, accepted, dst)
+	return v.assemble(r, accepted, matches, base)
 }
 
 // keepRepeatedTexts undoes a replacement where it would uncover a byte. Main reports one finding per
@@ -819,11 +869,11 @@ func (v *Validator) resolve(ls *lineScoring, r *lineResolver, originalPath strin
 // The occurrences considered are the line's pattern matches and the skipped repeat readings, which
 // is every place main's own dedup could have set a repeat aside. Each costs a binary search over the
 // reported spans, so a dense line stays linear.
-func (r *lineResolver) keepRepeatedTexts(accepted []lineFinding, skipped []rawCand) {
+func (r *lineResolver) keepRepeatedTexts(accepted []acceptedReading, skipped []rawCand) {
 	replaced := map[string]bool{}
 	for i := range r.found {
 		if r.found[i].replacedBy >= 0 {
-			replaced[r.found[i].m.Text] = true
+			replaced[r.ms[i].Text] = true
 		}
 	}
 	if len(replaced) == 0 {
@@ -837,14 +887,14 @@ func (r *lineResolver) keepRepeatedTexts(accepted []lineFinding, skipped []rawCa
 	for i := range r.found {
 		if r.found[i].replacedBy < 0 {
 			spans = append(spans, span{r.found[i].start, r.found[i].end})
-			final[r.found[i].m.Text] = true
+			final[r.ms[i].Text] = true
 		}
 	}
 	for i := range accepted {
 		spans = append(spans, span{accepted[i].start, accepted[i].end})
 		final[accepted[i].m.Text] = true
 	}
-	line := r.found[0].m.Context.FullLine
+	line := r.line
 	for _, set := range [][]rawCand{skipped, r.raw} {
 		for _, c := range set {
 			if final[line[c.start:c.end]] {
@@ -882,7 +932,7 @@ func (r *lineResolver) keepRepeatedTexts(accepted []lineFinding, skipped []rawCa
 		return
 	}
 	for i := range r.found {
-		if f := &r.found[i]; f.replacedBy >= 0 && uncovered[f.m.Text] {
+		if f := &r.found[i]; f.replacedBy >= 0 && uncovered[r.ms[i].Text] {
 			f.replacedBy = -1
 		}
 	}
@@ -970,10 +1020,10 @@ func (v *Validator) scanWideReadings(line string, r *lineResolver) {
 // and the no-truncation rule in front of it. A reading that replaces findings scores at least what
 // the best of them scored and counts their corroboration as its own: widening a span is a
 // correction of where the number ends, not new doubt about whether it is one.
-func (v *Validator) evaluateWide(ls *lineScoring, r *lineResolver, w *wideCand, originalPath string) (lineFinding, bool) {
+func (v *Validator) evaluateWide(ls *lineScoring, r *lineResolver, w *wideCand, originalPath string) (acceptedReading, bool) {
 	line := ls.line
 	if w.bound == boundaryRefuse || truncatedAt(line, w.start, w.end) {
-		return lineFinding{}, false
+		return acceptedReading{}, false
 	}
 	text := line[w.start:w.end]
 	var pattern phonePattern
@@ -981,7 +1031,7 @@ func (v *Validator) evaluateWide(ls *lineScoring, r *lineResolver, w *wideCand, 
 	if w.pattern >= 0 {
 		pattern = v.patterns[w.pattern]
 		if !pattern.lengthAllowed(text) {
-			return lineFinding{}, false
+			return acceptedReading{}, false
 		}
 		// Scored with the pattern that read it. Main scores its own findings with the first pattern
 		// whose regex matches anywhere in the text, which for "+39 310 101 1057" is US_Dashed on the
@@ -993,7 +1043,7 @@ func (v *Validator) evaluateWide(ls *lineScoring, r *lineResolver, w *wideCand, 
 		o.pattern = &intlGrammarPattern
 	}
 	if v.isEmbeddedInIdentifierAt(text, line, w.start) {
-		return lineFinding{}, false
+		return acceptedReading{}, false
 	}
 	if len(w.contained) == 0 {
 		// A new reading glued to a letter ("...0958stored") is an identifier's digits or a typo, and
@@ -1003,16 +1053,16 @@ func (v *Validator) evaluateWide(ls *lineScoring, r *lineResolver, w *wideCand, 
 		// would report at 5 only to keep its reported set, is not a new finding at all.
 		if w.end < len(line) {
 			if c := line[w.end]; isWordByteASCII(c) || c >= 0x80 || c == ':' || c == '-' {
-				return lineFinding{}, false
+				return acceptedReading{}, false
 			}
 		}
 		if w.pattern < 0 && (decimalShaped(text) || w.num.glued) {
 			// "+9252.619193895" is a signed decimal and "+1130 2010" a time zone offset and a year:
 			// neither is how a grouped international number is written.
-			return lineFinding{}, false
+			return acceptedReading{}, false
 		}
 		if !v.hasPhoneStructureAt(text, line, w.start) {
-			return lineFinding{}, false
+			return acceptedReading{}, false
 		}
 	}
 	if w.intl {
@@ -1025,7 +1075,7 @@ func (v *Validator) evaluateWide(ls *lineScoring, r *lineResolver, w *wideCand, 
 		} else {
 			// A reading the gate refuses is never a new finding.
 			if len(w.contained) == 0 {
-				return lineFinding{}, false
+				return acceptedReading{}, false
 			}
 			o.cap, o.gateFailed = e164GateCeiling, true
 			o.country = countryLabelForCode(w.num.code)
@@ -1042,27 +1092,27 @@ func (v *Validator) evaluateWide(ls *lineScoring, r *lineResolver, w *wideCand, 
 	if o.cap > 0 && len(w.contained) > 0 {
 		best := 0.0
 		for _, i := range w.contained {
-			if c := r.found[i].m.Confidence; c > o.cap {
-				return lineFinding{}, false
+			if c := r.ms[i].Confidence; c > o.cap {
+				return acceptedReading{}, false
 			} else if c > best {
 				best = c
 			}
 		}
 		if !coversMoreDigits(line, w, r) {
-			return lineFinding{}, false
+			return acceptedReading{}, false
 		}
 		o.cap = best
 	}
 	for _, i := range w.contained {
-		f := &r.found[i]
-		if f.m.Confidence > o.floor {
-			o.floor = f.m.Confidence
+		if c := r.ms[i].Confidence; c > o.floor {
+			o.floor = c
 		}
-		if f.corroborated {
+		if r.found[i].corroborated {
 			o.floorCorroborated = true
 		}
 	}
-	return v.scoreMatch(ls, text, w.start, pattern, v.cleanPhoneNumber(text), originalPath, o)
+	m, _, ok := v.scoreMatch(ls, text, w.start, pattern, v.cleanPhoneNumber(text), originalPath, o)
+	return acceptedReading{m: m, start: w.start, end: w.end}, ok
 }
 
 // coversMoreDigits reports whether the reading's span holds a digit none of the findings it contains
@@ -1086,33 +1136,31 @@ func coversMoreDigits(line string, w *wideCand, r *lineResolver) bool {
 	return false
 }
 
-// assemble appends the line's findings to dst in main's order: a finding replaced by a wider reading
-// gives its place to that reading, and readings that replaced nothing follow, leftmost first.
-func (v *Validator) assemble(r *lineResolver, accepted []lineFinding, dst []detector.Match) []detector.Match {
+// assemble rewrites the line's segment of matches in main's order: a finding replaced by a wider
+// reading gives its place to that reading, and readings that replaced nothing follow, leftmost first.
+func (v *Validator) assemble(r *lineResolver, accepted []acceptedReading, matches []detector.Match, base int) []detector.Match {
 	if len(accepted) == 0 {
-		for i := range r.found {
-			dst = append(dst, r.found[i].m)
-		}
-		return dst
+		return matches
 	}
+	out := make([]detector.Match, 0, len(r.found)+len(accepted))
 	placed := make([]bool, len(accepted))
 	for i := range r.found {
 		f := &r.found[i]
 		if f.replacedBy < 0 {
-			dst = append(dst, f.m)
+			out = append(out, r.ms[i])
 			continue
 		}
 		if !placed[f.replacedBy] {
 			placed[f.replacedBy] = true
-			dst = append(dst, accepted[f.replacedBy].m)
+			out = append(out, accepted[f.replacedBy].m)
 		}
 	}
 	for i := range accepted {
 		if !placed[i] {
-			dst = append(dst, accepted[i].m)
+			out = append(out, accepted[i].m)
 		}
 	}
-	return dst
+	return append(matches[:base], out...)
 }
 
 // capAtGate lowers a finding the gate refuses to e164GateCeiling and publishes the ceiling, so the

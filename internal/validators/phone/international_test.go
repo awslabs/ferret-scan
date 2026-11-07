@@ -357,8 +357,8 @@ func TestDocumentedExamplesAreWholeFindings(t *testing.T) {
 // TestPhoneValidator_InternationalSingleLineDoSRegression is TestPhoneValidator_SingleLineDoSRegression
 // for the readings #889 adds: one ~1 MiB line on which every number is a new reading after a label
 // ("Tel:+44 ..."), a bracketed code, or a wider reading replacing main's truncated "00" one, all
-// distinct, so neither main's dedup nor the repeat check shortcuts the resolver. Measured on this
-// fixture's 1/2/4 MiB doubling, branch CPU grows 1.8-2.0x per doubling, like main's.
+// distinct, so neither main's dedup nor the repeat check shortcuts the resolver. On this fixture at
+// 1, 2 and 4 MiB the validator's CPU grew 1.89x and 2.02x per doubling, main's 1.98x and 1.98x.
 func TestPhoneValidator_InternationalSingleLineDoSRegression(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping DoS timing regression in -short mode")
@@ -368,7 +368,8 @@ func TestPhoneValidator_InternationalSingleLineDoSRegression(t *testing.T) {
 	b.Grow(targetBytes + 64)
 	for i := 0; b.Len() < targetBytes; i++ {
 		fmt.Fprintf(&b, "Tel:+44 20 7%03d %04d (+45) %04d %04d 0033 1 %02d %02d %02d %02d ",
-			i%1000, i%10000, (i*7)%10000, i%10000, (i/100)%100, i%100, (i/7)%100, (i/3)%100)
+			(i/10000)%1000, i%10000, (i/10000)%10000, i%10000,
+			(i/1000000)%100, (i/10000)%100, (i/100)%100, i%100)
 	}
 	content := b.String()
 

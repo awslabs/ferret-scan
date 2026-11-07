@@ -478,6 +478,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		dedup := newLineDedup()
 		ls := &lineScoring{v: v, doc: doc, line: line, lineNum: lineNum}
 		res.reset()
+		base := len(matches)
 
 		for pi, pattern := range v.patterns {
 			// FindAllStringIndex yields each match's byte offset within the line, so
@@ -522,12 +523,13 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					continue
 				}
 
-				f, ok := v.scoreMatch(ls, match, matchIndex, pattern, cleanNew, originalPath, nil)
+				m, corroborated, ok := v.scoreMatch(ls, match, matchIndex, pattern, cleanNew, originalPath, nil)
 				if !ok {
 					res.raw = append(res.raw, setAside)
 					continue
 				}
-				res.found = append(res.found, f)
+				matches = append(matches, m)
+				res.found = append(res.found, lineFinding{start: matchIndex, end: matchIndex + len(match), corroborated: corroborated, replacedBy: -1})
 				// Record the accepted match's cleaned digits for subsequent dedup
 				// on this line. Only matches that actually land in `matches`
 				// participate in dedup, exactly as before (isDuplicateMatch scanned
@@ -538,7 +540,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 
 		// The findings above are main's for this line. The E.164 gate judges the international
 		// ones, and a wider or new reading (international.go) replaces or joins them.
-		matches = v.resolve(ls, res, originalPath, matches)
+		matches = v.resolve(ls, res, originalPath, matches, base)
 	}
 
 	if finishTiming != nil {
@@ -578,9 +580,10 @@ func isPlusForm(match string) bool {
 }
 
 // scoreMatch is the per-match pipeline after main's candidate checks (length, dedup, embedding):
-// confidence, structure, the emission predicate, evidence, ceilings and metadata. It reports
-// ok=false when the emission predicate does not report the match.
-func (v *Validator) scoreMatch(ls *lineScoring, match string, matchIndex int, pattern phonePattern, cleanNew, originalPath string, o *scoreOpts) (lineFinding, bool) {
+// confidence, structure, the emission predicate, evidence, ceilings and metadata. corroborated is
+// whether anything beyond the match's shape names it a phone. It reports ok=false when the emission
+// predicate does not report the match.
+func (v *Validator) scoreMatch(ls *lineScoring, match string, matchIndex int, pattern phonePattern, cleanNew, originalPath string, o *scoreOpts) (m detector.Match, corroborated, ok bool) {
 	line := ls.line
 	matchEnd := matchIndex + len(match)
 
@@ -629,7 +632,7 @@ func (v *Validator) scoreMatch(ls *lineScoring, match string, matchIndex int, pa
 	// arithmetic below dropped 102 Go-stdlib findings main reports (and flooring
 	// every non-vetoed match instead dropped 24 and added 129).
 	if !ls.emits(match, contextInfo, matchIndex, emissionBase, structureOK) {
-		return lineFinding{}, false
+		return detector.Match{}, false, false
 	}
 
 	// SCORE: phone evidence only (#882). Whole-word phone keywords and phrases on the
@@ -647,7 +650,7 @@ func (v *Validator) scoreMatch(ls *lineScoring, match string, matchIndex int, pa
 		confidence = 0
 	}
 
-	corroborated := ev.corroborated
+	corroborated = ev.corroborated
 	if o != nil {
 		if o.floor > confidence {
 			confidence = o.floor
@@ -761,22 +764,16 @@ func (v *Validator) scoreMatch(ls *lineScoring, match string, matchIndex int, pa
 		metadata[confidenceCeilingKey] = ceiling
 	}
 
-	return lineFinding{
-		m: detector.Match{
-			Text:       match,
-			LineNumber: ls.lineNum + 1, // 1-based line numbering
-			Type:       "PHONE",
-			Confidence: confidence,
-			Filename:   originalPath,
-			Validator:  "phone",
-			Context:    contextInfo,
-			Metadata:   metadata,
-		},
-		start:        matchIndex,
-		end:          matchEnd,
-		corroborated: corroborated,
-		replacedBy:   -1,
-	}, true
+	return detector.Match{
+		Text:       match,
+		LineNumber: ls.lineNum + 1, // 1-based line numbering
+		Type:       "PHONE",
+		Confidence: confidence,
+		Filename:   originalPath,
+		Validator:  "phone",
+		Context:    contextInfo,
+		Metadata:   metadata,
+	}, corroborated, true
 }
 
 // dedupMaxCleanLen bounds the cleaned-digit length for which the substring index
