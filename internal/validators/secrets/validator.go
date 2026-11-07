@@ -2596,6 +2596,13 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 			lineKw = govKw
 		}
 	}
+	// What the document bridge will add to every finding of this document (#879). It is not
+	// added to the score here; the threshold below is judged on the score plus it, the score
+	// the finding is reported at. See calculateEnhancedConfidenceWithCacheAndEnvAndLine.
+	var docAdj float64
+	if len(matches) > 0 {
+		docAdj = v.contextAnalyzer.GetConfidenceAdjustment(contextInsights, "secrets")
+	}
 	// A joined stem (`apikey`, #881) corroborates like a positive keyword. Computed on the first
 	// candidate that needs it, so a line with no candidate, or one a positive keyword already
 	// corroborates, pays nothing for it.
@@ -2630,14 +2637,14 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 		// always originates from this exact line, so this is behavior-preserving
 		// and additionally avoids the latent first-occurrence bug where a
 		// duplicated token resolves to a different line's context.
-		confidence, checks := v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, content, line, candKw, contextInsights, isShellScript, envType, cand.structural)
+		confidence, reported, checks := v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, content, line, candKw, contextInsights, isShellScript, envType, cand.structural, docAdj)
 
 		// Skip matches with 0% confidence - they are false positives
 		if confidence <= 0 {
 			continue
 		}
 
-		if confidence > confidenceThreshold {
+		if reported > confidenceThreshold {
 			secretType := v.getSecretType(match)
 			meta := map[string]any{
 				"validation_checks": checks,
@@ -2919,7 +2926,8 @@ func (v *Validator) calculateEnhancedConfidenceWithCache(match, fullContent stri
 // nearby-keyword check (those matches are always specific_pattern=true), so it
 // passes an empty line hint.
 func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnv(match, fullContent string, contextInsights context.ContextInsights, isShellScript bool, envType string) (float64, map[string]bool) {
-	return v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, "", lineKeywordUnknown, contextInsights, isShellScript, envType, false)
+	confidence, _, checks := v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, "", lineKeywordUnknown, contextInsights, isShellScript, envType, false, 0)
+	return confidence, checks
 }
 
 // calculateEnhancedConfidenceWithCacheAndEnvAndLine is identical to
@@ -2931,13 +2939,24 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnv(match, fullConten
 //
 // structural is scopedCandidate.structural: it exempts the candidate from the M24
 // cap and changes nothing else.
-func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, lineHint string, lineKw lineKeywordState, contextInsights context.ContextInsights, isShellScript bool, envType string, structural bool) (float64, map[string]bool) {
+//
+// docAdj is the document-context adjustment, context.ContextAnalyzer.GetConfidenceAdjustment:
+// tabular_boost +20 in a CSV, TSV or FixedWidth document and test_data_penalty -30. The
+// document bridge adds it to every validator's findings after the validator returns
+// (DocumentValidatorBridge.applyDocumentContext), so it is NOT part of the first return value.
+// This function used to add it as well, and a secrets finding in a tabular document got +40:
+// `token = getToken()` scored 75 in a key=value file and 100 as a TSV cell, where 75, less the
+// Configuration +15 the TSV does not get, plus one +20 is 80 (#879).
+//
+// The second return value is the score the finding will be REPORTED at once the bridge has added
+// docAdj, bounded exactly as the first is, and the caller's reporting threshold is judged on it.
+// That keeps the threshold where it has always been: judged on the score without docAdj, the
+// keyword path's > 60 dropped `password = summer2024` from a TSV cell (60) that main reported.
+// Both values are sums of integers, so adding docAdj last gives the same bits as adding it first
+// did.
+func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, fullContent, lineHint string, lineKw lineKeywordState, contextInsights context.ContextInsights, isShellScript bool, envType string, structural bool, docAdj float64) (float64, float64, map[string]bool) {
 	// Start with base confidence calculation
 	confidence, checks := v.CalculateConfidence(match)
-
-	// Apply context-based adjustments
-	contextAdjustment := v.contextAnalyzer.GetConfidenceAdjustment(contextInsights, "secrets")
-	confidence += contextAdjustment
 
 	// Environment / domain / document-type adjustments accumulate into ctxDelta
 	// rather than being applied directly, so the POSITIVE stack can be clamped
@@ -3069,20 +3088,24 @@ func (v *Validator) calculateEnhancedConfidenceWithCacheAndEnvAndLine(match, ful
 	// A structural candidate is exempt: a password in URI user info is labelled by the URI
 	// grammar itself, and capping it at 55 held every keyword-free DATABASE_URL under the
 	// reporting threshold of the paths that could see one (#766).
-	if !checks["specific_pattern"] && !nearbyKeyword && !structural {
-		if confidence > 55 {
-			confidence = 55
-		}
-	}
+	capped := !checks["specific_pattern"] && !nearbyKeyword && !structural
 
-	// Ensure confidence bounds
-	if confidence < 0 {
-		confidence = 0
-	} else if confidence > 100 {
-		confidence = 100
-	}
+	return boundSecretScore(confidence, capped), boundSecretScore(confidence+docAdj, capped), checks
+}
 
-	return confidence, checks
+// boundSecretScore applies the M24 cap of 55 (when capped) and then the [0, 100] bounds to a
+// summed score, in the order calculateEnhancedConfidenceWithCacheAndEnvAndLine applies them.
+func boundSecretScore(score float64, capped bool) float64 {
+	if capped && score > 55 {
+		score = 55
+	}
+	if score < 0 {
+		return 0
+	}
+	if score > 100 {
+		return 100
+	}
+	return score
 }
 
 // lineKeywordState memoizes hasNearbySecretKeyword's answer for one line.
