@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="0" failures="0" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="0" failures="0" errors="0" time="0.000"></testsuite>
+</testsuites>
