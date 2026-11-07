@@ -197,10 +197,15 @@ func (v *Validator) appendCodeCandidates(cands []codeCandidate, line string, lin
 	return cands
 }
 
+// codeLabelJoiners removes the space, '_' or '-' a multi-word label may join its words with. Built
+// once: a Replacer of single bytes holds a 256-entry table, about 6 KB, and building one per code
+// made each code cost more than its finding.
+var codeLabelJoiners = strings.NewReplacer(" ", "", "_", "", "-", "")
+
 // canonicalCodeLabel writes a matched label lower-cased with single spaces between its words, so
 // "Card_Verification-Value" and "cardverificationvalue" both read "card verification value".
 func canonicalCodeLabel(label string) string {
-	key := strings.NewReplacer(" ", "", "_", "", "-", "").Replace(strings.ToLower(label))
+	key := codeLabelJoiners.Replace(strings.ToLower(label))
 	switch key {
 	case "cardsecuritycode":
 		return "card security code"

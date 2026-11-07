@@ -7,7 +7,7 @@
   ([#905](https://github.com/awslabs/ferret-scan/issues/905)). On the issue's 40 synthetic files
   main reported no Track 1, tag 57 or URL-encoded Track 2 at all, PAN included, ended each Track 2
   finding at its `=` and reported none of the 11 labelled codes, so `--enable-redaction` left 15 of
-  36 PANs, all 28 expiry and service codes, all 11 cardholder names and all 11 codes in cleartext. A
+  36 PANs, all 27 expiry and service codes, all 11 cardholder names and all 11 codes in cleartext. A
   frame is now reported whole, beside its PAN, under the PAN's card type with `card_frame`
   (`track1`, `track2`, `emv57`) in its metadata, scored as its PAN plus one card word (100 on the
   issue's files). A code is a `CREDIT_CARD` finding with `card_frame: security_code` whose text runs

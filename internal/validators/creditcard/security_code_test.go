@@ -310,20 +310,18 @@ func (c *cancelledAfterFirstPoll) Err() error {
 	return context.Canceled
 }
 
-// TestCodesStayLinear: codes packed on one line, 4 then 32 KiB. The scan resumes after each value
-// and asks the line's hard-negative question once, so it never rereads the line (see growthLimit
-// for the readings, with that question asked once per code instead). Smaller than
-// TestFramesStayLinear's sizes because the regressed run is far slower per byte and must fail on
-// its ratio rather than time out. The pairing is linear by construction: one forward pass over
-// cands and cards.
+// TestCodesStayLinear: codes on the guard line, 4 then 32 of them. The scan resumes after each
+// value and asks the line's hard-negative question once, so it never rereads the line; asked once per
+// code instead (appendCodeCandidates), the question's cost grows with the codes (see growthLimit).
+// The pairing is linear by construction: one forward pass over cands and cards.
 func TestCodesStayLinear(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping complexity test in -short mode")
 	}
-	tr, br, small, big := growth(t, "cvv 123 ", 4<<10, func(ms []detector.Match) int { return len(codesOf(ms)) })
+	tr, br, small, big := growth(t, "cvv 123 ", func(ms []detector.Match) int { return len(codesOf(ms)) })
 	if tr > growthLimit || br > growthLimit {
-		t.Errorf("%dx the line (%d to %d codes) took %.1fx the time and %.1fx the bytes (limit %.0fx): "+
-			"work on the whole line per code?", growthFactor, small, big, tr, br, growthLimit)
+		t.Errorf("%dx the codes (%d to %d) on one %d-byte line took %.2fx the time and %.2fx the bytes (limit %.1fx): "+
+			"work on the whole line per code?", growthFactor, small, big, guardLineBytes, tr, br, growthLimit)
 	}
 	t.Logf("%d to %d codes, time x%.2f, bytes x%.2f", small, big, tr, br)
 }

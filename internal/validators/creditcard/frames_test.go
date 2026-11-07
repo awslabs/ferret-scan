@@ -385,23 +385,38 @@ func BenchmarkFrameNearMisses(b *testing.B) {
 	}
 }
 
-// growthFactor and growthLimit: when the input grows growthFactor times, a scan linear in it takes
-// about 8x the time and allocates about 8x the bytes, and one that rereads or copies the line for
-// every frame or code it finds about 64x. The limit sits between the two. Ratios rather than
-// budgets, so a loaded host slows both terms and the reading holds.
+// The growth guards (TestFramesStayLinear, TestCodesStayLinear) scan one line of guardLineBytes
+// bytes that holds n units (a swipe, a code) and then filler, at n = guardUnits and at
+// growthFactor*guardUnits. The line has the same length in both, so the work done once per line,
+// which dominates, is the same in both: a scan that does bounded work per unit reads about 1x, and
+// one that rereads or copies the line for every frame or code it finds 5-6x. This is the
+// dominant-term rule of docs/testing/TEST_PLAN.md, dimension 4. The first version grew the line and
+// the units together, so a correct scan read 8x and a regressed one 35-62x, and load slowed the big
+// input's term, eight times the findings and their allocations, more than the small one's: with
+// other package suites running (load 52-62 on 16 CPUs) TestCodesStayLinear read 30.3x on correct
+// code against its limit of 24.
 //
-// Two instruments, because the defects differ (docs/testing/TEST_PLAN.md, dimension 4): time
-// catches a step-count regression, which allocates nothing, and allocated bytes catch a per-match
-// copy without the clock's noise. Measured readings for the 8x input, plain and -race: correct
-// code 7.9-9.5x time and 7.8-10.4x bytes. Regressed, each installed alone: the camelCase split of
-// the line redone per frame (labels.identifierDone reset in appendFrameMatches) 54x time and
-// 48-62x bytes; a strings.ToLower of the line per frame 41-48x time and 36-59x bytes; the line's
-// hard-negative question asked per code (appendCodeCandidates) 63-64x time, and 8x bytes, since it
-// allocates nothing.
+// Two instruments, because the defects differ: time catches a step-count regression, which
+// allocates nothing, and allocated bytes catch a per-unit copy of the line without the clock's
+// noise. A guard fails when either reading passes growthLimit, the same limit with and without
+// -race. Measured, plain and -race, idle and with 12-14 package-suite loops running: correct code
+// 0.86-1.09x time and 0.92-1.18x bytes, 1.30-1.60x bytes under -race, which allocates more per unit,
+// so the worst correct reading is 1.75x under the limit. Regressed, each installed alone, plain /
+// -race: a strings.ToLower of the line per frame (appendFrameMatches) 5.0x / 5.1x bytes; the
+// camelCase split of the line per frame (labels.identifierDone reset) 6.4x / 6.5x bytes; the line's
+// hard-negative question per code (appendCodeCandidates) 5.3x / 5.6x time, since it allocates
+// nothing. The lowest regressed reading is 1.79x over the limit.
 const (
-	growthFactor = 8
-	growthLimit  = 24.0
+	guardLineBytes = 512 << 10
+	guardUnits     = 4
+	growthFactor   = 8
+	growthLimit    = 2.8
 )
+
+// guardFiller pads a guard's line: no digit, no card or code label, no keyword. Its capital makes
+// the line's lower-casing a copy, as it is for most real lines, so the bytes allocated once per
+// line dominate the per-unit ones in both guards.
+const guardFiller = "Lorem ipsum dolor sit amet "
 
 // growthReading is one size's best time and allocated bytes, and the findings it held.
 type growthReading struct {
@@ -410,59 +425,79 @@ type growthReading struct {
 	found int
 }
 
-// growth scans repeat(unit) at size and at growthFactor*size bytes and returns the ratios of their
-// best times and of their allocated bytes, with the findings counted by count at both sizes. The
-// validator is built outside the measured region, and the collector is paused inside it: at these
-// sizes whether a collection lands in one run and not the other moved a linear reading from 8x to
-// 38x.
-func growth(t *testing.T, unit string, size int, count func([]detector.Match) int) (timeRatio, byteRatio float64, small, big int) {
+// growth scans the guard line with guardUnits and with growthFactor*guardUnits copies of unit and
+// returns the ratios of their best times and of their allocated bytes, with the findings counted by
+// count at both. The validator is built outside the measured region, and the collector is paused
+// inside it, so a collection never lands in one run and not the other. The two lines are sampled in
+// alternating blocks and each keeps its best run, so load that comes and goes reaches both alike.
+func growth(t *testing.T, unit string, count func([]detector.Match) int) (timeRatio, byteRatio float64, small, big int) {
 	t.Helper()
 	v := NewValidator()
 	defer debug.SetGCPercent(debug.SetGCPercent(-1))
-	// The best of at least three runs and of at least 100 ms of runs, so the small input, about a
-	// millisecond, is sampled as often as a loaded host needs to show its true cost.
-	measure := func(size int) growthReading {
-		content := strings.Repeat(unit, size/len(unit))
-		r := growthReading{best: time.Duration(1 << 62)}
-		var total time.Duration
-		for tries := 0; tries < 3 || total < 100*time.Millisecond && tries < 200; tries++ {
-			runtime.GC()
-			var before, after runtime.MemStats
-			runtime.ReadMemStats(&before)
-			start := time.Now()
-			ms, err := v.ValidateContent(content, "dense.txt")
-			d := time.Since(start)
-			runtime.ReadMemStats(&after)
-			if err != nil {
-				t.Fatal(err)
-			}
-			total += d
-			r.best = min(r.best, d)
-			r.bytes = after.TotalAlloc - before.TotalAlloc
-			r.found = count(ms)
+	line := func(n int) string {
+		var b strings.Builder
+		b.Grow(guardLineBytes + len(guardFiller))
+		for i := 0; i < n; i++ {
+			b.WriteString(unit)
 		}
-		return r
+		for b.Len() < guardLineBytes {
+			b.WriteString(guardFiller)
+		}
+		return b.String()[:guardLineBytes]
 	}
-	s, b := measure(size), measure(growthFactor*size)
-	if b.found < growthFactor*s.found-growthFactor || s.found < 250 {
-		t.Fatalf("the bigger input must hold %dx the findings, and enough of them to measure: %d then %d",
+	contents := [2]string{line(guardUnits), line(growthFactor * guardUnits)}
+	var r [2]growthReading
+	run := func(i int) time.Duration {
+		runtime.GC()
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		start := time.Now()
+		ms, err := v.ValidateContent(contents[i], "dense.txt")
+		d := time.Since(start)
+		runtime.ReadMemStats(&after)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r[i].best == 0 || d < r[i].best {
+			r[i].best = d
+		}
+		// The fewest bytes of any run, like the best time: an allocation the scan did not make
+		// (the runtime's, the test framework's) only ever adds.
+		if b := after.TotalAlloc - before.TotalAlloc; r[i].bytes == 0 || b < r[i].bytes {
+			r[i].bytes = b
+		}
+		r[i].found = count(ms)
+		return d
+	}
+	// Six blocks of at least one run and 25 ms each, small then big: at least six runs per line.
+	for block := 0; block < 6; block++ {
+		for i := range r {
+			var total time.Duration
+			for tries := 0; tries < 1 || total < 25*time.Millisecond && tries < 50; tries++ {
+				total += run(i)
+			}
+		}
+	}
+	s, b := r[0], r[1]
+	if s.found < guardUnits || b.found < growthFactor*s.found {
+		t.Fatalf("the second line must hold %dx the findings of the first, at least one per unit: %d then %d",
 			growthFactor, s.found, b.found)
 	}
 	return float64(b.best) / float64(s.best), float64(b.bytes) / float64(s.bytes), s.found, b.found
 }
 
-// TestFramesStayLinear: wedge-reader swipes (two frames and two PANs each) packed on one line, 32
-// then 256 KiB. Reading the line again for each frame makes it quadratic (see growthLimit for the
-// readings, with a strings.ToLower of the line added per frame in appendFrameMatches).
+// TestFramesStayLinear: wedge-reader swipes (two frames and two PANs each) on the guard line, 4 then
+// 32 of them. Work on the whole line for each frame (a strings.ToLower of the line, or its camelCase
+// split, redone per frame in appendFrameMatches) grows with the frames; see growthLimit.
 func TestFramesStayLinear(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping complexity test in -short mode")
 	}
 	swipe := track1(visa16, "%B", "?") + track2(visa16, ";", "?") + " "
-	tr, br, small, big := growth(t, swipe, 32<<10, func(ms []detector.Match) int { f, _ := framesOf(ms); return len(f) })
+	tr, br, small, big := growth(t, swipe, func(ms []detector.Match) int { f, _ := framesOf(ms); return len(f) })
 	if tr > growthLimit || br > growthLimit {
-		t.Errorf("%dx the line (%d to %d frames) took %.1fx the time and %.1fx the bytes (limit %.0fx): "+
-			"work on the whole line per frame?", growthFactor, small, big, tr, br, growthLimit)
+		t.Errorf("%dx the frames (%d to %d) on one %d-byte line took %.2fx the time and %.2fx the bytes (limit %.1fx): "+
+			"work on the whole line per frame?", growthFactor, small, big, guardLineBytes, tr, br, growthLimit)
 	}
 	t.Logf("%d to %d frames, time x%.2f, bytes x%.2f", small, big, tr, br)
 }
