@@ -8,14 +8,22 @@ The suppression system allows you to suppress specific findings to reduce false 
 
 The suppression system uses **cryptographic hashing** to uniquely identify findings while protecting sensitive data:
 
-- **Finding Hash**: Each finding gets a unique SHA-256 hash based on:
-  - Data type (e.g., "SSN", "CREDIT_CARD")
-  - Detection confidence
-  - File context (line content)
+- **Finding Hash**: Each finding gets a unique SHA-256 hash (formula v5) based on:
+  - Finding type (e.g., "SSN", "VISA")
+  - The line content (surrounding whitespace removed; at most its first 8192 bytes)
   - File basename
   - Line number
-  - A digest of the match text
-  - A digest of the surrounding context
+  - A digest of the match text, its surrounding whitespace removed
+  - A digest of the text just before and after the value on its line, with the whitespace at the
+    outer edges removed
+
+  Confidence is not part of it (a rule written before v2.3.0 hashed it, and still matches while the
+  finding's confidence is unchanged). Converting a file between LF and CRLF, re-indenting it or adding
+  a trailing space leaves a v5 rule matching; a line inserted above the finding or a renamed file does
+  not. `--generate-suppressions` rewrites a rule it matched through an older formula to v5. A binary
+  that predates formula v5 does not read it, so upgrade every binary that reads a shared suppression
+  file before regenerating it. The formulas are listed in
+  [the suppression system architecture](../suppression-system.md#hash-generation-algorithm).
 
 - **A suppression file is as sensitive as a report.** It does not contain the value verbatim, but its
   rule `hash` is *derived* from the value and from the line the value sits on, and a digest is only as

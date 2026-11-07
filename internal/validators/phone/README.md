@@ -49,6 +49,14 @@ is not `tel`, and the `800` inside a digit run is not a toll-free code. The cont
 stays within -80 and +40. A match whose structural gate fails takes -100, unless it is a whole
 quoted string that something names a phone (`{"phone": "2972010001"}`).
 
+A phone label does not make every ten-digit value a finding. Whether a match is reported is still
+decided as before #882 (see the pipeline above), and there a match that fails the structural gate,
+as a quoted run does, is reported on its base score alone, before any keyword counts (above 100,
+or above 85 on a delimiter-rich line). `{"phone": "2972010001"}` passes, but a bare run in the
+Unix-timestamp range (1000000000 to 2147483647) takes -60 from its base first, so
+`{"phone": "2022872112"}` is not reported. Unquoted, `Phone: 2022872112` reports at 60, and
+`Phone: 202-287-2112`, which is not a bare run, at 100.
+
 Two ceilings apply after everything else and are published as `confidence_ceiling`, so the
 document-level +20 a CSV receives cannot lift them: 85 for a match nothing corroborates (no
 evidence above and not written in the `+` form), 15 for a reserved fictional number

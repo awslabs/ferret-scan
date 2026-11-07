@@ -282,7 +282,7 @@ sequenceDiagram
 
 ### 9. **Available Validators**
 - **Cloud Resources**: AWS ARN, Azure Resource ID, GCP Resource Name, OCI OCID, IBM CRN, Alibaba ARN detection with account/subscription ID extraction
-- **Credit Card**: Luhn algorithm + 15+ card brands + test pattern filtering
+- **Credit Card**: Luhn algorithm + 15+ card brands; known test numbers (processor-published sandbox cards, a test-pattern list, repeating shapes) are still reported, capped at LOW 15
 - **Email**: Domain validation + context analysis
 - **Intellectual Property**: Patents, trademarks, copyrights + internal URL detection
 - **IP Address**: IPv4/IPv6 with sensitivity filtering
@@ -293,7 +293,7 @@ sequenceDiagram
 - **Secrets**: 40+ API key patterns + entropy analysis + environment detection
 - **Social Media**: Profile detection across major platforms (LinkedIn, Twitter/X, GitHub, etc.)
 - **SSN**: Domain-aware validation + HR/Tax/Healthcare context
-- **VIN**: Check digit validation + manufacturer identification (ISO 3779)
+- **VIN**: ISO 3779 format + manufacturer identification; the check digit is required in North America (`1`–`5`, `7`) and China (`H`, `L`), and elsewhere a VIN without one needs a known WMI or a VIN label
 
 ## Current Data Flow (2025):
 

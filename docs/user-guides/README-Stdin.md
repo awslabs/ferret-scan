@@ -87,6 +87,12 @@ Formatters that normalize file paths (SARIF, gitlab-sast) **skip** that normaliz
 git diff | ferret-scan --stdin --stdin-name "<git-diff>" --suppression-file ./.ferret-stdin.yaml
 ```
 
+The label is the file-name part of a suppression rule's identity, beside the finding's type, line
+number, line content and value, so give each stream a label of its own and keep it stable. Line
+endings, indentation and trailing whitespace are not part of the identity of a rule written with
+formula v5; a binary that predates v5 does not read such a rule. See
+[How It Works](README-Suppressions.md#how-it-works).
+
 ## Streaming redaction gateway
 
 The combination `--stdin --enable-redaction` is the gateway pattern. All three plaintext redaction strategies are supported, spelled exactly as below; any other value exits 1 with nothing written to stdout, so a gateway never passes input through under a strategy it did not ask for:

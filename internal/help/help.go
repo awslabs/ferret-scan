@@ -345,12 +345,15 @@ func (h *System) ShowCheckHelp(checkName string) bool {
 		fmt.Println()
 	}
 
-	// Display contextual analysis
+	// Display contextual analysis. No weights are printed here: this section is shared by every check,
+	// and each check weighs its keywords differently (VIN +25/-15 within +/-50, PHONE +15/-35 within
+	// -80/+40, ...), so one set of numbers was wrong for most of them. A check's own weights belong in
+	// its DetailedDescription or ConfidenceFactors.
 	if len(info.PositiveKeywords) > 0 || len(info.NegativeKeywords) > 0 {
-		h.colors["subtitle"].Println("Contextual Analysis (up to +25% or -50% adjustment):")
+		h.colors["subtitle"].Println("Contextual Analysis (keywords near the match; how much each one moves the score depends on the check):")
 
 		if len(info.PositiveKeywords) > 0 {
-			fmt.Print("   - Positive keywords (+5% each): ")
+			fmt.Print("   - Positive keywords (raise confidence): ")
 			h.colors["positive"].Printf("%s",
 				strings.Join(info.PositiveKeywords[:min(5, len(info.PositiveKeywords))], ", "))
 			if len(info.PositiveKeywords) > 5 {
@@ -361,7 +364,7 @@ func (h *System) ShowCheckHelp(checkName string) bool {
 		}
 
 		if len(info.NegativeKeywords) > 0 {
-			fmt.Print("   - Negative keywords (-10% each): ")
+			fmt.Print("   - Negative keywords (lower confidence): ")
 			h.colors["negative"].Printf("%s",
 				strings.Join(info.NegativeKeywords[:min(5, len(info.NegativeKeywords))], ", "))
 			if len(info.NegativeKeywords) > 5 {

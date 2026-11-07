@@ -15,10 +15,10 @@ func (v *Validator) GetCheckInfo() help.CheckInfo {
 It identifies the following types of banking data:
 - US ABA routing numbers (9 digits with valid prefix and checksum)
 - US bank account numbers (8-17 digits in banking context)
-- IBAN (International Bank Account Number) with mod-97 checksum validation
+- IBAN (International Bank Account Number) for the 89 SWIFT IBAN Registry countries, with registry length, BBAN structure and mod-97 checksum validation
 - SWIFT/BIC codes (8 or 11 character bank identifiers)
 
-The validator uses strict structural validation before keyword boosting: ABA routing numbers are checksum-verified, IBANs are validated with mod-97, and SWIFT codes are checked against ISO country codes. US bank account numbers require banking keywords nearby to avoid flagging arbitrary digit sequences.`,
+The validator uses strict structural validation before keyword boosting: ABA routing numbers are checksum-verified, IBANs must have their country's registered length and BBAN structure (which positions are digits, letters or either) and pass mod-97, and SWIFT codes are checked against ISO country codes. US bank account numbers require banking keywords nearby to avoid flagging arbitrary digit sequences.`,
 
 		Patterns: []string{
 			"NNNNNNNNN (9-digit ABA routing number with checksum)",
@@ -29,7 +29,7 @@ The validator uses strict structural validation before keyword boosting: ABA rou
 
 		SupportedFormats: []string{
 			"ABA: first 2 digits 01-32 or 61-72 or 80, checksum validated",
-			"IBAN: 70+ country formats validated with correct length and mod-97",
+			"IBAN: 89 SWIFT IBAN Registry countries, compact or grouped in fours by spaces or hyphens; registry length, BBAN structure and mod-97 validated",
 			"SWIFT: 4 bank letters + 2 country + 2 location + optional 3 branch",
 			"US Account: 8-17 digits requiring banking keyword context",
 		},

@@ -363,7 +363,9 @@ Three properties worth knowing:
   operator asked for detection to stop and it did not.
 
 The gap that remains: the `--stdin` path builds no scan-statistics block at all, so it gets the
-stderr line and no machine-readable form. Tracked separately.
+stderr line (since #887) and no machine-readable form. The stderr line is withheld when
+`--enable-redaction` is set with no `--output`, because stderr then carries the findings document;
+pass `--output <file>` to get it. Tracked separately.
 
 ## Caps
 

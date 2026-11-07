@@ -12,12 +12,14 @@ func (v *Validator) GetCheckInfo() help.CheckInfo {
 		ShortDescription: "Detects medical identifiers (NPI, DEA, MRN, Insurance IDs, Medicare MBI, UK NHS and Scottish CHI numbers)",
 		DetailedDescription: `The MEDICAL_ID check detects medical and healthcare identifiers in documents and text files using pattern matching, checksum validation, and contextual analysis.
 
-It identifies five types of medical identifiers:
+It identifies seven types of medical identifiers:
 - NPI (National Provider Identifier): 10-digit numbers starting with 1 or 2, validated with Luhn checksum
 - DEA (Drug Enforcement Administration) numbers: a registrant-type letter, the registrant's last-name initial or 9 (a business address), then 7 digits with the DEA check digit, in either case
 - MRN (Medical Record Number): 6-10 digit institution-specific identifiers, detected only with strong medical context
 - Insurance Member IDs: Alphanumeric 8-20 character strings with insurance/health plan context
 - Medicare Beneficiary Identifier (MBI): 11-character strings in the CMS positional format, in either case
+- UK NHS numbers (NHS_NUMBER): 10 digits or 3-3-4 with the mod-11 check digit, reported only beside a label bound to the value
+- Scottish CHI numbers (CHI_NUMBER): a DDMMYY date + 4 digits, or 6-4, with the mod-11 check digit and a real date, reported only beside a label bound to the value
 
 The validator prioritizes false-positive suppression: digit-only sequences (MRN) require strong medical context keywords, and structurally validated types (NPI, DEA) require checksum validity. A DEA number whose first letter is outside ` + deaUngatedRegistrantLetters + `, or whose second character is 9, is reported only beside DEA context (on the line, on a label line above, or in its column header), and a lowercase MBI only beside a Medicare-specific label (medicare, mbi, hicn and their compound keys).`,
 
@@ -27,6 +29,8 @@ The validator prioritizes false-positive suppression: digit-only sequences (MRN)
 			"MRN: 6-10 digits (requires medical context keywords)",
 			"Insurance Member ID: 8-20 alphanumeric chars (requires insurance context)",
 			"Medicare MBI: 11 chars in the CMS C-A-AN-N-A-AN-N-A-A-N-N positional format, either case",
+			"UK NHS number: 10 digits or 3-3-4 (mod-11 check digit; needs a label bound to the value)",
+			"Scottish CHI number: DDMMYY + 4 digits or 6-4 (mod-11 check digit and a real date; needs a label bound to the value)",
 		},
 
 		SupportedFormats: []string{
