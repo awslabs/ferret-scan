@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # corpus-fetch.sh — fill a LOCAL, never-committed corpus of real public files, one directory per
-# file format, for TEST_PLAN dimension 9 (real-world documents) and scripts/corpus-ab.sh.
+# file format: the public half of the standing real-file instrument that scripts/corpus-ab.sh,
+# scripts/corpus-triage.sh and `make corpus-baseline` read (CORPUS_PLAN.md in the corpus root).
 #
 # Why: the real-world A/B sets used so far (this repository, the Go module cache, GOROOT) are text
 # and code only. No PDF, Office document, image, audio or video file had ever been in an A/B, so a
@@ -14,13 +15,22 @@
 # Where the files go: --corpus DIR, else $FERRET_CORPUS_DIR, else ../ferret-corpus next to this
 # repository. Layout:
 #
-#   by-format/<ext>/<source>--<name>   the files (lower-case extension directory)
+#   by-format/<ext>/<source>--<name>   the files (lower-case extension directory), read-only
 #   MANIFEST.tsv                       path, source URL, sha256, bytes, licence, retrieved date
 #   MANIFEST.failed.tsv                what the LAST run could not fetch, and why
 #   MANIFEST.plan.tsv                  the locked selection; re-runs fetch from it, not from search
 #
-# Nothing else in the corpus root is touched: a private/ directory or a README there belong to the
-# operator, and this script never lists, reads or writes them.
+# Nothing else in the corpus root is touched: private/, baselines/, triage/, runs/ and any README
+# belong to the operator or to the other scripts, and this script never lists, reads or writes them.
+#
+# No credential material, by the corpus rule: a file is never stored, and one already stored is
+# swept out of by-format/, MANIFEST.tsv and the plan, when it is an .env file, a key or certificate
+# file (.pem .key .p12 .pfx .crt .cer .der .jks .keystore .kdbx .ppk .gpg), an SSH key by name,
+# anything under .ssh/, .aws/ or .gnupg/, or a file holding a PEM private-key or certificate block.
+#
+# After every run that wrote anything, by-format/ is made read-only (chmod -R a-w), so a scan, a
+# redaction bug or a stray command cannot change the corpus a baseline was measured on. The script
+# unlocks only its own tree, only while it writes.
 #
 # Properties:
 #   - idempotent: a file whose sha256 matches its MANIFEST.tsv row is skipped without any network
@@ -43,9 +53,8 @@
 #   libheif      libheif test and fuzzing HEIC files, LGPL-3.0.
 #   libwebp      libwebp-test-data, BSD-3-Clause (libwebp terms).
 #   exiftool     ExifTool t/images (metadata-rich samples of most containers), Perl terms.
-#   compose      docker/awesome-compose (YAML, .env, TOML, JSON, code), CC0-1.0.
-#   tomltest / goini / dotenv / gozip   TOML (MIT), INI (Apache-2.0), .env (BSD-2-Clause) and ZIP
-#                (BSD-3-Clause) test files.
+#   compose      docker/awesome-compose (YAML, TOML, JSON, conf, code), CC0-1.0.
+#   tomltest / goini / gozip   TOML (MIT), INI (Apache-2.0) and ZIP (BSD-3-Clause) test files.
 #   commons      Wikimedia Commons, searched through the API with a licence filter (CC0 or public
 #                domain structured data) and each file's licence re-checked from its own metadata.
 #   ia           Internet Archive items whose licenseurl is CC0 1.0 or the Public Domain Mark, for
@@ -173,7 +182,7 @@ GITHUB = [
     dict(name="compose", repo="docker/awesome-compose", commit="30f4b7f6a6c3b0c0ecf4d4efb0de203c48d11562",
          prefix="", licence="CC0-1.0 (docker/awesome-compose)", max_mb=5, name_parts=2,
          exclude=r"(^|/)(lib|node_modules|dist|vendor)/|\.min\.|LICENSE|package-lock",
-         picks=dict(yaml=10, yml=3, env=4, toml=3, json=4, py=4, go=3, java=3, js=3, sql=3, sh=1,
+         picks=dict(yaml=10, yml=3, toml=3, json=4, py=4, go=3, java=3, js=3, sql=3, sh=1,
                     properties=2, conf=3, xml=2, html=2, txt=2, jpg=2, png=2, svg=2)),
     dict(name="tomltest", repo="toml-lang/toml-test", commit="96fd088448ec0f4d9f061c730ed7854399c46faf",
          prefix="tests", include=r"^valid/", licence="MIT (toml-lang/toml-test)", max_mb=1, name_parts=2,
@@ -181,9 +190,6 @@ GITHUB = [
     dict(name="goini", repo="go-ini/ini", commit="e2db55b0e088fa4ee0c128aa4ade263cdc1d7f08",
          prefix="testdata", licence="Apache-2.0 (go-ini/ini testdata)", max_mb=1,
          picks=dict(ini=5)),
-    dict(name="dotenv", repo="motdotla/dotenv", commit="3d11a6e4e5b9d8d31763570abde778c221231520",
-         prefix="tests", licence="BSD-2-Clause (motdotla/dotenv tests)", max_mb=1,
-         picks=dict(env=1)),
     dict(name="gozip", repo="golang/go", commit="3568f0bb1559a1d395f599af61ddb1c0e9b02201",
          prefix="src/archive/zip/testdata", licence="BSD-3-Clause (Go archive/zip testdata)", max_mb=1,
          picks=dict(zip=6)),
@@ -233,6 +239,44 @@ IA = dict(
 )
 
 ALL_BLOCKS = [b["name"] for b in GITHUB] + [GOVDOCS1["name"], COMMONS["name"], IA["name"]]
+# Blocks an older version of this script fetched. Their plan rows are dropped and their files swept.
+RETIRED_BLOCKS = {"dotenv"}
+
+# ---------------------------------------------------------------------------------------------
+# No credential material (CORPUS_PLAN.md): .env files, key and certificate files, SSH key names,
+# anything under .ssh/.aws/.gnupg, and any file carrying a PEM private-key or certificate block.
+# ---------------------------------------------------------------------------------------------
+CRED_EXTS = {"env", "pem", "key", "p12", "pfx", "crt", "cer", "der", "jks", "keystore", "kdbx", "ppk", "gpg"}
+CRED_NAMES = {"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", ".netrc", ".pgpass"}
+CRED_DIRS = {".ssh", ".aws", ".gnupg"}
+PEM_BLOCK = re.compile(rb"-----BEGIN (?:[A-Z0-9]+ )*(?:PRIVATE KEY|CERTIFICATE|PRIVATE KEY BLOCK)-----")
+
+
+def credential_name(source_path):
+    """Why a source path is credential-shaped by name, or None."""
+    parts = [p for p in re.split(r"[/#\\]", source_path.lower()) if p]
+    if not parts:
+        return None
+    name = parts[-1]
+    ext = name.rsplit(".", 1)[-1] if "." in name[1:] else ""
+    if name.startswith(".env") or ext in CRED_EXTS:
+        return f"{name}: key, certificate or .env file"
+    if name in CRED_NAMES:
+        return f"{name}: SSH or login credential file"
+    if any(p in CRED_DIRS for p in parts[:-1]):
+        return "under a .ssh/.aws/.gnupg directory"
+    return None
+
+
+def credential_content(path):
+    """True when the file holds a PEM private-key or certificate block (read in overlapping chunks)."""
+    tail = b""
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            if PEM_BLOCK.search(tail + chunk):
+                return True
+            tail = chunk[-64:]
+    return False
 
 PLAN_COLS = ["path", "block", "source_url", "licence", "expect_bytes", "expect_hash", "locator"]
 MANIFEST_COLS = ["path", "source_url", "sha256", "bytes", "licence", "retrieved"]
@@ -386,7 +430,7 @@ class Planner:
             ext = ext_of(p)
             if ext not in b["picks"] or size <= 0 or size > b["max_mb"] * MB:
                 continue
-            if (inc and not inc.search(p)) or (exc and exc.search(p)):
+            if (inc and not inc.search(p)) or (exc and exc.search(p)) or credential_name(p):
                 continue
             by_ext.setdefault(ext, []).append((p, size, e["sha"]))
         items = []
@@ -434,7 +478,8 @@ class Planner:
             by_ext = {}
             for name, flags, method, crc, csize, usize, off in self.zip_directory(url):
                 ext = ext_of(name)
-                if name.endswith("/") or ext not in b["picks"] or flags & 1 or method not in (0, 8):
+                if (name.endswith("/") or ext not in b["picks"] or flags & 1 or method not in (0, 8)
+                        or credential_name(name)):
                     continue
                 if usize <= 0 or usize > b["max_mb"] * MB or csize > b["max_mb"] * MB:
                     continue
@@ -478,7 +523,8 @@ class Planner:
                 title = page["title"].split(":", 1)[-1]
                 ext = ext_of(title)
                 size = int(info.get("size") or 0)
-                if ext not in COMMONS_EXTS[mime] or size <= 0 or size > max_mb * MB or not info.get("url"):
+                if (ext not in COMMONS_EXTS[mime] or size <= 0 or size > max_mb * MB or not info.get("url")
+                        or credential_name(title)):
                     continue
                 url = info["url"].split("?", 1)[0]
                 items.append(dict(ext=ext, name=f"commons--{safe_name(title)}", block=b["name"],
@@ -517,6 +563,7 @@ class Planner:
                     continue
                 files = sorted((f for f in md.get("files", [])
                                 if f.get("source") == "original" and ext_of(f.get("name", "")) == ext
+                                and not credential_name(f.get("name", ""))
                                 and 0 < int(f.get("size") or 0) <= max_mb * MB), key=lambda f: f["name"])
                 if not files:
                     continue
@@ -685,6 +732,8 @@ class Fetcher:
                     with open(tmp, "rb") as f:
                         if f.read(64).startswith(b"version https://git-lfs"):
                             err = "git-lfs pointer, not content"
+                if err is None and credential_content(tmp):
+                    err = "credential-shaped content (a PEM private-key or certificate block); not stored"
             if err is not None:
                 with self.lock:
                     self.total -= expect
@@ -725,6 +774,53 @@ class Fetcher:
             os.rmdir(self.tmp_root)
         except OSError:
             pass
+
+
+def set_tree_writable(root, writable):
+    """Owner write on (unlock) or every write bit off (lock: chmod -R a-w) for root and below."""
+    if not os.path.isdir(root):
+        return
+    for dp, dns, fns in os.walk(root):
+        for p in [os.path.join(dp, n) for n in fns] + [dp]:
+            try:
+                st = os.lstat(p)
+            except OSError:
+                continue
+            if os.path.islink(p):
+                continue
+            mode = st.st_mode & 0o7777
+            os.chmod(p, (mode | 0o200) if writable else (mode & ~0o222))
+
+
+def sweep(corpus, plan_rows, manifest):
+    """Remove credential-shaped and retired-block files from by-format/, the manifest and the plan."""
+    swept = []
+    for path in sorted(set(plan_rows) | set(manifest)):
+        row = plan_rows.get(path) or {}
+        mrow = manifest.get(path) or {}
+        source = (row.get("source_url") or mrow.get("source_url") or "").split("?", 1)[0]
+        source_path = urllib.parse.unquote(urllib.parse.urlparse(source.split("#", 1)[0]).path) + \
+            ("/" + source.split("#", 1)[1] if "#" in source else "")
+        why = None
+        if row.get("block") in RETIRED_BLOCKS:
+            why = f"block {row['block']} is retired"
+        why = why or credential_name(source_path) or credential_name(path)
+        full = os.path.join(corpus, path)
+        if not why and os.path.isfile(full) and credential_content(full):
+            why = "credential-shaped content (a PEM private-key or certificate block)"
+        if not why:
+            continue
+        if os.path.isfile(full):
+            os.unlink(full)
+            try:
+                os.rmdir(os.path.dirname(full))  # only when the format directory is now empty
+            except OSError:
+                pass
+        plan_rows.pop(path, None)
+        manifest.pop(path, None)
+        swept.append((path, why))
+        log(f"  swept {path}: {why}")
+    return swept
 
 
 def summarize(corpus, plan, manifest):
@@ -812,20 +908,37 @@ def main():
     todo = [i for i in plan if i["block"] in wanted]
     if args.dry_run:
         manifest = read_tsv(os.path.join(corpus, "MANIFEST.tsv"), MANIFEST_COLS)
+        would_sweep = [i for i in plan if i["block"] in RETIRED_BLOCKS or credential_name(i["path"])
+                       or credential_name(i["source_url"].split("?", 1)[0])]
+        for i in would_sweep:
+            log(f"  would sweep {i['path']}")
+        todo = [i for i in todo if i not in would_sweep]
         for i in todo:
             log(f"  {i['path']}\t{i['expect_bytes']}\t{i['licence']}")
         summarize(corpus, todo, manifest)
         log("dry run: nothing downloaded, nothing written")
         return 1 if plan_failures else 0
 
-    write_tsv(plan_path, PLAN_COLS, plan_rows)
-    fetcher = Fetcher(corpus, args.cache_dir, max(1, args.jobs))
-    log(f"fetch {len(todo)} planned file(s) into {corpus}/by-format "
-        f"({fetcher.total} bytes present; caps 50 MB/file, 5 GB total)")
-    fetcher.run(todo)
+    by_format = os.path.join(corpus, "by-format")
+    set_tree_writable(by_format, True)
+    try:
+        manifest_path = os.path.join(corpus, "MANIFEST.tsv")
+        manifest = read_tsv(manifest_path, MANIFEST_COLS)
+        swept = sweep(corpus, plan_rows, manifest)
+        if swept:
+            write_tsv(manifest_path, MANIFEST_COLS, manifest)
+        todo = [i for i in plan if i["path"] in plan_rows and i["block"] in wanted]
+        write_tsv(plan_path, PLAN_COLS, plan_rows)
+        fetcher = Fetcher(corpus, args.cache_dir, max(1, args.jobs))
+        log(f"fetch {len(todo)} planned file(s) into {corpus}/by-format "
+            f"({fetcher.total} bytes present; caps 50 MB/file, 5 GB total)")
+        fetcher.run(todo)
+    finally:
+        set_tree_writable(by_format, False)
     planned, present = summarize(corpus, todo, fetcher.manifest)
     log(f"fetched {fetcher.fetched}, already present {fetcher.skipped}, failed {len(fetcher.failed)}"
-        f" (MANIFEST.failed.tsv), planning failures {len(plan_failures)}")
+        f" (MANIFEST.failed.tsv), swept {len(swept)} credential-shaped or retired file(s), planning failures "
+        f"{len(plan_failures)}; by-format/ is read-only")
     return 1 if (fetcher.failed or plan_failures or present < planned) else 0
 
 
