@@ -52,13 +52,104 @@ What is and is not identity:
   and 113 of a re-indented copy. Read by this version, the same rules suppress all 581 of the CRLF copy
   and 253 of the re-indented one; once migrated, or when written by this version, all 581 of each
   (#885).
-- **The line number and the file's basename are.** A line inserted above a finding, or a renamed file,
-  stops its rule matching; regenerate the rules.
+- **The line number and the file's basename are.** A line inserted above a finding stops its rule
+  matching at scan time; `--generate-suppressions` re-anchors the rule (see
+  [Re-anchoring](#re-anchoring)). A renamed file stops it matching for good: a rule names a basename,
+  and without one it could relocate anywhere.
 - **Migration** happens only at an explicit write: `--generate-suppressions` rewrites a rule it matched
   through an older formula to v5 and changes nothing else in it (id, reason, `enabled`, dates and
   metadata stay). Scanning never rewrites a rule. A binary older than this one does not read v5, so a
   migrated rule whose finding has whitespace or a `\r` at a window edge stops matching there; for any
   other finding v5 and v2 are the same hash.
+
+### Re-anchoring
+
+Scan-time matching is exact, so a rule whose finding moved to another line matches nothing until the
+file is regenerated. `--generate-suppressions` then moves it (#885): a rule that no finding of the run
+identifies is re-anchored to the finding whose identity, recomputed at the line number the rule
+recorded (`metadata.line_number`, and `metadata.confidence` for a v1 rule), equals the rule's `hash`.
+
+- **Only the same finding moves.** Every other part of the identity comes from the finding: its type,
+  its trimmed line, its file's basename, the text around it and the value. A rule can therefore move
+  only to the same value on the same line text, in a file of the same name. A line that was edited as
+  well as moved never relocates; its rule is reported as matching nothing.
+- **Only one-to-one moves are made.** Findings are compared per basename and type, across every
+  directory of the run. A rule that fits two findings (a repeated line, or same-named files with the
+  finding at different lines) and a finding two rules fit are left alone and counted as ambiguous. Every
+  finding of the run counts as a candidate, including those a rule already identifies, so a rule never
+  moves onto one copy of a repeated line while the other copy keeps its own rule. Same-named files with
+  the finding at the same line are one identity, as at scan time: the moved rule matches all of them.
+- **Only `hash`, `metadata.line_number` and `last_seen_at` change**, the hash in the current formula.
+  `id`, `reason`, `enabled`, `expires_at`, the dates and every other metadata key stay; disabled and
+  expired rules move too, and keep their state. A rule the loader refused is neither moved nor counted.
+  The save patches the file, so comments and unknown keys stay (see [Saving](#saving)).
+- **Never at scan time, and never in the generating run.** A re-anchored rule takes effect when the file
+  is next loaded. With `--stdin`, which generates before it reports, the generating run reports what
+  `--file`'s does.
+- **Bounded.** The search compares each finding of a basename and type with each distinct (line
+  number, confidence) recorded by that group's unmatched rules, which is quadratic: a file of N findings
+  with a line inserted at its top has N rules to move and N candidates for each. One regeneration makes
+  at most **500,000 comparisons** (`suppressions.MaxReanchorComparisons`), about 0.6 s on a 2026 x86-64
+  host: a group of 707 findings and 707 rules. Groups are searched cheapest first, and a group that does
+  not fit in what is left is not searched at all, because a move is proven one-to-one only once every
+  comparison of its group has been made. Its rules are left as they are and the run says so. A
+  comparison costs the same however long the line is. For scale: re-anchoring this whole repository
+  from rules generated at v2.4.0 took 38,260 comparisons (77 ms) and moved 1,443 rules.
+
+Measured on the 39 files of `help.go`, `validator.go`, `metadata_validator.go` and `.gitlab-ci.yml`
+present at both v2.4.0 and the v2.6.0 development head, with 473 rules generated at v2.4.0 and
+enabled: a scan suppresses 238 of 612 findings and leaves 259 reported that only moved. One
+regeneration re-anchors 253 rules, refuses 5 (three copies of one `.gitlab-ci.yml` line, and two lines
+repeated in `metadata_validator.go`), and the rescan suppresses 492. 252 of the 253 moves are the
+line mapping `git diff -U0` gives; the other is a block git shows as deleted and re-added, whose line
+occurs once in each version. Before, the same regeneration grew the file from 473 to 846 rules and the
+rescan still suppressed 238.
+
+### What `--generate-suppressions` reports
+
+It prints the counts of what it did, on both `--file` and `--stdin`, instead of a fixed line:
+
+```
+Updated suppression rules: added 0 (disabled by default), refreshed 0, re-anchored 5, migrated 0 to the current hash formula
+Note: 5 rule(s) whose finding moved to another line now name that line (hash, metadata.line_number and last_seen_at rewritten; enabled, expiry and reason kept)
+```
+
+| count | means |
+|---|---|
+| added | new rules, for findings no rule identifies |
+| refreshed | findings whose rule had `last_seen_at` updated (including the findings of migrated rules) |
+| re-anchored | rules moved to the line their finding is now on |
+| migrated | rules rewritten from an older hash formula to v5 |
+| ambiguous | rules not moved because the move was not one-to-one |
+| unmatched | rules for a file and type with findings in this run that fit none of them (an edited line, a removed finding, or no usable `line_number`) |
+| not evaluated | rules the search did not reach because of its limit |
+
+The last three are printed only when they are not zero, and those rules are unchanged. Rules for files
+or types without findings in the run are not counted, because the run may not have scanned them. The
+counts are also available to code as `SuppressionManager.LastGeneration()`.
+
+### Rules that matched nothing
+
+`IsSuppressed` records which rules matched a finding: a set per run, so the redaction filter and the
+report asking about one finding count it once, and a rule matched behind another rule for the same
+finding counts as matched. `SuppressionManager.UnmatchedRules(RunScope)` then lists the enabled,
+applied, unexpired rules that matched nothing although the run could have matched them:
+
+- the rule's `metadata.filename` is the basename of a file the run scanned completely
+  (`RunScope.Files`; for `--stdin`, the `--stdin-name` label). A rule for a file the run did not read is
+  not listed. A rule with no `metadata.filename` is counted as `Unattributed` instead;
+- every check ran (`RunScope.AllChecks`), or the run reported a finding of the rule's type. In a
+  narrowed run (`--checks`, a profile, a disabled type) the other rules are not listed and the report is
+  marked `Partial`, so `--checks SSN` on an unchanged file lists none;
+- a rule re-anchored by the same run counts as matched.
+
+`suppressions.WriteUnmatchedRulesNote` prints the report as one stderr note naming the rules (the first
+ten), for example `Note: 5 enabled suppression rule(s) for files scanned in this run matched no finding
+(the finding moved, changed, or was removed): SUP-00000001, …. Run --generate-suppressions to re-anchor
+the ones whose finding only moved.` It is a note: a rule that matched nothing hides nothing, so no exit
+code changes. On the 39-file set above, 270 of the 473 enabled rules matched nothing, and the run said
+only `Suppressed 238 findings`. The CLI does not print the note or a count yet; wiring both is tracked
+in [#885](https://github.com/awslabs/ferret-scan/issues/885).
 
 ### Filename Consistency
 - **Original Filename Preservation**: Web UI uploads maintain original filenames throughout processing
@@ -110,7 +201,7 @@ The file has two top-level keys, `version` and `rules`. A rule has these eleven 
 | `reason` | why the finding is accepted |
 | `enabled` | `true` to suppress; generated rules start `false` |
 | `created_by`, `created_at` | who and when |
-| `last_seen_at` | refreshed by `--generate-suppressions` each time the finding is seen again |
+| `last_seen_at` | refreshed by `--generate-suppressions` each time the finding is seen again, and when it re-anchors the rule |
 | `expires_at` | optional; after it the rule is skipped and the run warns that its findings are reported |
 | `reviewed_by`, `reviewed_at` | optional review record |
 | `metadata` | free-form string annotations, never interpreted |
@@ -241,7 +332,8 @@ next save starts a new one.
 
 2. **Hash Mismatches**
    - Confirm filename normalization (basename only)
-   - A line inserted or removed above the finding changes its line number, which is part of the identity
+   - A line inserted or removed above the finding changes its line number, which is part of the identity;
+     run `--generate-suppressions` to re-anchor the rule (see [Re-anchoring](#re-anchoring))
    - Line endings and whitespace at the line's edges are not, for rules written or migrated by this
      version (see [Hash Generation Algorithm](#hash-generation-algorithm))
 

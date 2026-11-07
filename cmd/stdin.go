@@ -258,7 +258,7 @@ func runStdinScan(in stdinScanInputs) int {
 			if err := suppressionManager.GenerateSuppressionRules(allMatches, reason, false); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to generate suppression rules: %v\n", err)
 			} else {
-				fmt.Fprintln(os.Stderr, "Updated suppression rules: existing rules had last_seen_at updated, new rules added (disabled by default)")
+				suppressions.WriteGenerationReport(os.Stderr, suppressionManager.LastGeneration())
 				fmt.Fprintln(os.Stderr, "Edit the suppression file to enable specific rules by setting 'enabled: true'")
 			}
 		} else {

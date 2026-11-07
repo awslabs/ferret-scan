@@ -2336,7 +2336,7 @@ func main() {
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to generate suppression rules: %v\n", err)
 			} else {
-				fmt.Fprintf(os.Stderr, "Updated suppression rules: existing rules had last_seen_at updated, new rules added (disabled by default)\n")
+				suppressions.WriteGenerationReport(os.Stderr, suppressionManager.LastGeneration())
 				fmt.Fprintf(os.Stderr, "Edit the suppression file to enable specific rules by setting 'enabled: true'\n")
 			}
 		} else {

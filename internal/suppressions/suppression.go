@@ -109,6 +109,15 @@ type SuppressionManager struct {
 	// lapsed records the findings a lapsed rule left in the report. It has its own lock, deliberately
 	// not indexMu, because IsSuppressed runs on worker goroutines as well as the report path.
 	lapsed lapsedLedger
+	// ledger records which rules matched a finding and which finding types this run reported, for
+	// UnmatchedRules (#885). Its own lock too, for the same reason.
+	ledger runLedger
+	// deferred holds the hashes GenerateSuppressionRules re-anchored rules to. IsSuppressed skips
+	// them, so a re-anchored rule takes effect from the next load and never in the run that moved it.
+	// Guarded by indexMu.
+	deferred map[string]bool
+	// reanchorLimit replaces MaxReanchorComparisons when positive; set only by tests.
+	reanchorLimit int
 
 	// doc is the file as parsed, which saveConfig patches instead of re-marshalling the struct; nil
 	// when the file did not exist or could not be parsed.
@@ -403,6 +412,18 @@ var contextlessHashValidators = map[string]bool{
 
 // findingHashVersion computes a finding's hash under a specific formula version.
 func (sm *SuppressionManager) findingHashVersion(match detector.Match, version hashVersion) string {
+	// Create final hash. hex.EncodeToString writes what fmt's %x does for a [32]byte, without the
+	// reflection: this runs several times per finding.
+	head, tail := sm.identityParts(match, version)
+	hash := sha256.Sum256([]byte(head + strconv.Itoa(match.LineNumber) + tail))
+	return hex.EncodeToString(hash[:])
+}
+
+// identityParts is the composite a finding's hash digests under version, split around its line
+// number: the composite is head + strconv.Itoa(match.LineNumber) + tail. Re-anchoring needs the
+// identity a finding would have had at another line (reanchor.go), and computing it from the same two
+// parts is what keeps that search and scan-time matching from ever disagreeing about the formula.
+func (sm *SuppressionManager) identityParts(match detector.Match, version hashVersion) (head, tail string) {
 	// A contextless formula reads the context components as though the finding
 	// carried none, reproducing the hash this finding had before its validator
 	// began recording context.
@@ -419,7 +440,7 @@ func (sm *SuppressionManager) findingHashVersion(match detector.Match, version h
 		fullLine = fullLine[:maxHashLineLen]
 	}
 
-	// Create a composite string with all relevant identifying information. The v1
+	// The composite holds all the identifying information, joined by "|". The v1
 	// ordering is preserved exactly — confidence second — because any change to the
 	// component order or separator would alter every v1 hash and defeat the
 	// compatibility this version switch exists to provide.
@@ -430,8 +451,9 @@ func (sm *SuppressionManager) findingHashVersion(match detector.Match, version h
 	components = append(components,
 		fullLine,
 		filepath.Base(match.Filename), // Use basename to avoid path sensitivity
-		strconv.Itoa(match.LineNumber),
+		"",                            // the line number goes here, between head and tail
 	)
+	head = strings.Join(components, "|")
 
 	// Context contributes to IDENTITY, digested so the composite stays a bounded length and the
 	// raw surrounding text is not embedded. Not a privacy measure, and the comment used to say it
@@ -447,17 +469,10 @@ func (sm *SuppressionManager) findingHashVersion(match detector.Match, version h
 		text = strings.TrimSpace(text)
 	}
 	contextHash := sm.hashSensitiveData(before + after)
-	components = append(components, contextHash)
 
 	// Likewise a component of identity, not a privacy measure.
 	matchHash := sm.hashSensitiveData(text)
-	components = append(components, matchHash)
-
-	// Create final hash. hex.EncodeToString writes what fmt's %x does for a [32]byte, without the
-	// reflection: this runs several times per finding.
-	composite := strings.Join(components, "|")
-	hash := sha256.Sum256([]byte(composite))
-	return hex.EncodeToString(hash[:])
+	return head, "|" + contextHash + "|" + matchHash
 }
 
 // findingHashCandidates returns every hash a finding could legitimately be recorded
@@ -478,29 +493,36 @@ func (sm *SuppressionManager) findingHashVersion(match detector.Match, version h
 // which covers both directions; the current formula needs no such variant.
 func (sm *SuppressionManager) findingHashCandidates(match detector.Match) []string {
 	candidates := make([]string, 0, 8)
-	add := func(h string) {
+	eachCandidateForm(match, func(form detector.Match, version hashVersion) {
+		h := sm.findingHashVersion(form, version)
 		for _, c := range candidates {
 			if c == h {
 				return
 			}
 		}
 		candidates = append(candidates, h)
-	}
-	add(sm.findingHashVersion(match, hashVersionCurrent))
+	})
+	return candidates
+}
+
+// eachCandidateForm calls yield with every (finding, formula) pair whose hash is one of the finding's
+// candidates, current formula first: findingHashCandidates hashes them at the finding's own line, and
+// re-anchoring at the line a rule recorded, so the two read one list.
+func eachCandidateForm(match detector.Match, yield func(detector.Match, hashVersion)) {
+	yield(match, hashVersionCurrent)
 	if hasEdgeWhitespace(match) {
 		// Otherwise v2 digests exactly what the current formula does, and is the same hash.
-		add(sm.findingHashVersion(match, hashVersionNoConfidence))
+		yield(match, hashVersionNoConfidence)
 	}
-	add(sm.findingHashVersion(match, hashVersionLegacyConfidence))
+	yield(match, hashVersionLegacyConfidence)
 	if contextlessHashValidators[match.Validator] {
-		add(sm.findingHashVersion(match, hashVersionNoConfidenceContextless))
-		add(sm.findingHashVersion(match, hashVersionLegacyConfidenceContextless))
+		yield(match, hashVersionNoConfidenceContextless)
+		yield(match, hashVersionLegacyConfidenceContextless)
 	}
 	for _, variant := range otherLineEnding(match) {
-		add(sm.findingHashVersion(variant, hashVersionNoConfidence))
-		add(sm.findingHashVersion(variant, hashVersionLegacyConfidence))
+		yield(variant, hashVersionNoConfidence)
+		yield(variant, hashVersionLegacyConfidence)
 	}
-	return candidates
 }
 
 // hashMatchesFinding reports whether a stored rule hash identifies this finding under
@@ -567,9 +589,13 @@ func (sm *SuppressionManager) IsSuppressed(match detector.Match) (bool, *Suppres
 	// Every hash this finding could be recorded under: the current formula, plus every older one
 	// (#247, #885) so an existing rule file keeps suppressing without being regenerated.
 	candidates := sm.findingHashCandidates(match)
-	rule, lapsedAt := sm.matchLocked(candidates)
+	var hitBuf [4]string
+	rule, lapsedAt, hits := sm.matchLocked(candidates, hitBuf[:0])
 	sm.indexMu.RUnlock()
 
+	// Recorded whichever way the finding went, so UnmatchedRules can tell a rule that matched
+	// nothing from one whose finding this run never reported.
+	sm.ledger.record(match.Type, hits)
 	if rule != nil {
 		return true, rule
 	}
@@ -581,12 +607,19 @@ func (sm *SuppressionManager) IsSuppressed(match detector.Match) (bool, *Suppres
 }
 
 // matchLocked returns the first enabled, applied, unexpired rule matching any candidate hash. When
-// there is none, it returns the earliest expiry among matching rules that had lapsed, or nil. The
-// caller holds indexMu for reading.
-func (sm *SuppressionManager) matchLocked(candidates []string) (*SuppressionRule, *time.Time) {
+// there is none, it returns the earliest expiry among matching rules that had lapsed, or nil. It also
+// appends to hits every candidate that some enabled, applied, unexpired rule holds, so a rule that
+// matched behind another one (two rules for one finding) is not reported as matching nothing. A rule
+// re-anchored by this manager is skipped (see GenerateSuppressionRules). The caller holds indexMu for
+// reading.
+func (sm *SuppressionManager) matchLocked(candidates, hits []string) (*SuppressionRule, *time.Time, []string) {
 	now := time.Now()
 	var lapsedAt *time.Time
+	var found *SuppressionRule
 	for _, findingHash := range candidates {
+		if sm.deferred[findingHash] {
+			continue
+		}
 		for _, ruleIdx := range sm.rulesByHash[findingHash] {
 			rule := &sm.config.Rules[ruleIdx]
 			if !rule.Enabled || rule.NotApplied != "" {
@@ -599,10 +632,18 @@ func (sm *SuppressionManager) matchLocked(candidates []string) (*SuppressionRule
 				}
 				continue
 			}
-			return rule, nil
+			if found == nil {
+				found = rule
+			}
+			// The ledger is keyed by hash, so one live rule per candidate records every rule holding it.
+			hits = append(hits, findingHash)
+			break
 		}
 	}
-	return nil, lapsedAt
+	if found != nil {
+		return found, nil, hits
+	}
+	return nil, lapsedAt, hits
 }
 
 // lapsedFindingKey identifies one finding for the lapsed-rule ledger: its full path, which tells two
@@ -836,7 +877,22 @@ func (sm *SuppressionManager) GetConfigPath() string {
 	return sm.configPath
 }
 
-// GenerateSuppressionRules creates suppression rules for all findings with enabled=false
+// GenerateSuppressionRules brings the rule file in line with matches, the findings of one run, and
+// saves it. A new rule is created with the given enabled state (the CLI passes false). An existing rule
+// is never removed, and its id, reason, enabled, dates, expiry and other metadata are never changed:
+//
+//   - a rule that identifies a finding has last_seen_at refreshed, and is rewritten to the current
+//     hash formula when it matched through an older one (migration);
+//   - a rule that identifies none of them, but would identify one at the line number the rule recorded,
+//     is re-anchored to that finding: its hash, metadata.line_number and last_seen_at are rewritten.
+//     Only a one-to-one pairing is accepted, and the search is bounded by MaxReanchorComparisons
+//     (reanchor.go);
+//   - a finding no rule identifies gets a new rule.
+//
+// LastGeneration counts each (#885). A re-anchored rule takes effect when the file is next loaded: this
+// manager's IsSuppressed goes on matching as it did before the call, so a run that generates before
+// it reports (--stdin) reports what a run that reports first (--file) does, and no rule ever moves at
+// scan time.
 func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match, reason string, enabled bool) error {
 	if sm.config == nil {
 		sm.config = &SuppressionConfig{
@@ -856,8 +912,7 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 		existingHashes[sm.config.Rules[i].Hash] = i
 	}
 
-	addedCount := 0
-	updatedCount := 0
+	var report GenerationReport
 	migrated := make(map[int]bool)
 	now := time.Now()
 
@@ -872,41 +927,111 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 		}
 	}
 
-	for _, match := range matches {
-		findingHash := sm.generateFindingHash(match)
-
-		// Check if already exists under ANY formula. A rule file written by an older
-		// formula records an older hash, and treating that as absent would append a
-		// duplicate rule for a finding the operator has already ruled on — the file
-		// would grow a second entry per finding on every regeneration. The matched
-		// rule is refreshed instead, and rewritten to the current formula.
-		matchedIdx := -1
-		for _, candidate := range sm.findingHashCandidates(match) {
+	// refresh records that rule idx identifies a finding whose current-formula hash is findingHash.
+	refresh := func(idx int, findingHash string) {
+		// Update last_seen_at for existing rule. Written through the live
+		// slice so it survives any reallocation caused by the appends below.
+		rule := &sm.config.Rules[idx]
+		rule.LastSeenAt = &now
+		report.Refreshed++
+		// A rule matched by an older formula is rewritten to the current one, here and only
+		// here: an explicit write, by the run that just saw its finding. Its other fields stay.
+		// The current formula is tried first, so a rule that differs from findingHash matched
+		// through an older one. A rule the loader refused (#866) is left as it is (#885).
+		if rule.Hash != findingHash && rule.NotApplied == "" && !migrated[idx] {
+			rule.Hash = findingHash
+			existingHashes[findingHash] = idx
+			migrated[idx] = true
+		}
+	}
+	// carried holds every rule hash some finding of this run carries among its candidates, so a second
+	// rule for one finding is not mistaken for a rule whose finding moved.
+	carried := make(map[string]bool)
+	lookup := func(candidates []string) int {
+		matched := -1
+		for _, candidate := range candidates {
 			if idx, exists := existingHashes[candidate]; exists {
-				matchedIdx = idx
-				break
+				carried[candidate] = true
+				if matched < 0 {
+					matched = idx
+				}
 			}
 		}
-		if idx := matchedIdx; idx >= 0 {
-			// Update last_seen_at for existing rule. Written through the live
-			// slice so it survives any reallocation caused by the appends below.
-			rule := &sm.config.Rules[idx]
-			rule.LastSeenAt = &now
-			updatedCount++
-			// A rule matched by an older formula is rewritten to the current one, here and only
-			// here: an explicit write, by the run that just saw its finding. Its other fields stay.
-			// The current formula is tried first, so a rule that differs from findingHash matched
-			// through an older one. A rule the loader refused (#866) is left as it is (#885).
-			if rule.Hash != findingHash && rule.NotApplied == "" && !migrated[idx] {
-				rule.Hash = findingHash
-				existingHashes[findingHash] = idx
-				migrated[idx] = true
+		return matched
+	}
+	loadedHashes := make([]string, len(sm.config.Rules))
+	for i := range sm.config.Rules {
+		loadedHashes[i] = sm.config.Rules[i].Hash
+	}
+
+	// Pass 1: the findings a rule already identifies. Checked under ANY formula. A rule file written
+	// by an older formula records an older hash, and treating that as absent would append a duplicate
+	// rule for a finding the operator has already ruled on — the file would grow a second entry per
+	// finding on every regeneration. The matched rule is refreshed instead, and rewritten to the
+	// current formula.
+	identities := make([]string, len(matches)) // each finding's current-formula hash
+	ruled := make([]bool, len(matches))        // a rule identifies the finding
+	var unruled []int
+	var unruledCandidates [][]string
+	for i, match := range matches {
+		candidates := sm.findingHashCandidates(match)
+		identities[i] = candidates[0]
+		if idx := lookup(candidates); idx >= 0 {
+			refresh(idx, identities[i])
+			ruled[i] = true
+			continue
+		}
+		unruled = append(unruled, i)
+		unruledCandidates = append(unruledCandidates, candidates)
+	}
+
+	// Pass 2: the rules no finding identifies, re-anchored to the finding they moved with.
+	identified := make(map[int]bool, len(carried))
+	for i, h := range loadedHashes {
+		if carried[h] || carried[sm.config.Rules[i].Hash] {
+			identified[i] = true
+		}
+	}
+	plan := sm.planReanchor(matches, identities, ruled, identified)
+	reanchored := make(map[int]bool, len(plan.accepted))
+	for _, move := range plan.accepted {
+		rule := &sm.config.Rules[move.rule]
+		rule.Hash = identities[move.finding]
+		rule.Metadata["line_number"] = strconv.Itoa(matches[move.finding].LineNumber)
+		rule.LastSeenAt = &now
+		existingHashes[rule.Hash] = move.rule
+		reanchored[move.rule] = true
+	}
+	report.ReAnchored = len(plan.accepted)
+	report.Ambiguous = len(plan.ambiguous)
+	report.Unmatched = len(plan.unmatched)
+	report.NotEvaluated = len(plan.notEvaluated)
+	if len(reanchored) > 0 {
+		sm.indexMu.Lock()
+		if sm.deferred == nil {
+			sm.deferred = make(map[string]bool, len(reanchored))
+		}
+		for idx := range reanchored {
+			sm.deferred[sm.config.Rules[idx].Hash] = true
+		}
+		sm.indexMu.Unlock()
+	}
+
+	// Pass 3: the findings still without a rule get one, in the order they were found.
+	for k, i := range unruled {
+		match := matches[i]
+		findingHash := identities[i]
+		if idx := lookup(unruledCandidates[k]); idx >= 0 {
+			// A rule added for an earlier occurrence of this finding, or the rule just re-anchored to
+			// it, which pass 2 has already counted.
+			if !reanchored[idx] {
+				refresh(idx, findingHash)
 			}
 			continue
 		}
 
 		// Generate unique ID with sequential number
-		id := fmt.Sprintf("SUP-%08d", maxID+addedCount+1)
+		id := fmt.Sprintf("SUP-%08d", maxID+report.Added+1)
 
 		// Prefer the per-finding drafted reason from --explain when present;
 		// it states WHY this specific finding looks suppressible (e.g. "Test
@@ -940,17 +1065,22 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 		// a second identical rule. Without this, a value repeated N times in a
 		// scan produced N byte-identical rules differing only in ID.
 		existingHashes[findingHash] = len(sm.config.Rules) - 1
-		addedCount++
+		report.Added++
 	}
+	report.Migrated = len(migrated)
 
 	// Recorded only once the file holds it: a save that fails leaves the zero report.
 	sm.lastGeneration = GenerationReport{}
-	if addedCount > 0 || updatedCount > 0 {
+	if report.Added > 0 || report.Refreshed > 0 || report.ReAnchored > 0 {
 		if err := sm.saveConfig(); err != nil {
 			return err
 		}
 	}
-	sm.lastGeneration = GenerationReport{Added: addedCount, Refreshed: updatedCount, Migrated: len(migrated)}
+	// A re-anchored rule has its finding in this run; once it is on disk, UnmatchedRules says so.
+	for idx := range reanchored {
+		sm.ledger.markHit(sm.config.Rules[idx].Hash)
+	}
+	sm.lastGeneration = report
 	return nil
 }
 
