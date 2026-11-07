@@ -671,6 +671,21 @@ release-test:
 	@echo "Testing GoReleaser configuration..."
 	@goreleaser check
 
+# Surface parity (#907): the golden-corpus inputs, and CORPUS=<dir> when set, through the host CLI,
+# the host web UI on 127.0.0.1, the container CLI and the container web UI published on 127.0.0.1
+# only, diffed. Builds the image from this checkout unless SURFACE_PARITY_ARGS passes --image.
+# A green run on all four surfaces is what scripts/pr-checklist.sh reports as dimension 14.
+# docs/testing/SURFACE_PARITY.md documents the flags, the output and the allowlist.
+.PHONY: surface-parity surface-parity-inputs
+surface-parity:
+	@./scripts/surface-parity.sh $(SURFACE_PARITY_ARGS)
+
+# Write the golden-corpus inputs to SURFACE_PARITY_INPUTS (an absolute directory) and stop, for
+# running one surface by hand.
+surface-parity-inputs:
+	@test -n "$(SURFACE_PARITY_INPUTS)" || { echo "set SURFACE_PARITY_INPUTS=/absolute/dir"; exit 2; }
+	@GOLDEN_DUMP_DIR="$(SURFACE_PARITY_INPUTS)" go test -count=1 -run '^TestDumpInputs$$' ./internal/goldencorpus/
+
 # Test cleanup functionality
 test-cleanup:
 	@echo "🧪 Testing cleanup functionality..."

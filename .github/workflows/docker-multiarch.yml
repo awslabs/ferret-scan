@@ -17,6 +17,8 @@ on:
       - 'internal/**'
       - 'Makefile'
       - 'scripts/container-redaction-smoke.sh'
+      - 'scripts/surface-parity.sh'
+      - 'scripts/surface-parity/**'
   pull_request:
     branches:
       - main
@@ -33,6 +35,8 @@ on:
       - 'internal/**'
       - 'Makefile'
       - 'scripts/container-redaction-smoke.sh'
+      - 'scripts/surface-parity.sh'
+      - 'scripts/surface-parity/**'
   workflow_dispatch:
     inputs:
       platforms:
@@ -301,6 +305,23 @@ jobs:
       - name: Smoke-test redaction in the image
         run: scripts/container-redaction-smoke.sh ferret-scan:smoke
 
+      # The golden-corpus inputs through the image's CLI and its web UI, before anything is pushed
+      # (#907): the two surfaces must report the same findings; redaction under simple and
+      # format_preserving into /tmp/out and /home/ferret/out must leave no reported value; and the
+      # runtime facts must hold (version and commit equal to this build's, a non-root user, a write
+      # into TMPDIR, the web port published on 127.0.0.1 only). Go builds the host binary the version
+      # is compared with and writes the inputs. Measured locally: 28.5 s for --surfaces container.
+      - name: Set up Go for the surface parity check
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: '.go-version'
+
+      - name: Surface parity in the image
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          GIT_COMMIT: ${{ github.sha }}
+        run: scripts/surface-parity.sh --image ferret-scan:smoke --surfaces container
+
       - name: Build and push Docker image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -419,7 +440,7 @@ jobs:
           echo "docker run --rm -v \$(pwd):/data ${GHCR_REGISTRY}/${GHCR_REPOSITORY}:latest --file /data/sample.txt" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "# Run web mode" >> "$GITHUB_STEP_SUMMARY"
-          echo "docker run --rm -p 8080:8080 ${GHCR_REGISTRY}/${GHCR_REPOSITORY}:latest --web --port 8080" >> "$GITHUB_STEP_SUMMARY"
+          echo "docker run --rm -p 127.0.0.1:8080:8080 ${GHCR_REGISTRY}/${GHCR_REPOSITORY}:latest --web --port 8080" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
   security-scan:
