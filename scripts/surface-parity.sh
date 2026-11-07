@@ -136,12 +136,17 @@ rm -f "$marker"
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/surface-parity.XXXXXX")"
 web_pid=""
+cli_pid=""
 cids=()
+# cleanup stops only what this script started, by PID or container id: the host web server, a host
+# CLI run in progress (an interrupted run must not leave one scanning), and every container.
 cleanup() {
-    if [ -n "$web_pid" ]; then
-        kill "$web_pid" 2>/dev/null || true
-        wait "$web_pid" 2>/dev/null || true
-    fi
+    for pid in "$web_pid" "$cli_pid"; do
+        if [ -n "$pid" ]; then
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+        fi
+    done
     for cid in ${cids[@]+"${cids[@]}"}; do
         "$CONTAINER_CMD" rm -f "$cid" >/dev/null 2>&1 || true
     done
@@ -152,6 +157,8 @@ cleanup() {
     fi
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 mkdir -p "$work/bin" "$work/raw" "$work/inputs"
 facts="$work/raw/facts.tsv"
@@ -313,10 +320,14 @@ exclude_for() { [ "$1" = corpus ] && echo "--exclude private/" || true; }
 run_host_cli() { # set root
     local set="$1" root="$2" out="$work/raw/$1" t0 rc
     t0="$(now)"
-    # The working directory is / on both CLI surfaces: the image sets no WORKDIR.
+    # The working directory is / on both CLI surfaces: the image sets no WORKDIR. Started in the
+    # background and waited for, so cleanup can stop it by PID if this script is interrupted.
     # shellcheck disable=SC2046 # exclude_for is an intentional word list
-    (cd / && env "${precommit_off[@]}" "$bin" "${scan_opts[@]}" --suppression-file "$host_supp" \
-        --file "$root" --recursive $(exclude_for "$set")) < /dev/null > "$out/cli.json" 2> "$out/cli.err" && rc=0 || rc=$?
+    (cd / && exec env "${precommit_off[@]}" "$bin" "${scan_opts[@]}" --suppression-file "$host_supp" \
+        --file "$root" --recursive $(exclude_for "$set")) < /dev/null > "$out/cli.json" 2> "$out/cli.err" &
+    cli_pid=$!
+    wait "$cli_pid" && rc=0 || rc=$?
+    cli_pid=""
     printf 'exit=%s\nseconds=%s\n' "$rc" "$(elapsed "$t0" "$(now)")" > "$out/cli.meta"
 }
 
