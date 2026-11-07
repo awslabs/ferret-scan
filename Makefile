@@ -763,6 +763,14 @@ version:
 check-tlds: ## Compare the embedded IANA TLD snapshot against the live root zone (warns, never fails)
 	@scripts/check-tlds.sh check
 
+# The repository self-scan (#927), exactly as CI runs it: .ferret-scan/selfscan.yaml and the reviewed
+# suppression ledger, shippable files with every check and *_test.go with SECRETS, HIGH blocks.
+# SELF_SCAN_ARGS passes options: SELF_SCAN_ARGS='--base origin/main' adds the new / lost / changed
+# findings against main (TEST_PLAN dimension 15). docs/testing/SELF_SCAN.md is the guide.
+.PHONY: self-scan
+self-scan: ## Scan this repository as CI does; HIGH findings fail unless the ledger records a decision
+	@./scripts/self-scan.sh $(SELF_SCAN_ARGS)
+
 check-go-version:
 	@echo "🔍 Checking Go version consistency..."
 	@./scripts/go-version.sh check
