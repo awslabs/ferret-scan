@@ -183,7 +183,7 @@ Launch a local, CloudScape-styled interface for interactive scanning, folder dra
 ferret-scan --web
 ```
 
-It binds to `127.0.0.1` by default (auto-detecting `0.0.0.0` only inside containers), enforces CSRF/Origin checks, and sends CSP headers. To expose it on your LAN, pass `--bind 0.0.0.0` — note the UI has no authentication, so do this only on trusted networks.
+It binds to `127.0.0.1` by default (auto-detecting `0.0.0.0` only inside containers, where the port publish is the boundary: publish it as `-p 127.0.0.1:8080:8080`), enforces CSRF/Origin checks, and sends CSP headers. The UI has no authentication, so to use it from another machine, forward the port over SSH (`ssh -L 8080:127.0.0.1:8080 <host>`) rather than widening the bind; `--bind 0.0.0.0` exposes it to every host that can reach this one, and prints a warning at startup.
 
 ![ferret-scan web UI — main interface](docs/images/webui-main-interface.png)
 

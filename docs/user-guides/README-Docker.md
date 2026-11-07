@@ -39,18 +39,26 @@ finch build -t ferret-scan .   # if using Finch
 
 ## Running the Container
 
-### Web UI Mode (Default)
+### Web UI Mode
 
 ```bash
 # Start web UI on port 8080 (basic mode - no persistent suppressions)
-docker run -p 8080:8080 ferret-scan
+docker run -p 127.0.0.1:8080:8080 ferret-scan --web --port 8080
 
 # With persistent config and suppressions (RECOMMENDED)
-docker run -p 8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan
+docker run -p 127.0.0.1:8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan --web --port 8080
 
 # Custom port
-docker run -p 3000:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan
+docker run -p 127.0.0.1:3000:3000 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan --web --port 3000
 ```
+
+The `127.0.0.1:` prefix keeps the UI on this machine: inside the container the server binds
+`0.0.0.0` (the image sets `FERRET_CONTAINER_MODE=true`), so the publish is the boundary, and to use
+the UI from another machine you forward the port over SSH from that machine
+(`ssh -L 8080:127.0.0.1:8080 <docker-host>`, then open `http://localhost:8080`) rather than
+publishing it more widely. Keep every port on the way equal (the host port, the container port,
+`--port` and a tunnel's local port), as the custom-port line does: the UI refuses a scan whose
+browser `Origin` names a port other than the one it listens on.
 
 ### CLI Mode
 
@@ -136,10 +144,10 @@ If suppressed findings aren't working in the container:
 1. **Verify correct volume mapping**:
    ```bash
    # Correct mapping (host:container)
-   docker run -p 8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan
+   docker run -p 127.0.0.1:8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan --web --port 8080
 
    # NOT this (wrong container path)
-   # docker run -p 8080:8080 -v ~/.ferret-scan:/root/.ferret-scan ferret-scan
+   # docker run -p 127.0.0.1:8080:8080 -v ~/.ferret-scan:/root/.ferret-scan ferret-scan --web --port 8080
    ```
 
 2. **Check if suppression file exists and is accessible**:
@@ -195,7 +203,7 @@ If you encounter permission issues:
    sudo chown -R 1000:1000 ~/.ferret-scan
 
    # Or run container as your user (less secure)
-   docker run --user $(id -u):$(id -g) -p 8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan
+   docker run --user $(id -u):$(id -g) -p 127.0.0.1:8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan --web --port 8080
    ```
 
 
