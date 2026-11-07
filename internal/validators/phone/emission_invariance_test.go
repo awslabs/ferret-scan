@@ -72,7 +72,7 @@ func reportedSet(t *testing.T, content string) []string {
 // TestReportedSetIsUnchangedByScoring: #882 changes what a PHONE finding scores, never whether it is
 // reported. Redaction rewrites every reported finding whatever its confidence, so the reported set
 // is what decides the redacted bytes; this compares it, row for row, with the set main reported on
-// the same corpus.
+// the same corpus. Since #889 a row may come back wider, and nothing else.
 func TestReportedSetIsUnchangedByScoring(t *testing.T) {
 	got := reportedSet(t, emissionCorpus())
 	path := filepath.FromSlash(emissionSnapshot)
@@ -113,10 +113,50 @@ func TestReportedSetIsUnchangedByScoring(t *testing.T) {
 	}
 	sort.Strings(added)
 	sort.Strings(lost)
-	if len(added) > 0 || len(lost) > 0 {
-		t.Fatalf("the reported set moved: %d findings main did not report, %d main reported are gone "+
-			"(a lost finding is left in cleartext by redaction)\nadded: %q\nlost: %q",
-			len(added), len(lost), added, lost)
+
+	// #889 lets the widest reading of a number win, so a finding main reported can come back WIDER:
+	// "800-201-0001" as "1-800-201-0001". That moves the set without uncovering a byte. So a lost row
+	// is allowed only when a row added on the same line contains its text, and an added row only when
+	// it contains a lost one: on this corpus nothing is reported that main did not cover.
+	covers := func(wide, narrow string) bool {
+		lw, tw, _ := strings.Cut(wide, "\t")
+		ln, tn, _ := strings.Cut(narrow, "\t")
+		return lw == ln && len(tw) > len(tn) && strings.Contains(tw, tn)
+	}
+	var uncovered, unexplained []string
+	for _, l := range lost {
+		ok := false
+		for _, a := range added {
+			if covers(a, l) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			uncovered = append(uncovered, l)
+		}
+	}
+	for _, a := range added {
+		ok := false
+		for _, l := range lost {
+			if covers(a, l) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			unexplained = append(unexplained, a)
+		}
+	}
+	if len(uncovered) > 0 || len(unexplained) > 0 {
+		t.Fatalf("the reported set moved: %d findings main reported are gone with nothing wider in their "+
+			"place (a lost finding is left in cleartext by redaction), %d findings main did not report and "+
+			"that widen none of its\nlost: %q\nadded: %q", len(uncovered), len(unexplained), uncovered, unexplained)
+	}
+	// Non-vacuity for the widening allowance: the corpus carries "1-800-201-0001", which main reports
+	// as "800-201-0001" under every carrier that reports it at all.
+	if len(lost) == 0 {
+		t.Fatalf("no finding was widened: the corpus no longer exercises the widest-span rule")
 	}
 	if len(got) < 500 {
 		t.Fatalf("only %d findings: the corpus no longer exercises the boundary it was built for", len(got))

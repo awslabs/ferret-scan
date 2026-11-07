@@ -181,6 +181,28 @@ var Cases = []Case{
 			"call 212-555-0142 today\n",
 	},
 	{
+		Name: "phone_international_gate_decoys",
+		Description: "#889's decoys: lines a naive widening of PHONE's boundaries and group widths " +
+			"reports (measured at 80-95 each) and the E.164 gate and the boundary rule keep at NOTHING. " +
+			"Line 1 is a time.Time monotonic reading (a signed decimal, not a dotted number); line 2 a " +
+			"code that is not assigned (+8); line 3 an ISO 6709 coordinate (a '.' beside a '-'); line 4 " +
+			"a Peruvian code with six national digits; line 5 an unassigned +6 before a '(0)'; line 6 a " +
+			"'(0)' after +1, which NANP never writes; line 7 a version tag; lines 8-9 real number shapes " +
+			"behind identifier labels; line 10 a number glued to a letter, which main also reports " +
+			"nothing for. Every value is synthetic; the +44 and +33 ones are Ofcom and ARCEP drama ranges.",
+		Checks: []string{"PHONE"},
+		Input: "2026-11-07 08:10:00.123 +0000 UTC m=+9252.619193895\n" +
+			"+8 60 06 33 99 50\n" +
+			"pos=+57.42636-074.32963/\n" +
+			"delta=+51490173\n" +
+			"score +6 (0) 686 477\n" +
+			"f(x) = +1(0)8 953 370\n" +
+			"git tag +2024.1.1 released\n" +
+			"id:+44 20 7946 0958\n" +
+			"token=+44 20 7946 0958\n" +
+			"Tel:+33 1 99 00 47 18x\n",
+	},
+	{
 		Name:        "secrets_aws",
 		Description: "AWS access key + secret-key shaped strings; locks SECRETS detection and confidence.",
 		Checks:      []string{"SECRETS"},

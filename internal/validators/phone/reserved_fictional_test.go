@@ -72,6 +72,9 @@ func TestReservedFictionalRangeIsCappedAtLow(t *testing.T) {
 		// isReservedFictionalNumber stripped the extension these were missed:
 		// "(212) 555-0187 ext 4" cleans to 21255501874, ending in "74".
 		{"ext marker", "Contact phone (212) 555-0187 ext 4 for the desk", "555-0187"},
+		// The "00" international prefix is the "+" of the form above: since #889 reads
+		// "001 415 555 0132" whole, the reserved check has to see through it.
+		{"00 international prefix", "Call 001 415 555 0132 for support", "415 555 0132"},
 		{"extension word", "Desk phone (212) 555-0187 extension 221 today", "555-0187"},
 		{"x marker", "Phone contact 4155550142x99 for the office", "4155550142"},
 	}
@@ -112,7 +115,9 @@ func TestAssignableNumbersKeepTheirConfidence(t *testing.T) {
 		// non-reserved number into a reserved one.
 		{"real number with extension", "Desk phone (212) 867-5310 ext 4 today", "867-5310"},
 		// A number whose digits merely CONTAIN 55501 away from the subscriber
-		// position. reFictional555 is anchored for exactly this reason.
+		// position. reFictional555 is anchored for exactly this reason. It used to
+		// skip here, read by no pattern: the one-digit Tokyo area code was outside
+		// every international group width until #889.
 		{"55501 run inside other digits", "Phone: +81 3 5550 1005 contact", "555010"},
 	}
 
@@ -120,8 +125,8 @@ func TestAssignableNumbersKeepTheirConfidence(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got, found := highestConfidence(t, tc.content, tc.want)
 			if !found {
-				t.Skipf("%q is not detected by any pattern, so the ceiling cannot "+
-					"affect it either way", tc.want)
+				t.Fatalf("%q was not reported in %q -- an assignable number that is not "+
+					"reported is not redacted either", tc.want, tc.content)
 			}
 			if got <= reservedFictionalCeiling {
 				t.Errorf("%q scored %.0f (<= ceiling %.0f) in %q -- an assignable "+
