@@ -180,13 +180,18 @@ one shared core function called from the orchestration sites. Consequences accep
    `Code` +8 and `JSON` +12 (`structured_config_boost`), all in the environmental delta that the M27
    cap holds to +30 for a generic match. There is no `YAML` type, so a YAML file reaches the
    Configuration boost through its `key: value` lines (#849 removed the dead `YAML` case). `CSV`,
-   `TSV` and `FixedWidth` are `tabular_boost` +20 for every validator, and it reaches a secrets
-   finding twice: in the validator's own score, outside the M27 cap (the M24 cap of 55 still applies
-   after it to an uncorroborated generic match), and again in the dual-path bridge's
-   `applyDocumentContext`, after every validator-side cap, where only 100 and a published
-   `confidence_ceiling` bound it. Measured on #849's decoy: four code expressions that score 45 and
-   are not reported scored 65 in the validator and 85 MEDIUM after the bridge, because the file's
-   indentation typed it TSV.
+   `TSV` and `FixedWidth` are `tabular_boost` +20 for every validator, applied once, by the dual-path
+   bridge's `applyDocumentContext`, after every validator-side cap, where only 100 and a published
+   `confidence_ceiling` bound it. Until #879 it reached a secrets finding twice, once more in the
+   validator's own score, so the bound was +40 there: `token = getToken()` scored 75 in a key=value
+   file and 100 as a TSV cell, where 75 − 15 (the Configuration boost the TSV does not get) + 20 is
+   80. The secrets validator no longer adds it to its score, but judges its reporting threshold on
+   the score plus it, the score the bridge reports, so the threshold a candidate clears is where it
+   was: an M24-capped match (55) still reports at 75 in a tabular document, and a keyword match the
+   validator scores 60 still reports, at 80. The test-data penalty (−30) comes from the same call and
+   is likewise applied once. Measured on #849's decoy before #849: four code expressions that score
+   45 and are not reported scored 65 in the validator and 85 MEDIUM after the bridge, because the
+   file's indentation typed it TSV; with the adjustment applied once that is 45 and 65.
 
    What bounds their reach is the type decision, so it is a property of the whole content (#788,
    #849): every line of a document up to 32 KiB and 2000 lines, and beyond that 16 evenly spaced
