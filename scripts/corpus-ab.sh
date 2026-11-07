@@ -210,12 +210,17 @@ RECOVERED_RE = re.compile(r"(?i)panic")
 LABEL_ONLY = re.compile(r"^\s*[A-Za-z][\w .()/-]{0,40}:\s*$")
 GITLAB_SEVERITIES = {"Info", "Unknown", "Low", "Medium", "High", "Critical"}
 SARIF_LEVELS = {"none", "note", "warning", "error"}
+# What is masked before outputs are compared byte for byte: the run's duration, the scan start and end
+# times, junit time attributes, and wall-clock stamps in finding metadata (reconstruction_timestamp,
+# seconds since the epoch, on legal-notice findings).
+JSON_STAMP = (rb'("[A-Za-z_]*[Tt]imestamp" *: *)"?[0-9]{9,13}"?', rb'\1"-"')
 MASKS = {
-    "json": [(rb'"duration_seconds": *[-0-9.eE+]+', b'"duration_seconds": 0')],
-    "yaml": [(rb"duration_seconds: *[-0-9.eE+]+", b"duration_seconds: 0")],
-    "gitlab-sast": [(rb'"(start_time|end_time)": *"[^"]*"', rb'"\1": "-"')],
+    "json": [(rb'"duration_seconds": *[-0-9.eE+]+', b'"duration_seconds": 0'), JSON_STAMP],
+    "yaml": [(rb"duration_seconds: *[-0-9.eE+]+", b"duration_seconds: 0"),
+             (rb"([A-Za-z_]*[Tt]imestamp *: *)['\"]?[0-9]{9,13}['\"]?", rb"\1-")],
+    "gitlab-sast": [(rb'"(start_time|end_time)": *"[^"]*"', rb'"\1": "-"'), JSON_STAMP],
     "junit": [(rb'\b(time|timestamp)="[^"]*"', rb'\1="-"')],
-    "sarif": [(rb'"(startTimeUtc|endTimeUtc)": *"[^"]*"', rb'"\1": "-"')],
+    "sarif": [(rb'"(startTimeUtc|endTimeUtc)": *"[^"]*"', rb'"\1": "-"'), JSON_STAMP],
     "text": [(rb"(?im)^(.*\b(duration|elapsed|took|scan time)\b.*?)\d+(\.\d+)?\s*(ms|s|m)\b", rb"\1<t>")],
     "csv": [],
 }
@@ -261,6 +266,17 @@ def credential_name(path):
     ext = name.rsplit(".", 1)[-1] if "." in name[1:] else ""
     return (name.startswith(".env") or ext in CRED_EXTS or name in CRED_NAMES
             or any(p in CRED_DIRS for p in parts[:-1]))
+
+
+def round_floats(obj, places=4):
+    """Every float rounded: a timing printed with 17 digits is noise, and its digit runs can equal a value."""
+    if isinstance(obj, float):
+        return round(obj, places)
+    if isinstance(obj, dict):
+        return {k: round_floats(v, places) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [round_floats(v, places) for v in obj]
+    return obj
 
 
 def md_table(head, rows):
@@ -1166,13 +1182,14 @@ class Measure:
         expected = sum((kb & km).values())
         out = dict(rules=rules, base_findings=len(base_fl), measured_findings=len(m_fl), expected_suppressed=expected)
 
-        def apply(rule_file, label):
+        def apply(rule_file, label, covered=None):
+            """covered: the multiset of keys the rule file was written for (default: every BASE finding)."""
             res, raw, doc = self.tree(fs, label, self.bins[self.measured], "json", ["--suppression-file", rule_file],
                                       keep=False)
             stats = (doc or {}).get("stats") or {}
             rem = findings(doc)
             kr = multiset(rem)
-            unexplained = kr & kb & km
+            unexplained = kr & kb & km & (covered if covered is not None else kb)
             by_type = collections.Counter()
             for key, n in unexplained.items():
                 by_type[key[2]] += n
@@ -1185,12 +1202,12 @@ class Measure:
 
         out["v5"] = apply(r5e, "supp-v5")
         if not fs.private:
-            out.update(self.legacy_rules(fs, r5, apply))
+            out.update(self.legacy_rules(fs, r5, apply, kb, km))
         st["supp"] = out
         log(f"   [{fs.name}] suppression: {rules} rule(s); v5 suppressed {out['v5']['suppressed_stat']} of "
             f"{expected} expected, unexplained remaining {out['v5']['unexplained_remaining']}")
 
-    def legacy_rules(self, fs, r5, apply):
+    def legacy_rules(self, fs, r5, apply, kb, km):
         """Synthesise v1 and v2 rules from BASE's verbose findings and apply them with the measured binary."""
         path = os.path.join(self.pub_dir, "verbose-base.json")
         cmd = [self.bins["base"], "--file", fs.root, "--recursive"] + FLAGS + ["--format", "json", "--show-match",
@@ -1211,13 +1228,19 @@ class Measure:
             binary_v5 = set(re.findall(r"hash:\s*([0-9a-f]{64})", f.read()))
         results = doc.get("results") or []
         agree = [r for r in results if suppression_hash(r, 5) in binary_v5]
-        out = dict(verbose_findings=len(results), python_v5_agrees=len(agree))
+        # Rules are only synthesised where this script reproduces the binary's own v5 hash; the
+        # findings it cannot reproduce are reported, not counted against the legacy formulas.
+        covered = multiset(findings(dict(results=agree)))
+        out = dict(verbose_findings=len(results), python_v5_agrees=len(agree),
+                   python_v5_disagrees_by_type=dict(collections.Counter(
+                       r.get("type") for r in results if suppression_hash(r, 5) not in binary_v5)))
         for version in (1, 2):
             hashes = [suppression_hash(r, version) for r in agree]
             differs = sum(1 for r, h in zip(agree, hashes) if h != suppression_hash(r, 5))
             rule_file = os.path.join(self.pub_dir, f"suppressions-v{version}.yaml")
             write_rules(rule_file, hashes)
-            r = apply(rule_file, f"supp-v{version}")
+            r = apply(rule_file, f"supp-v{version}", covered)
+            r["expected_suppressed"] = sum((covered & kb & km).values())
             r["rules"] = len(hashes)
             r["rules_differing_from_v5"] = differs
             if version == 1 and not self.same:
@@ -1550,8 +1573,10 @@ def render(m, S):
         if P.get("determinism"):
             d = P["determinism"]
             R.append(f"### 11. Determinism: {d['runs']} runs of the measured binary, byte-identical after "
-                     f"masking durations: **{'yes' if d['identical'] else 'NO'}**"
-                     + ("" if d["identical"] else f"; {d['moved']} finding row(s) moved: {d['moved_by_type_format']}")
+                     f"masking durations and timestamps: **{'yes' if d['identical'] else 'NO'}**"
+                     + ("" if d["identical"] else
+                        (f"; {d['moved']} finding row(s) moved: {d['moved_by_type_format']}" if d["moved"] else
+                         "; every finding identical, the bytes differ elsewhere (compare the raw outputs)"))
                      + "\n")
         if P.get("ab"):
             ab = P["ab"]
@@ -1634,8 +1659,9 @@ def render(m, S):
             for v in ("v5", "v2", "v1"):
                 if v in s and isinstance(s[v], dict) and "suppressed_stat" in s[v]:
                     x = s[v]
-                    rows.append((v, x.get("rules", s.get("rules")), x["suppressed_stat"], x["remaining"],
-                                 x["unexplained_remaining"], x["uncounted"], x.get("rules_differing_from_v5", "-")))
+                    rows.append((v, x.get("rules", s.get("rules")), x.get("expected_suppressed", s.get("expected_suppressed")),
+                                 x["suppressed_stat"], x["remaining"], x["unexplained_remaining"], x["uncounted"],
+                                 x.get("rules_differing_from_v5", "-")))
             if rows:
                 R.append(f"BASE findings {s.get('base_findings')}, measured findings {s.get('measured_findings')}, "
                          f"expected suppressed (keys both report) {s.get('expected_suppressed')}"
@@ -1643,8 +1669,11 @@ def render(m, S):
                             f"{s['verbose_findings']}" if "python_v5_agrees" in s else "") + "\n")
                 R.append("Unexplained remaining = a finding both binaries report that the rules did not "
                          "suppress; uncounted = a finding that vanished without stats.suppressed counting it.\n")
-                R.append(md_table(["rules", "count", "stats.suppressed", "remaining", "unexplained remaining",
+                R.append(md_table(["rules", "count", "expected", "stats.suppressed", "remaining", "unexplained remaining",
                                    "uncounted", "rules differing from v5"], rows))
+                if s.get("python_v5_disagrees_by_type"):
+                    R.append(f"\nNo v1/v2 rule was synthesised for the findings whose v5 hash this script does not "
+                             f"reproduce: {s['python_v5_disagrees_by_type']}.")
                 R.append("")
             for k in ("note", "legacy_note"):
                 if s.get(k):
@@ -1700,7 +1729,7 @@ def write_baseline(m, S):
         doc["private"] = S["private"]  # aggregates only, by construction
     path = os.path.join(d, m.a.base_sha + ".json")
     with open(path + ".tmp", "w") as f:
-        json.dump(doc, f, indent=1, sort_keys=True, default=str)
+        json.dump(round_floats(doc), f, indent=1, sort_keys=True, default=str)
     os.replace(path + ".tmp", path)
     with open(os.path.join(d, "INDEX.tsv"), "a") as f:
         f.write("\t".join([m.a.base_sha, m.a.base_ref, doc["recorded"], os.path.basename(m.a.out)]) + "\n")
@@ -1723,7 +1752,9 @@ def privacy_audit(m, extra_files, private_summary):
     needles = {rel.encode("utf-8", "surrogatepass") for rel in fs.files if os.sep in rel or
                (len(rel) >= 12 and rel not in pub_paths)}
     public_texts = {t.strip() for fl in m.state["public"]["fl"].values() for _, _, _, t in fl if t}
-    values = [t.encode("utf-8", "surrogatepass") for t in fs.text_cache if t not in public_texts]
+    # A run of one or two repeated digits ("0000000000") identifies nothing and occurs inside numbers.
+    values = [t.encode("utf-8", "surrogatepass") for t in fs.text_cache
+              if t not in public_texts and not (t.isdigit() and len(set(t)) < 3)]
     skip = {os.path.join(m.a.out, "bin"), os.path.join(m.pub_dir, "raw"), m.private_tmp or "/nonexistent"}
     targets = []
     for dp, dns, fns in os.walk(m.a.out):
@@ -1801,9 +1832,10 @@ def main():
         report = render(m, S)
         with open(os.path.join(a.out, "report.md"), "w") as f:
             f.write(report)
+        S = round_floats(S)
         summary = dict(mode=a.mode, base=dict(ref=a.base_ref, sha=a.base_sha), head=dict(ref=a.head_ref, sha=a.head_sha),
                        dims=sorted(m.dims), private_dims=sorted(m.private_dims) if private_read else [],
-                       load=[list(x) for x in m.load], sets=S)
+                       load=round_floats([list(x) for x in m.load], 2), sets=S)
         with open(os.path.join(a.out, "summary.json"), "w") as f:
             json.dump(summary, f, indent=1, sort_keys=True, default=str)
         extra = []
