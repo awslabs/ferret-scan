@@ -160,7 +160,10 @@ configuration and no suppression rule reaches any of them.
   `commit`; the security headers whole.
 - **1 vs 2**, and 3 vs 4: the same finding sets, keyed by relative path, type, line, confidence and
   the value's SHA-256, plus the count of files not examined, except entries in
-  `scripts/surface-parity/allowlist.tsv`.
+  `scripts/surface-parity/allowlist.tsv`. A finding inside an embedded attachment is named
+  `<container> -> <member>` by the CLI and by the upload alone on `/scan` (`runFullCLIScan` sets
+  every Filename to the upload name), so it is compared under its container's path, and the report
+  prints how many were moved.
 - **Redaction inside the container**: for every set, `--enable-redaction` under `simple` and
   `format_preserving` into `/tmp/out` and `/home/ferret/out`, plus one run into the image's `TMPDIR`.
   Every value surface 1 reported is looked for in its file's redacted copy, as written, XML-escaped
@@ -182,6 +185,18 @@ configuration and no suppression rule reaches any of them.
 
 It exits 1 on any unexplained difference, surviving value, failed fact or non-loopback listener, and
 2 on a usage or setup error.
+
+### What a real-file corpus showed
+
+On 2026-11-07, `CORPUS=<644 public documents> scripts/surface-parity.sh --surfaces host` (the CLI
+against the web UI, on the code at `5fecf59`): 643 of the 644 uploads gave the CLI's findings exactly
+(13,915), and 90 of them sat inside embedded attachments. The 644th, a 7.5 MB CSV in which the CLI
+reports 2,203 findings in 20 s, got an empty reply from `/scan` while the host was loaded: the server's
+`WriteTimeout` is 30 s (`createSecureServer`), so a scan that outlasts it loses its response, and its
+findings with it. The same file twice over (15 MB, under the 100 MB upload limit) reproduces it on an
+idle server: the CLI reports 4,406 findings in 41.8 s, `/scan` answers nothing after 46 s. The
+not-examined counts also differed, 52 on the CLI and 49 on the web, and the web gave no cause for 12
+of its 49 where the CLI's summary counts 15 files it could not parse.
 
 ### Reading the output
 
@@ -260,4 +275,9 @@ Proposed Applicability table, with the column added (the rows are the plan's own
 
 - Paste the proposed text above into `docs/testing/TEST_PLAN.md` (owned by the docs stream this wave).
 - The three `exportLosses` are web divergences to fix in `handleExport`.
+- `/export` refuses a body over 1 MiB, and the UI posts every result in one request: measured, 391
+  golden findings (572,492 bytes) export and 782 (1,144,919 bytes) are refused with HTTP 400.
+- `/scan` loses the response of any scan longer than the server's 30 s `WriteTimeout` (above).
+- `/scan` names a finding inside an embedded attachment by the upload alone, so the UI cannot say
+  which attachment held it.
 - The eight `webUndecided` flags need a decision each.

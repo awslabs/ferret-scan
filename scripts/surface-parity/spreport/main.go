@@ -445,6 +445,56 @@ func cliFindings(doc map[string]any) []finding {
 	return findingsOf(res, func(m map[string]any) string { return str(m, "filename") })
 }
 
+// memberSeparator is how the CLI names a finding inside an embedded attachment: the container's
+// file name, this separator, the member's name ("deck.pptx -> image3.png").
+const memberSeparator = " -> "
+
+// containerResolver maps a CLI finding's file name to the input it came from. A finding inside an
+// embedded attachment is named "<container basename> -> <member>" by the CLI, while /scan names
+// every finding by the upload alone, because runFullCLIScan sets each match's Filename to the upload
+// name. The resolver gives such a finding its container's relative path, when that basename names
+// exactly one input, so the two surfaces are compared on what was found rather than on how the
+// attachment is named; the count is reported, since the web's name drops which attachment held it.
+func containerResolver(files [][2]string) func(string) (string, bool) {
+	known := map[string]bool{}
+	byBase := map[string]string{}
+	dup := map[string]bool{}
+	for _, f := range files {
+		known[f[1]] = true
+		base := filepath.Base(f[1])
+		if _, seen := byBase[base]; seen {
+			dup[base] = true
+		}
+		byBase[base] = f[1]
+	}
+	return func(rel string) (string, bool) {
+		container, _, ok := strings.Cut(rel, memberSeparator)
+		if !ok || known[rel] {
+			return rel, false
+		}
+		if known[container] {
+			return container, true
+		}
+		if r, ok := byBase[filepath.Base(container)]; ok && !dup[filepath.Base(container)] {
+			return r, true
+		}
+		return rel, false
+	}
+}
+
+// attributeMembers rewrites member-named findings to their container and returns how many it moved.
+func attributeMembers(fs []finding, resolve func(string) (string, bool)) ([]finding, int) {
+	moved := 0
+	for i := range fs {
+		if r, ok := resolve(fs[i].rel); ok {
+			fs[i].rel = r
+			moved++
+		}
+	}
+	sort.Slice(fs, func(i, j int) bool { return fs[i].key() < fs[j].key() })
+	return fs, moved
+}
+
 func webFindings(doc map[string]any) []finding {
 	var out []finding
 	for rel, v := range doc {
@@ -542,6 +592,7 @@ func (r *report) set(s set) {
 	runs := map[string]*surfaceRun{}
 	docs := map[string][]byte{}
 	parsed := map[string]map[string]any{}
+	resolve := containerResolver(files)
 
 	for _, sf := range []string{"cli", "container-cli"} {
 		if !r.has(sf) {
@@ -567,7 +618,13 @@ func (r *report) set(s set) {
 		}
 		docs[sf], parsed[sf] = norm, doc
 		_ = os.WriteFile(filepath.Join(base, sf+".normalized.json"), norm, 0o644)
-		run.findings = cliFindings(doc)
+		var moved int
+		run.findings, moved = attributeMembers(cliFindings(doc), resolve)
+		if moved > 0 {
+			r.printf("note: %s reports %d finding(s) inside embedded attachments as \"<container>%s<member>\"; "+
+				"/scan names them by the upload alone (runFullCLIScan sets every Filename to the upload name), "+
+				"so they are compared under the container's path\n", sf, moved, memberSeparator)
+		}
 		if st, ok := doc["stats"].(map[string]any); ok {
 			run.notExam, _ = strconv.Atoi(str(st, "files_not_examined"))
 		}
@@ -635,7 +692,7 @@ func (r *report) set(s set) {
 		r.exports(s, base)
 	}
 	if r.has("container-cli") {
-		values := valuesOf(parsed["cli"], parsed["container-cli"])
+		values := valuesOf(resolve, parsed["cli"], parsed["container-cli"])
 		r.redaction(s, base, values)
 	}
 	r.ratios(s, runs)
@@ -838,8 +895,9 @@ func readString(path string) string {
 }
 
 // valuesOf collects, per relative path, the matched values the CLI reported: surface 1's list when
-// it ran, else surface 3's.
-func valuesOf(docs ...map[string]any) map[string][]string {
+// it ran, else surface 3's. A value inside an embedded attachment is looked for in its container's
+// redacted copy, which is the file a reader of the output gets.
+func valuesOf(resolve func(string) (string, bool), docs ...map[string]any) map[string][]string {
 	for _, doc := range docs {
 		if doc == nil {
 			continue
@@ -851,7 +909,8 @@ func valuesOf(docs ...map[string]any) map[string][]string {
 			if !ok {
 				continue
 			}
-			out[str(m, "filename")] = append(out[str(m, "filename")], str(m, "text"))
+			rel, _ := resolve(str(m, "filename"))
+			out[rel] = append(out[rel], str(m, "text"))
 		}
 		return out
 	}

@@ -102,6 +102,32 @@ func TestAllowlistRefusesAnEntryWithoutAnIssue(t *testing.T) {
 	}
 }
 
+// The CLI names a finding inside an embedded attachment "<container basename> -> <member>"; /scan
+// names it by the upload. Measured on a real .pptx: 58 findings in 14 embedded images.
+func TestContainerResolverAttributesMembersToTheirContainer(t *testing.T) {
+	resolve := containerResolver([][2]string{
+		{"00001", "pptx/deck.pptx"},
+		{"00002", "docx/a.docx"},
+		{"00003", "other/a.docx"},
+		{"00004", "txt/arrow -> in name.txt"},
+	})
+	for _, tc := range []struct {
+		in, want string
+		moved    bool
+	}{
+		{"deck.pptx -> image3.png", "pptx/deck.pptx", true},
+		{"pptx/deck.pptx -> image3.png", "pptx/deck.pptx", true},
+		{"a.docx -> embedded.doc", "a.docx -> embedded.doc", false}, // two inputs are called a.docx
+		{"pptx/deck.pptx", "pptx/deck.pptx", false},
+		{"txt/arrow -> in name.txt", "txt/arrow -> in name.txt", false}, // a real file name
+	} {
+		got, moved := resolve(tc.in)
+		if got != tc.want || moved != tc.moved {
+			t.Errorf("resolve(%q) = %q, %v; want %q, %v", tc.in, got, moved, tc.want, tc.moved)
+		}
+	}
+}
+
 func TestMultisetDiffCountsDuplicates(t *testing.T) {
 	f := finding{rel: "a", typ: "SSN", line: "1", conf: "100.00", sha: "x"}
 	g := finding{rel: "a", typ: "SSN", line: "2", conf: "100.00", sha: "y"}
