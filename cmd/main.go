@@ -1419,6 +1419,13 @@ func main() {
 	// what governed the scan, not progress output.
 	disabledDetectionTypes, unrecognisedDisabledTypes := collectDisabledDetectionTypes(standardValidators)
 	reportDisabledDetectionTypes(os.Stderr, disabledDetectionTypes, unrecognisedDisabledTypes)
+	// Configured values these validators could not use (#903): a regex RE2 rejects, an entry of the wrong
+	// type. Each was dropped, so what it configured did not happen. Ungated, like the disclosure above and
+	// for the same reason, and unlike the unknown-key warning: --quiet and pre-commit mode are where a
+	// pattern that silently stopped detecting matters most.
+	for _, w := range core.ConfigWarnings(standardValidators) {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+	}
 
 	// Set up dual path validation integration
 	var dualPathObserver *observability.StandardObserver

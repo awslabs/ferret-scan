@@ -254,6 +254,19 @@ type Result struct {
 	// The CLI has distinguished six causes all along, in its own layer, so the library and the command
 	// disagreed about the same scan (#391).
 	NotExamined []NotExaminedFile
+
+	// ConfigWarnings lists the configured values under `validators:` that the validators this scan ran
+	// could not use: a regex RE2 rejects (PCRE lookaround, for one), an entry of the wrong type, a scalar
+	// where a list belongs, a provider or pattern name the validator does not know. One line each, in the
+	// form "config value <path>: <problem> — <effect>", for example
+	//
+	//	config value validators.cloud_resources.custom_patterns[0]: not a valid RE2 regular expression: … — skipped
+	//
+	// Each such value was dropped, so the detection, disable or allowlist it configured did not take
+	// effect, and the scan otherwise looks normal. Empty when every value was usable; a validator that did
+	// not run (Checks excluded it) reports nothing. These used to go nowhere, or straight to the process's
+	// stderr past LogWriter (#903). The pattern text is not quoted: the path and index locate it.
+	ConfigWarnings []string
 }
 
 // NotExaminedFile is one file the scan did not fully examine.
@@ -476,6 +489,7 @@ func mapResult(r *core.ScanResult) *Result {
 		Incomplete:       r.Incomplete,
 		IncompleteReason: r.IncompleteReason,
 		NotExamined:      mapNotExamined(r.NotExamined),
+		ConfigWarnings:   r.ConfigWarnings,
 	}
 }
 
