@@ -100,7 +100,7 @@ func ExtractExif(filePath string) (*ExifData, error) {
 		// Only the JFIF comment scan is gated, and the gate is narrower than my first attempt for a
 		// measured reason. Both markers are 2 bytes, but only one of them false-fires in practice:
 		// across a 4,000-file real-image sample, gating extractIPTC as well cost 41 findings on TIFFs
-		// and one of them was REAL — exiftool confirms By-line "Jonathan Hess" on an Xcode .tiff that
+		// and one of them was REAL — exiftool confirms a photographer's By-line on an Xcode .tiff that
 		// this tool reported at PERSON_NAME 92 and would have stopped reporting. IPTC lives in TIFF as
 		// well as JPEG, so gating it to JPEG discards a whole format's worth of genuine records to
 		// avoid a collision that did not occur.

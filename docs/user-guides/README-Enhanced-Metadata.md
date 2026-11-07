@@ -95,7 +95,7 @@ from handles present nowhere in the image.
 `extractIPTC` shares that 2-byte-marker shape (`1C 02`) and is deliberately **not** gated. Gating it
 too was a first attempt that cost real recall: across a 4,000-file real-image sample it lost 41 TIFF
 findings, 40 of them false positives worth losing but one genuine — `exiftool` reports By-line
-`Jonathan Hess` on an Xcode `.tiff` that this tool reported at `PERSON_NAME` 92. Unlike the JFIF scan,
+a photographer's name on an Xcode `.tiff` that this tool reported at `PERSON_NAME` 92. Unlike the JFIF scan,
 IPTC *validates what it matches*: the record type must be one of four values and the payload
 printable. So marker length alone was the wrong discriminator; what the scan does after matching is.
 The XMP and Photoshop scans use 9- and 13-byte markers and also run everywhere.
