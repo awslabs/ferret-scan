@@ -420,9 +420,9 @@ doc = json.load(sys.stdin)
 def digest(text):
     return hashlib.sha256((text or "").encode("utf-8", "surrogatepass")).hexdigest()[:12]
 out = sys.stdout
-for r in doc.get("results") or []:
-    out.write("\t".join([r["filename"], r["validator"], r["type"], str(r["line_number"]),
-                         digest(r.get("text")), str(r["confidence"]), "0"]) + "\n")
+for row in doc.get("results") or []:
+    out.write("\t".join([row["filename"], row["validator"], row["type"], str(row["line_number"]),
+                         digest(row.get("text")), str(row["confidence"]), "0"]) + "\n")
 for s in doc.get("suppressed") or []:
     f = s["finding"]
     if f["Confidence"] >= 60:
@@ -503,14 +503,14 @@ def band(conf):
 
 base, head = load("base"), load("head")
 by_key = collections.defaultdict(lambda: ([], []))
-for r in base:
-    by_key[r[:5]][0].append(r)
-for r in head:
-    by_key[r[:5]][1].append(r)
+for row in base:
+    by_key[row[:5]][0].append(row)
+for row in head:
+    by_key[row[:5]][1].append(row)
 
 new, lost, changed = [], [], []
 for key in sorted(by_key):
-    b, h = (sorted(x, key=lambda r: (r[5], r[6])) for x in by_key[key])
+    b, h = (sorted(x, key=lambda row: (row[5], row[6])) for x in by_key[key])
     for rb, rh in zip(b, h):
         if band(rb[5]) != band(rh[5]) or rb[6] != rh[6] or rb[5] != rh[5]:
             if "HIGH" in (band(rb[5]), band(rh[5])):
@@ -521,30 +521,31 @@ for key in sorted(by_key):
 # A finding whose line moved is the same finding: pair what is left by (file, validator, type, text).
 def pair_moves(lost, new):
     pool = collections.defaultdict(list)
-    for r in lost:
-        pool[(r[0], r[1], r[2], r[4])].append(r)
+    for row in lost:
+        pool[(row[0], row[1], row[2], row[4])].append(row)
     still_new = []
-    for r in new:
-        k = (r[0], r[1], r[2], r[4])
+    for row in new:
+        k = (row[0], row[1], row[2], row[4])
         if pool[k]:
             rb = pool[k].pop(0)
-            if "HIGH" in (band(rb[5]), band(r[5])):
-                changed.append((rb, r, "moved"))
+            if "HIGH" in (band(rb[5]), band(row[5])):
+                changed.append((rb, row, "moved"))
         else:
-            still_new.append(r)
-    still_lost = [r for v in pool.values() for r in v]
+            still_new.append(row)
+    still_lost = [row for v in pool.values() for row in v]
     return still_lost, still_new
 
 lost, new = pair_moves(lost, new)
-new = [r for r in new if band(r[5]) == "HIGH"]
-lost = [r for r in lost if band(r[5]) == "HIGH"]
+new = [row for row in new if band(row[5]) == "HIGH"]
+lost = [row for row in lost if band(row[5]) == "HIGH"]
 
-def describe(r):
-    supp = "  suppressed" if r[6] else ""
-    return f"{r[2]}  {r[0]}:{r[3]}  {r[1]}  {r[5]:g}  #{r[4]}{supp}"
+def describe(row):
+    supp = "  suppressed" if row[6] else ""
+    return f"{row[2]}  {row[0]}:{row[3]}  {row[1]}  {row[5]:g}  #{row[4]}{supp}"
 
 classes = collections.OrderedDict()
-for name, items, cls in (("new", new, lambda r: file_class(r[0])), ("lost", lost, lambda r: file_class(r[0])),
+for name, items, cls in (("new", new, lambda row: file_class(row[0])),
+                         ("lost", lost, lambda row: file_class(row[0])),
                          ("changed", changed, lambda c: file_class(c[1][0]))):
     for it in items:
         classes.setdefault(cls(it), collections.Counter())[name] += 1
@@ -559,8 +560,8 @@ if classes:
 for title, items in (("new", new), ("lost", lost)):
     if items:
         print(f"  {title} (type, file:line, validator, confidence, #sha256(text)[:12]):")
-        for r in sorted(items, key=lambda r: (file_class(r[0]), r[0], r[3])):
-            print(f"    {describe(r)}")
+        for row in sorted(items, key=lambda row: (file_class(row[0]), row[0], row[3])):
+            print(f"    {describe(row)}")
 if changed:
     print("  changed (base -> this checkout):")
     for rb, rh, why in sorted(changed, key=lambda c: (file_class(c[1][0]), c[1][0], c[1][3])):
