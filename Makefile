@@ -46,6 +46,8 @@ help:
 	@echo "  container-test     - Test container health"
 	@echo "  pr-checklist       - Pre-PR audit: prints RAN/N-A/NEEDS-MANUAL per TEST_PLAN dimension"
 	@echo "  integration-branch - Merge ALL open PRs and test the union (catches cross-PR breakage)"
+	@echo "  corpus-fetch       - Fetch the local real-file corpus (../ferret-corpus, never committed)"
+	@echo "  corpus-ab          - A/B BASE (origin/main) vs HEAD over that corpus, by type, format and redaction"
 	@echo ""
 	@echo "🔧 Development:"
 	@echo "  clean              - Clean build artifacts"
@@ -270,6 +272,22 @@ pr-checklist:
 # pair instead of blaming whichever branch merged second.
 integration-branch:
 	@./scripts/integration-branch.sh $(if $(PAIRWISE),--pairwise,) $(if $(NO_TEST),--no-test,)
+
+.PHONY: corpus-fetch corpus-ab
+
+# Fetch, or top up, the LOCAL corpus of real public files in every format the router supports:
+# ../ferret-corpus next to this repository, or CORPUS=<dir> (or $FERRET_CORPUS_DIR). Nothing in it
+# is ever committed; every file is a MANIFEST.tsv row naming its source URL, sha256 and licence.
+# Idempotent: a complete corpus is re-verified without a network call.
+corpus-fetch:
+	@./scripts/corpus-fetch.sh $(if $(CORPUS),--corpus $(CORPUS),)
+
+# TEST_PLAN dimension 9 on real PDF, Office, image, audio and video files: BASE twice for the noise
+# floor, then HEAD; new / lost / confidence-changed findings by type and by format, every file not
+# examined and why, and redaction of every binary container under simple and format_preserving with
+# a re-scan for surviving values. Takes minutes; the log and report land under <corpus>/runs/.
+corpus-ab:
+	@./scripts/corpus-ab.sh $(or $(BASE),origin/main) $(or $(HEAD),HEAD) $(if $(CORPUS),--corpus $(CORPUS),)
 
 # Run the application
 run: build
