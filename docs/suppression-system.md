@@ -204,7 +204,7 @@ The file has two top-level keys, `version` and `rules`. A rule has these eleven 
 | `last_seen_at` | refreshed by `--generate-suppressions` each time the finding is seen again, and when it re-anchors the rule |
 | `expires_at` | optional; after it the rule is skipped and the run warns that its findings are reported |
 | `reviewed_by`, `reviewed_at` | optional review record |
-| `metadata` | free-form string annotations, never interpreted |
+| `metadata` | free-form string annotations; none of them makes a rule match. `filename`, `finding_type`, `line_number` and `confidence`, which generated rules carry, tell re-anchoring where to look and `UnmatchedRules` which file a rule is for |
 
 ### Rule Validation
 
