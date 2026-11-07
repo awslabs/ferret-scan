@@ -80,8 +80,8 @@ Nineteen validators, each purpose-built. Enable a subset with `--checks CREDIT_C
 
 | Validator | What it catches | Notes |
 |---|---|---|
-| `CREDIT_CARD` | Card numbers across 15+ brands | Luhn-validated; emits `VISA`, `MASTERCARD`, `AMERICAN_EXPRESS`, …; a known test number (the card numbers payment processors publish for their sandboxes, a short test-pattern list, repeating shapes) is still reported, so still redacted, but capped at LOW 15 |
-| `SECRETS` | API keys, tokens, credentials | Entropy analysis + 40+ patterns (AWS keys, GitHub tokens, Stripe, …). AWS access key IDs include temporary `ASIA` keys, HIGH beside their secret key or session token and LOW 55 alone; a joined key name (`apikey`, `accesstoken`) counts like `api_key`; an exact-length `sha1-` to `sha512-` integrity digest (lockfile `integrity`, `<script integrity>`, CSP) is skipped |
+| `CREDIT_CARD` | Card numbers from 8 brands: Visa, Mastercard, American Express, Discover, JCB, Diners Club, UnionPay, Maestro | Luhn-validated; emits `VISA`, `MASTERCARD`, `AMERICAN_EXPRESS`, `DISCOVER`, `JCB`, `DINERS_CLUB`, `UNIONPAY`, `MAESTRO`; a known test number (the card numbers payment processors publish for their sandboxes, a short test-pattern list, repeating shapes) is still reported, so still redacted, but capped at LOW 15 |
+| `SECRETS` | API keys, tokens, credentials | Provider tokens (AWS long-term `AKIA` and temporary `ASIA` access keys, GitHub, Google Cloud, Stripe, GitLab, Docker Hub, Slack), PEM/PGP private keys, JWTs, AWS secret keys, credentials in URLs (`scheme://user:pass@host`), keyword-labelled values, and entropy analysis. Temporary `ASIA` keys are HIGH beside their secret key or session token and LOW 55 alone; a joined key name (`apikey`, `accesstoken`) counts like `api_key`; an exact-length `sha1-` to `sha512-` integrity digest (lockfile `integrity`, `<script integrity>`, CSP) is skipped |
 | `SSN` | US Social Security Numbers and IRS ITINs | Domain-aware (HR / Tax / Healthcare context); emits `SSN` and `ITIN` (9XX area, 4th–5th digits 50–65, 70–88, 90–92 or 94–99) |
 | `BANK_ACCOUNT` | Routing numbers, IBANs, SWIFT/BIC | ABA checksum; IBAN registry length + BBAN structure + mod-97 (all 89 SWIFT IBAN Registry countries, compact or grouped in fours); SWIFT format; emits `ABA_ROUTING`, `IBAN`, `SWIFT_BIC`, `US_BANK_ACCOUNT` |
 | `OTP` | 2FA secrets and recovery codes | `otpauth://` URIs, TOTP/HOTP secrets (base32), recovery code blocks; emits `OTPAUTH_URI`, `OTP_SECRET`, `RECOVERY_CODES` |
@@ -90,7 +90,7 @@ Nineteen validators, each purpose-built. Enable a subset with `--checks CREDIT_C
 | `DRIVERS_LICENSE` | Driver's license numbers | Eight US state shapes (CA, TX/PA, FL/MI, NY/GA, IL, OH, NJ, WI), Great Britain DVLA, and Ontario and Quebec as printed; `format` names the shape, not the issuing state; keyword-dependent to avoid FPs |
 | `MEDICAL_ID` | Healthcare identifiers | NPI (Luhn-validated), DEA (checksum; all 18 registrant letters, either case), MRN, insurance IDs, Medicare MBI (either case), UK NHS and Scottish CHI numbers (mod-11, beside a label naming them) |
 | `EMAIL` | Email addresses | Emits `BUSINESS` for known SaaS/corporate domains |
-| `PHONE` | Phone numbers | International formats |
+| `PHONE` | Phone numbers | US/Canada (incl. toll-free), UK and European national forms; `+CC` and `00`-prefixed international forms, gated on E.164 country codes; trunk `(0)` forms; `tel:` links and vCard `TEL` values; extensions |
 | `IP_ADDRESS` | IPv4 / IPv6 addresses | Skips RFC1918 / reserved / test ranges; context-keyword gated |
 | `PASSPORT` | Passport numbers | US / UK / CA / EU (letters in either case; a value with a lowercase letter needs an adjacent passport label) + MRZ |
 | `VIN` | Vehicle Identification Numbers | ISO 3779; the position-9 check digit is required in North America (`1`–`5`, `7`) and China (`H`, `L`), and elsewhere a VIN without one needs a known manufacturer prefix (WMI) or a VIN label |
