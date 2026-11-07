@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 )
@@ -351,6 +352,45 @@ func TestDocumentedExamplesAreWholeFindings(t *testing.T) {
 	if examples < 10 {
 		t.Fatalf("only %d documented examples found in GetCheckInfo().Patterns; the help text changed shape", examples)
 	}
+}
+
+// TestPhoneValidator_InternationalSingleLineDoSRegression is TestPhoneValidator_SingleLineDoSRegression
+// for the readings #889 adds: one ~1 MiB line on which every number is a new reading after a label
+// ("Tel:+44 ..."), a bracketed code, or a wider reading replacing main's truncated "00" one, all
+// distinct, so neither main's dedup nor the repeat check shortcuts the resolver. Measured on this
+// fixture's 1/2/4 MiB doubling, branch CPU grows 1.8-2.0x per doubling, like main's.
+func TestPhoneValidator_InternationalSingleLineDoSRegression(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping DoS timing regression in -short mode")
+	}
+	const targetBytes = 1 << 20
+	var b strings.Builder
+	b.Grow(targetBytes + 64)
+	for i := 0; b.Len() < targetBytes; i++ {
+		fmt.Fprintf(&b, "Tel:+44 20 7%03d %04d (+45) %04d %04d 0033 1 %02d %02d %02d %02d ",
+			i%1000, i%10000, (i*7)%10000, i%10000, (i/100)%100, i%100, (i/7)%100, (i/3)%100)
+	}
+	content := b.String()
+
+	const ceiling = 5 * time.Second
+	start := time.Now()
+	matches, err := NewValidator().ValidateContent(content, "worstcase.txt")
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("ValidateContent() error = %v", err)
+	}
+	if len(matches) < 10000 {
+		t.Fatalf("only %d findings on the dense line: the fixture no longer exercises the new readings", len(matches))
+	}
+	if raceEnabled {
+		t.Logf("processed %d-byte single line, %d findings (timing assertion skipped under -race)", len(content), len(matches))
+		return
+	}
+	if elapsed > ceiling {
+		t.Fatalf("ValidateContent on a %d-byte single line took %s, exceeding the %s ceiling (likely an O(n^2) regression in the widest-span pass)",
+			len(content), elapsed, ceiling)
+	}
+	t.Logf("processed %d-byte single line in %s, %d findings", len(content), elapsed, len(matches))
 }
 
 // TestSpanInvariant over every recall line above: on a line no two findings overlap, and none ends
