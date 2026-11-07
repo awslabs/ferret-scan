@@ -204,6 +204,38 @@ func (f *Formatter) writeFormattedOutput(w io.Writer, matches []detector.Match, 
 	if options.Stats != nil {
 		f.writeSummaryHeader(w, options)
 	}
+
+	// The scope of a narrowed run, last. Set apart by a blank line when there was no summary block
+	// to close the findings above it.
+	if line := scopeLine(options); line != "" {
+		if options.Stats == nil {
+			fmt.Fprintln(w)
+		}
+		fmt.Fprintln(w, line)
+	}
+}
+
+// scopeLine is the one "Scope:" line a NARROWED run's text report carries, or "" (#904).
+//
+// Without it, `--checks SSN` over a file holding an email address printed "No matches found." — the
+// exact words a clean full scan prints. A full-scope run has no scope, so its text keeps every byte,
+// and pre-commit text never reaches this: that output is read mid-commit, and the machine reports
+// carry the profile.
+//
+// Sanitized because the profile name is config-supplied and this goes to a terminal.
+func scopeLine(options formatters.FormatterOptions) string {
+	if options.Scan == nil {
+		return ""
+	}
+	return displaytext.SanitizeDisplayText(options.Scan.TextLine())
+}
+
+// withScopeLine appends the scope line to a "no matches" report, which has no trailing newline.
+func withScopeLine(s string, options formatters.FormatterOptions) string {
+	if line := scopeLine(options); line != "" {
+		return s + "\n" + line
+	}
+	return s
 }
 
 // noMatchesText renders the empty-result message, plus the not-examined footer when
@@ -255,7 +287,7 @@ func disclosureFooter(options formatters.FormatterOptions) string {
 func (f *Formatter) noMatchesText(msg string, options formatters.FormatterOptions) string {
 	footer := disclosureFooter(options)
 	if footer == "" {
-		return msg
+		return withScopeLine(msg, options)
 	}
 
 	width := summaryRuleFloor
@@ -268,10 +300,10 @@ func (f *Formatter) noMatchesText(msg string, options formatters.FormatterOption
 		width = summaryRuleCeiling
 	}
 
-	return msg + "\n\n" +
-		rule("─", width) + "\n" +
-		footer +
-		rule("═", width)
+	return withScopeLine(msg+"\n\n"+
+		rule("─", width)+"\n"+
+		footer+
+		rule("═", width), options)
 }
 
 // Rule width bounds.

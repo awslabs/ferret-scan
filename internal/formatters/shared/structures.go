@@ -273,8 +273,13 @@ func withReportPaths(suppressed []detector.SuppressedMatch, options formatters.F
 
 // JSONResponse represents the top-level response structure for JSON/YAML output
 type JSONResponse struct {
-	Stats   *formatters.ScanStats `json:"stats,omitempty" yaml:"stats,omitempty"`
-	Results []JSONMatch           `json:"results" yaml:"results"`
+	Stats *formatters.ScanStats `json:"stats,omitempty" yaml:"stats,omitempty"`
+
+	// Scan is present only on a NARROWED run, and says what that run could report (#904). Beside
+	// stats, and omitempty, so a full-scope report keeps every byte. See formatters.ScanScope.
+	Scan *formatters.ScanScope `json:"scan,omitempty" yaml:"scan,omitempty"`
+
+	Results []JSONMatch `json:"results" yaml:"results"`
 
 	// Unredacted lists files whose findings were reported but not redacted, so their
 	// values remain in cleartext.
@@ -582,6 +587,7 @@ func ConvertMatchesToJSONFormat(matches []detector.Match, suppressedMatches []de
 		// `suppressed[].finding.filename`.
 		Suppressed: withReportPaths(SanitizeSuppressedMatches(suppressedMatches, options.ShowMatch, options.SourceRoot), options),
 		Stats:      options.Stats,
+		Scan:       options.Scan,
 	}
 	if truncated {
 		resp.Truncated = true

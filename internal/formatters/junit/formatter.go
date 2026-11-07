@@ -27,12 +27,18 @@ type TestSuites struct {
 }
 
 type TestSuite struct {
-	XMLName   xml.Name   `xml:"testsuite"`
-	Name      string     `xml:"name,attr"`
-	Tests     int        `xml:"tests,attr"`
-	Failures  int        `xml:"failures,attr"`
-	Errors    int        `xml:"errors,attr"`
-	Time      string     `xml:"time,attr"`
+	XMLName  xml.Name `xml:"testsuite"`
+	Name     string   `xml:"name,attr"`
+	Tests    int      `xml:"tests,attr"`
+	Failures int      `xml:"failures,attr"`
+	Errors   int      `xml:"errors,attr"`
+	Time     string   `xml:"time,attr"`
+
+	// Properties carries the scope of a NARROWED run (#904). Declared before TestCases because the
+	// JUnit 10 XSD puts <properties> first in a <testsuite>; a pointer with omitempty, so a full-scope
+	// report keeps every byte.
+	Properties *Properties `xml:"properties,omitempty"`
+
 	TestCases []TestCase `xml:"testcase"`
 
 	// SystemOut carries suite-level informational detail, the same standard
@@ -149,6 +155,8 @@ func (f *Formatter) Format(matches []detector.Match, suppressedMatches []detecto
 		Time:      "0.000",
 		TestCases: []TestCase{},
 	}
+	// What a narrowed run could report; nil, and so absent, for a full-scope run (#904).
+	securitySuite.Properties = buildScopeProperties(options)
 
 	// Process each file, in sorted filename order. Ranging the group map
 	// directly reordered the <testcase> elements between runs, so two JUnit
