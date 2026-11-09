@@ -54,13 +54,13 @@ Routing numbers are exactly 9 digits — the same length as SSNs. Without contex
 | Type | Pattern | Validation |
 |---|---|---|
 | `OTPAUTH_URI` | `otpauth://totp/...` or `otpauth://hotp/...` | URI format; must contain `secret=` parameter |
-| `OTP_SECRET` | 16-64 char base32 string in TOTP context | Must be near OTP keywords; rejects dictionary words, AKIA keys, sequential patterns |
+| `OTP_SECRET` | 16-64 char base32 string in TOTP context | Must be near OTP keywords; rejects dictionary words, AWS access key IDs (`AKIA…` and the temporary `ASIA…`), sequential patterns |
 | `RECOVERY_CODES` | 3+ groups of 4-10 alphanumeric blocks | Pattern: `XXXX-XXXX-XXXX` repeated; requires "recovery" or "backup" context |
 
 ### Context system
 - **Positive keywords** (+15 to +30): `two-factor`, `2fa`, `mfa`, `authenticator`, `recovery code`, `backup code`, `totp`, `hotp`, `secret key`, `otpauth`, `google authenticator`, `authy`
 - **Negative keywords** (-20 to -40): `license`, `activation`, `product key`, `serial`, `uuid`, `hash`, `jwt`, `session`, `version`
-- **Entropy/pattern rejection**: words that are valid base32 but clearly not secrets (e.g. "ABCDEFGH", "TESTTEST", AWS `AKIA` prefix) are rejected
+- **Entropy/pattern rejection**: words that are valid base32 but clearly not secrets (e.g. "ABCDEFGH", "TESTTEST", an AWS `AKIA` or `ASIA` key ID) are rejected; the `SECRETS` validator reports the key ID itself
 
 ### Why this context design
 Base32 is the key challenge: any uppercase string of A-Z2-7 is technically valid base32, which includes normal English words, AWS access key IDs, and random identifiers. Without aggressive rejection heuristics + mandatory keyword context, the FP rate is unacceptable. The `otpauth://` URI gets instant HIGH confidence (100) because its structure is unambiguous.
@@ -79,12 +79,12 @@ Base32 is the key challenge: any uppercase string of A-Z2-7 is technically valid
 ### What it detects
 | Type | Pattern | Validation |
 |---|---|---|
-| `DATE_OF_BIRTH` | MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD, "Month DD, YYYY", "DD Month YYYY" | Date must be plausible (year 1900-2025); month/day in valid ranges |
+| `DATE_OF_BIRTH` | MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD, "Month DD, YYYY", "DD Month YYYY". Only right after an explicit DOB label (at most 8 separator bytes before the value): ISO 8601 date-times (the date part is the finding), `YYYY/MM/DD`, `YYYY.MM.DD`, `YYYY-M-D`, and month names in any case or order (`14-MAR-1987`, `14MAR1987`, `MARCH 14, 1987`, `Mar. 14, 1987`, `Sept`, `14th of March 1987`, `1987 March 14`) | Date must be plausible (year 1900 to the current year); month/day in valid ranges |
 
 ### Context system — THE MOST CONSERVATIVE VALIDATOR
 - **Positive keywords (tiered)**:
-  - Strong (+50): `date of birth`, `dob`, `d.o.b`, `birthdate`, `birth date`
-  - Medium (+30): `born`, `birthday`, `age`, `years old`
+  - Strong (+75, so a labelled date scores 15 + 75 = 90): `date of birth`, `dob`, `d.o.b`, `birthdate`, `birth date`, matched as labels, so `dateOfBirth` and `patientDob` count
+  - Weak (+55 for one, +70 for two or more): `born`, `birthday`, `age`, `years old`
 - **Negative keywords (priority suppression)**: `created`, `modified`, `expires`, `expiry`, `due`, `deadline`, `meeting`, `published`, `released`, `updated`, `version`, `build`, `compiled`
 - **3-tier priority architecture** (post-adversarial fix):
   1. **Disqualifiers** (ceiling at 20): if file timestamps keywords dominate → hard cap
@@ -99,7 +99,7 @@ The 3-tier priority system was added after adversarial testing found that a nega
 ### Confidence curve
 - "DOB: 03/15/1990" → 90+ (explicit label)
 - "born January 15, 1990" → 70-80
-- "01/15/1990" with no keywords → 15 (nearly suppressed)
+- "01/15/1990" with no keywords → 5 (nearly suppressed: base 15, -10 with no DOB keyword)
 - "modified: 01/15/1990" → 0 (explicitly suppressed)
 
 ---
@@ -161,7 +161,7 @@ The North Carolina shape this table used to list ("1-12 digits") was never imple
 - **UUID/GUID**: the words `uuid` and `guid` suppress a finding wherever they sit on the line. A UUID-shaped VALUE is not recognised as one: `DL No: ab123456-0000-4000-8000-000000000001` reports `ab123456` as `OH_2L6D`.
 - **Why the suffixed spellings exist**: `internal/validators/kwmatch` matches a keyword's concatenation only as a whole word, so `driversLicenseNumber` needs the three-word keyword, not just `drivers license`. These are not redundant with the shorter keywords, and the reason is worth knowing before editing the vocabulary.
 
-`internal/validators/kwmatch` lets a keyword's spaces match **zero** separators, so a keyword also finds the concatenated and camelCase spellings of itself — but the concatenation must equal the **whole word**. `drivers license` yields `driverslicense` and did find `driversLicense`; append `Number` and the word becomes `driverslicensenumber`, which no two-word keyword can reach. Measured at HEAD, one label per line, with no state name present:
+`internal/validators/kwmatch` lets a keyword's spaces match **zero** separators, so a keyword also finds the concatenated and camelCase spellings of itself — but the concatenation must equal the **whole word**. `drivers license` yields `driverslicense` and did find `driversLicense`; append `Number` and the word becomes `driverslicensenumber`, which no two-word keyword can reach. Measured before [#438](https://github.com/awslabs/ferret-scan/issues/438) was fixed, one label per line, with no state name present (every row now scores 95; see below):
 
 | label | findings |
 |---|---|
@@ -178,7 +178,7 @@ That issue was filed against the **apostrophe** in `driver's license`, on the th
 
 **Adding a positive keyword here is safe in one direction only.** It can add findings and never remove one, which is why this widening needed no suppressor review; the same edit to `negativeKeywords` would be a suppression change and is governed by the opposite rule. Measured on 901 real files from this host (401 licence-dense documents, 500 JSON/JS files): **0 findings gained, 0 lost** — the additions are specific enough not to fire on ordinary text — and the like-for-like scan cost of six more keywords is **1.02x**, inside the run-to-run noise of the measurement itself.
 
-One consequence to be aware of: the concatenated spellings land at **65 (MEDIUM)** where the spaced spelling reaches 95, because `findKeywordsOnLine` — which counts keywords for **scoring** — uses the strict matcher, while `lineHasPositiveKeyword` — which opens the **gate** — uses the label-flexible one. So a camelCase label opens the gate but earns no context credit. Redaction still covers the finding (it acts on reported findings regardless of the display filter), but a report gated on `--confidence high` shows it as clean. That asymmetry is tracked separately; it cannot be fixed by widening `findKeywordsOnLine`, because that function is called with `negativeKeywords` too.
+That fix opened the gate for the concatenated spellings but at first scored them **65 (MEDIUM)** where the spaced spelling reached 95: the keywords counted for **scoring** were found with the strict matcher, and only the **gate** (`lineHasPositiveKeyword`) used the label-flexible one. [#553](https://github.com/awslabs/ferret-scan/issues/553) closed that asymmetry. Positive keywords are now found with the label-flexible matcher for scoring too (`findLabelsOnLine`), negatives keep the strict one (`findKeywordsOnLine`) because widening a suppressor silences real values, and the label boost is convention-independent (next section). So `driversLicenseNumber: D1234567`, `driverslicensenumber:`, `drivers_license_number:` and `driversLicense:` all score 95, like `Drivers License Number:`.
 
 ### Why this context design
 DL number formats are **maximally ambiguous** — they overlap with SSNs (9 digits), phone numbers (10 digits), and generic alphanumeric IDs. A California DL ("D1234567") looks like any letter+digit combination. Without strong keyword anchoring, this validator would fire on every 7-9 digit number in every document. The trade-off: real DL numbers without nearby "driver"/"DL"/"DMV" text will be missed — but that's acceptable because the FP rate of unanchored detection would make the tool unusable.

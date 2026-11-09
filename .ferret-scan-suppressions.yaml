@@ -29,8 +29,8 @@
 # To regenerate: ./bin/ferret-scan --suppression-file ./.ferret-scan-suppressions.yaml --generate-suppressions <files>
 # To audit a specific rule: search by hash or filename below.
 #
-# WARNING: --generate-suppressions strips this header. Restore it manually
-# after running the regenerate command.
+# --generate-suppressions keeps this header: a save rewrites only the fields it
+# changed and appends new rules (#866), and never rewrites a file it cannot parse (#880).
 
 version: "1.0"
 rules:

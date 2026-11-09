@@ -230,6 +230,16 @@ also a redaction change**. Test it explicitly, do not infer it.
 - Measure against real documents in `~/Downloads` (never invent synthetic-only
   evidence when real material exists), plus a purpose-built adversarial fixture for
   the specific mechanism.
+- **The real-world set is a local corpus**, at `$FERRET_CORPUS_DIR` (default
+  `../ferret-corpus`, next to the repository). The variable is for the two corpus scripts
+  named below; ferret-scan itself does not read it. `by-format/` holds public, licence-clean
+  files covering every format the router supports (PDF, OOXML, legacy Office, ODF, RTF,
+  SVG, images, audio, video, archives, text and code), fetched by
+  `scripts/corpus-fetch.sh`, which records each file's URL, sha256 and licence in a
+  `MANIFEST`. `private/` holds the maintainer's own documents and is never named in
+  anything that leaves the machine. Nothing under the corpus is ever committed
+  (`.gitignore` lists `ferret-corpus/` and `/corpus/`). `scripts/corpus-ab.sh BASE HEAD`
+  runs the main-vs-branch A/B over it, reported by format.
 - **Build ground truth independently** where possible (e.g. an XML-parser reference
   for spreadsheet cells) and score recall/precision against it, rather than trusting
   the tool to grade itself.

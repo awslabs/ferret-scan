@@ -534,7 +534,9 @@ entry: ./bin/ferret-scan --pre-commit-mode --checks CREDIT_CARD,SECRETS
 # Use the same ferret.yaml file in both environments
 
 # Check file paths and content
-# Suppressions use exact hashes - any difference breaks matching
+# Suppressions match by hash: a different line number, file basename or line content breaks matching
+# (line endings, indentation and trailing whitespace do not, for rules written with formula v5)
+# A binary that predates formula v5 does not read v5 rules: run the same version locally and in CI
 ```
 
 ### Debug Mode
@@ -626,8 +628,8 @@ docker run --rm -v $(pwd):/data ferret-scan --file /data --recursive
 # Pre-commit mode
 docker run --rm -v $(pwd):/data ferret-scan --pre-commit-mode /data/file.py
 
-# Web UI mode
-docker run --rm -p 8080:8080 ferret-scan --web --port 8080
+# Web UI mode, reachable from this machine only
+docker run --rm -p 127.0.0.1:8080:8080 ferret-scan --web --port 8080
 
 # With configuration file
 docker run --rm -v $(pwd):/data -v $(pwd)/ferret.yaml:/ferret.yaml ferret-scan --config /ferret.yaml --file /data

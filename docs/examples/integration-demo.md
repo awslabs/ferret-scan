@@ -7,7 +7,7 @@ This document contains realistic data patterns for demonstrating GitLab Security
 Customer payment methods on file:
 - Primary card: 4532-1234-5678-9012
 - Backup method: 5425-2334-3010-9903
-- Corporate card: 3714-496353-98431
+- Corporate card: 3714-496353-98431 (a processor-published test number: reported, but capped at LOW 15)
 
 ## Contact Information Database
 
@@ -35,7 +35,7 @@ Production credentials (rotate quarterly):
 
 HR database entries:
 - SSN: 078-05-1120
-- Passport: 123456789 (US format)
+- Passport: 925665416 (UK format)
 - Driver License: D123-456-789-012
 
 ## Intellectual Property Assets

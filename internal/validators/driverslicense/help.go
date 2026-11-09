@@ -9,18 +9,12 @@ import "github.com/awslabs/ferret-scan/v2/internal/help"
 func (v *Validator) GetCheckInfo() help.CheckInfo {
 	return help.CheckInfo{
 		Name:             "DRIVERS_LICENSE",
-		ShortDescription: "Detects US driver's license numbers by state format with keyword context",
-		DetailedDescription: `The DRIVERS_LICENSE check detects US driver's license numbers from the top 10 states by population using state-specific format patterns and contextual keyword analysis.
+		ShortDescription: "Detects driver's license numbers (US state shapes, GB DVLA, Ontario, Quebec) with keyword context",
+		DetailedDescription: `The DRIVERS_LICENSE check detects driver's license numbers in eight US state shapes, Great Britain (DVLA) driver numbers, and Ontario and Quebec licences as printed, using shape patterns and contextual keyword analysis.
 
-Because driver's license formats overlap heavily with generic numeric patterns (8-digit account numbers, 9-digit order IDs, etc.), this validator is extremely keyword-dependent: a pattern match alone produces very low confidence (20). DL-specific keywords must be present on the same line to raise confidence to actionable levels.
+Because driver's license formats overlap heavily with generic numeric patterns (8-digit account numbers, 9-digit order IDs, etc.), this validator is extremely keyword-dependent: a shape alone scores 20 and is not reported. A candidate is reported only with licence vocabulary on its line (or a state name with "id" or "number"), a licence label alone on the line above it, or a licence column header, and DL-specific keywords raise it to actionable levels. Licence labels are matched in every spelling of driver, drivers, driver's or driving with license or licence, with or without "number" or "no", in any case or key style (driversLicense, driving_licence).
 
-Supported state formats:
-- California: 1 letter + 7 digits (e.g. D1234567)
-- Texas/Pennsylvania: 8 digits
-- Florida/Michigan: 1 letter + 12 digits
-- New York/Georgia: 9 digits
-- Illinois: 1 letter + 11 digits
-- Ohio: 2 letters + 6 digits`,
+A finding's format names the shape it matched, not the jurisdiction that issued it: some states share a shape (NY_GA_9D is New York or Georgia), and a number from elsewhere with a US shape reports under that shape's name (a contiguous Ontario number as NJ_1L14D, a contiguous Quebec number as FL_MI_1L12D). A GB number must also fit the DVLA layout: surname letters then 9-padding, birth month 01-12 or 51-62, day 01-31, and initials.`,
 
 		Patterns: []string{
 			"1 letter + 7 digits (California)",
@@ -29,18 +23,27 @@ Supported state formats:
 			"9 digits (New York, Georgia)",
 			"1 letter + 11 digits (Illinois)",
 			"2 letters + 6 digits (Ohio)",
+			"1 letter + 14 digits (New Jersey)",
+			"1 letter + 13 digits (Wisconsin)",
+			"The US shapes written with dashes or spaces (e.g. D123-4567-8901)",
+			"GB DVLA driver number: 5 surname characters, 6 date digits, 2 initials, 1 digit, 2 check characters (16, or 18 with the issue number), contiguous or in 5/6/5 groups",
+			"Ontario as printed: 1 letter + 4, 5 and 5 digits with hyphens (e.g. A1234-12345-12345)",
+			"Quebec as printed: 1 letter + 4, 6 and 2 digits with hyphens (e.g. A1234-123456-12)",
 		},
 
+		// One entry per format value a finding can carry, the value first.
 		SupportedFormats: []string{
-			"California: 1 letter + 7 digits",
-			"Texas: 8 digits",
-			"Florida: 1 letter + 12 digits",
-			"New York: 9 digits",
-			"Pennsylvania: 8 digits",
-			"Illinois: 1 letter + 11 digits",
-			"Ohio: 2 letters + 6 digits",
-			"Georgia: 9 digits",
-			"Michigan: 1 letter + 12 digits",
+			"CA_1L7D: California, 1 letter + 7 digits",
+			"TX_PA_8D: Texas or Pennsylvania, 8 digits",
+			"FL_MI_1L12D: Florida or Michigan, 1 letter + 12 digits",
+			"NY_GA_9D: New York or Georgia, 9 digits",
+			"IL_1L11D: Illinois, 1 letter + 11 digits",
+			"OH_2L6D: Ohio, 2 letters + 6 digits",
+			"NJ_1L14D: New Jersey, 1 letter + 14 digits",
+			"WI_1L13D: Wisconsin, 1 letter + 13 digits",
+			"GB_DVLA: Great Britain DVLA driver number",
+			"CA_ON: Ontario, printed with hyphens",
+			"CA_QC: Quebec, printed with hyphens",
 		},
 
 		ConfidenceFactors: []help.ConfidenceFactor{
