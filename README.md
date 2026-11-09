@@ -1,17 +1,31 @@
-# ferret-scan
+<!-- Header: the logo already carries the "Ferret Scan" wordmark, so it stands in for the title.
+     A table is the one layout GitHub renders side by side; it strips style attributes but keeps
+     width= on <img>, align= and valign= on cells. Badges that can change are all LIVE shields
+     endpoints (go.mod, PyPI, the latest release, the licence file, the stars count, the Go Tests
+     workflow); nothing in the row is hand-typed, so it cannot go stale again. -->
+<table>
+  <tr>
+    <td width="112" valign="middle">
+      <a href="https://github.com/awslabs/ferret-scan"><img src="docs/images/ferret-scan-logo-original.png" alt="Ferret Scan" width="96" /></a>
+    </td>
+    <td valign="middle">
+      <h1 id="ferret-scan" style="margin:0">ferret-scan</h1>
+      <p><strong>Find and redact sensitive data before it leaks.</strong></p>
+      <p>
+        <a href="LICENSE.txt"><img src="https://img.shields.io/github/license/awslabs/ferret-scan?label=License" alt="License" /></a>
+        <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/awslabs/ferret-scan?logo=go&logoColor=white&label=Go" alt="Go version from go.mod" /></a>
+        <a href="https://github.com/awslabs/ferret-scan/releases/latest"><img src="https://img.shields.io/github/v/release/awslabs/ferret-scan?logo=github&label=Release" alt="Latest release" /></a>
+        <a href="https://pypi.org/project/ferret-scan/"><img src="https://img.shields.io/pypi/v/ferret-scan?logo=pypi&logoColor=white&label=PyPI" alt="PyPI version" /></a>
+        <a href="https://github.com/awslabs/ferret-scan#install"><img src="https://img.shields.io/github/v/release/awslabs/ferret-scan?logo=homebrew&logoColor=white&label=Homebrew&color=FBB040" alt="Homebrew formula version (tracks the latest release)" /></a>
+        <a href="https://gallery.ecr.aws/awslabs/ferret-scan"><img src="https://img.shields.io/github/v/release/awslabs/ferret-scan?logo=amazonaws&logoColor=white&label=ECR%20Public&color=FF9900" alt="ECR Public image version (tracks the latest release)" /></a>
+        <a href="https://github.com/awslabs/ferret-scan/actions/workflows/go-test.yml"><img src="https://img.shields.io/github/actions/workflow/status/awslabs/ferret-scan/go-test.yml?branch=main&label=Go%20Tests" alt="Go Tests on main" /></a>
+        <a href="https://github.com/awslabs/ferret-scan/stargazers"><img src="https://img.shields.io/github/stars/awslabs/ferret-scan?style=social" alt="GitHub stars" /></a>
+      </p>
+    </td>
+  </tr>
+</table>
 
-<p align="center">
-  <img src="docs/images/ferret-scan-logo-original.png" alt="ferret-scan" width="240" />
-</p>
-
-**Find and redact sensitive data before it leaks.** A single-binary Go CLI (plus embedded web UI and Go library — `pkg/scan` for detection, `pkg/redact` for redaction) that detects PII, secrets, and IP markers in your files and streams — then redacts them in place, format-preserving, with context-aware confidence scoring. No runtime dependencies. No data leaves your host.
-
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.txt)
-[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
-[![PyPI](https://img.shields.io/pypi/v/ferret-scan?logo=pypi&logoColor=white&label=PyPI)](https://pypi.org/project/ferret-scan/)
-[![Homebrew](https://img.shields.io/badge/Homebrew-ferret--scan-FBB040?logo=homebrew&logoColor=white)](https://github.com/awslabs/ferret-scan#install)
-[![ECR Public](https://img.shields.io/badge/ECR%20Public-ferret--scan-FF9900?logo=amazonaws&logoColor=white)](https://gallery.ecr.aws/awslabs/ferret-scan)
-[![GitHub stars](https://img.shields.io/github/stars/awslabs/ferret-scan?style=social)](https://github.com/awslabs/ferret-scan)
+A single-binary Go CLI (plus embedded web UI and Go library — `pkg/scan` for detection, `pkg/redact` for redaction) that detects PII, secrets, and IP markers in your files and streams — then redacts them in place, format-preserving, with context-aware confidence scoring. No runtime dependencies. No data leaves your host.
 
 ![ferret-scan demo](docs/images/demo.svg)
 
@@ -148,7 +162,7 @@ cat customer-export.csv | ferret-scan --stdin --enable-redaction --redaction-str
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.10.0
+    rev: v2.5.5
     hooks:
       - id: ferret-scan
 ```
