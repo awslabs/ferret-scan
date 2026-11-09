@@ -191,6 +191,8 @@ env/
 # same set of false positives on legitimate test fixtures and example
 # data — see the file's header for what each block covers).
 !.ferret-scan-suppressions.yaml
+# The committed self-scan profile (#927); its directory would otherwise match .ferret-* above.
+!.ferret-scan/
 ferret-scan.local*
 ferret-scan.dev*
 config.yaml

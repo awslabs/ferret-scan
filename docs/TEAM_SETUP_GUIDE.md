@@ -18,12 +18,16 @@ cd your-repository
 ./scripts/setup-pre-commit.sh
 # Choose: 1=Strict, 2=Balanced, 3=Advisory, 4=Secrets, 5=Custom
 
-# Set up GitHub Actions
-mkdir -p .github/workflows
+# Set up GitHub Actions. The workflow runs scripts/self-scan.sh with the profile in
+# .ferret-scan/selfscan.yaml, so copy those two as well and edit the profile's excludes
+# and suppressions.file for your repository (docs/testing/SELF_SCAN.md explains both).
+mkdir -p .github/workflows scripts .ferret-scan
 cp .github/workflows/ferret-scan.yml .github/workflows/
+cp scripts/self-scan.sh scripts/
+cp .ferret-scan/selfscan.yaml .ferret-scan/
 
 # Commit team configuration
-git add .ferret-scan.yaml .pre-commit-config.yaml .github/workflows/ferret-scan.yml
+git add .ferret-scan.yaml .pre-commit-config.yaml .github/workflows/ferret-scan.yml scripts/self-scan.sh .ferret-scan/selfscan.yaml
 git commit -m "Add Ferret Scan team security configuration"
 git push
 ```

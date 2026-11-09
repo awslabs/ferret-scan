@@ -118,12 +118,14 @@ func TestASaveWithNoChangeIsByteIdentical(t *testing.T) {
 }
 
 // TestRegeneratingTheBaselineTouchesOnlyLastSeenAtAndTheNewRules is the issue's baseline check: a
-// --generate-suppressions run may refresh last_seen_at and append rules, and nothing else. The 245 rules
-// are all lapsed, so this checks bytes, not suppression.
+// --generate-suppressions run may refresh last_seen_at and append rules, and nothing else. The committed
+// ledger's rules are all enabled and none expires (#927); the two synthetic matches below hit none of
+// them, so the save appends two rules numbered after the last one and touches nothing else.
 func TestRegeneratingTheBaselineTouchesOnlyLastSeenAtAndTheNewRules(t *testing.T) {
 	path := copyToTemp(t, filepath.Join("..", "..", ".ferret-scan-suppressions.yaml"))
 	before := readText(t, path)
 	sm, _ := loadWithWarnings(t, path)
+	ruleCount := len(sm.config.Rules)
 	now := time.Now()
 	for _, i := range []int{0, 100, len(sm.config.Rules) - 1} {
 		sm.config.Rules[i].LastSeenAt = &now // what GenerateSuppressionRules does for a finding it already has
@@ -157,8 +159,9 @@ func TestRegeneratingTheBaselineTouchesOnlyLastSeenAtAndTheNewRules(t *testing.T
 		t.Fatalf("the saved file is shorter than the original: stopped at line %d of %d", i+1, len(old))
 	}
 	tail := strings.Join(cur[j:], "\n")
-	if got := strings.Count(tail, "    - id: SUP-"); got != 2 || !strings.HasPrefix(tail, "    - id: SUP-00000246\n") {
-		t.Errorf("the appended tail is not the 2 new rules:\n%s", tail)
+	firstNewID := fmt.Sprintf("    - id: SUP-%08d\n", ruleCount+1)
+	if got := strings.Count(tail, "    - id: SUP-"); got != 2 || !strings.HasPrefix(tail, firstNewID) {
+		t.Errorf("the appended tail is not the 2 new rules numbered from %d:\n%s", ruleCount+1, tail)
 	}
 }
 

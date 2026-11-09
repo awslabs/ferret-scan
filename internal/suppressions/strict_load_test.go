@@ -291,7 +291,7 @@ func TestFreeFormMetadataIsSilentAndApplied(t *testing.T) {
 }
 
 // TestTheBaselineAndGeneratedOutputNameNothing is the precision floor: the strict pass must be silent
-// on every file the tool writes, and on the 245-rule baseline this repository commits.
+// on every file the tool writes, and on the self-scan ledger this repository commits (#927).
 func TestTheBaselineAndGeneratedOutputNameNothing(t *testing.T) {
 	sm, warnings := loadWithWarnings(t, filepath.Join("..", "..", ".ferret-scan-suppressions.yaml"))
 	if warnings != "" {

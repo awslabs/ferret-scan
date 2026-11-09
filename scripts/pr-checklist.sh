@@ -164,6 +164,23 @@ else
   na "14 surfaces (web+container)" "docs and tests only; no surface consumes this diff"
 fi
 
+# 15. self-scan. The repository's own scan blocks on any HIGH finding the ledger does not cover (#927),
+#     and a validator change can add a HIGH to a file this diff never touched, which CI's changed-files
+#     scan cannot see. scripts/self-scan.sh writes a marker under the git dir after a green block-mode
+#     run of the whole tree, recording the checkout's content; this line is RAN only when that content
+#     is this checkout's. N/A only for a diff of docs and tests alone (the tests gate is SECRETS-only, so
+#     a test fixture cannot add a HIGH; a credential in a test can, and `make self-scan` is 15 seconds).
+ss_marker="$(git rev-parse --git-dir)/self-scan.ok"
+ss_state="$(scripts/self-scan.sh --print-state 2>/dev/null || true)"
+if [ -f "$ss_marker" ] && [ -n "$ss_state" ] && [ "$(sed -n 's/^state=//p' "$ss_marker")" = "$ss_state" ]; then
+  ok "15 self-scan" "make self-scan green on this checkout at $(sed -n 's/^when=//p' "$ss_marker")"
+elif echo "$changed" | grep -qvE '(\.md$|^docs/|/testdata/|^changelog\.d/)'; then
+  todo "15 self-scan" "run make self-scan (or scripts/self-scan.sh --base origin/main to see only what
+                                   this branch added); every HIGH is a decision, see docs/testing/SELF_SCAN.md"
+else
+  na "15 self-scan" "docs only; the self-scan gates read no file in this diff"
+fi
+
 # 10. non-vacuity — a new test must fail on the pre-change code.
 if echo "$changed" | grep -q '_test\.go$'; then
   todo "10 non-vacuity" "new tests MUST fail on the parent commit; prove it by reverting

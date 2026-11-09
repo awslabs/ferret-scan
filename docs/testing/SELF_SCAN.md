@@ -82,7 +82,9 @@ Every HIGH finding the gate reports is one of three things, and each has one act
 
 1. **A real value**: a credential, or data about a real person. Remove it from the tree and report it
    (a leaked credential is revoked first; removing it from the tree does not un-publish it). It is
-   never suppressed.
+   never suppressed. The first run of this gate found three: a photographer's name and a vendor
+   employee's address copied from sample-file metadata into a release note, a guide, a comment and a
+   test fixture; #942 replaced them with a role and a synthetic value.
 2. **A detector false positive**: the value is not what the check says it is (a place read as a name, a
    regex read as a secret). Fix the validator and add a decoy case to the golden corpus. Until the fix
    lands, add a rule with the reason `detector FP: #NNN`, naming the issue that fixes it; one issue per
@@ -131,10 +133,17 @@ The values themselves are in #930, so that this page does not need a rule of its
 
 ## The ledger
 
-Every rule in `.ferret-scan-suppressions.yaml` is enabled, has no expiry, and gives one of two reasons:
+Every rule in `.ferret-scan-suppressions.yaml` is enabled, has no expiry, and gives one of three reasons:
 
 - `fixture: <why the value must look real>`;
-- `detector FP: #NNN`, where issue NNN fixes the detector and the rule goes when it lands.
+- `detector FP: #NNN`, where issue NNN fixes the detector and the rule goes when it lands;
+- `public: <why the value is legitimately public>`, for the few findings that are neither: a copyright
+  holder named in a third-party licence this repository must reproduce, the project's own licence
+  notice, the code-of-conduct contact address. A real credential or a real person's private data is
+  never a rule (see above).
+
+The first ledger (2026-11-09, `main` at d641fe7) holds 666 rules: 525 `fixture`, 135 `detector FP`
+(across #930–#940) and 6 `public`, covering 672 HIGH findings; the gate then reads `HIGH 0`.
 
 A rule matches a finding by its identity hash: the type, the line, the file's basename, the line number,
 the surrounding text and the value. Its `metadata` (type, file name, line number, confidence) names the
@@ -172,10 +181,14 @@ below `[Unreleased]`), so the release pull request regenerates the ledger for th
 
 ## CI
 
-`.github/workflows/ferret-scan.yml` is to run this script, in block mode, on the files a pull request
-changes and on the whole tree after a merge, fail-closed as today. That change is held back with the
-update to `cmd/self_scan_workflow_test.go`, which pins today's report mode for this repository; #927
-tracks both. Until it lands, CI scans as before and this script is the local gate.
+`.github/workflows/ferret-scan.yml` runs this script in block mode: on a pull request over the files
+the PR changes (`--scope changed --files …`, any extension), and over the whole tree on a push to
+`main` and on a manual run (`--scope tree`). The script's exit is the gate: 1 for a HIGH finding the
+ledger does not cover, 2 for a scan that failed or did not fully examine a file, both red. The
+workflow reads `summary.env` for the job summary and the pull-request comment, which show HIGH,
+suppressed and not-examined counts and point here; `cmd/self_scan_workflow_test.go` pins that contract
+and runs the workflow's steps against a checkout with a HIGH fixture in each mode. A copy of the
+workflow in another repository needs the script and a profile of its own (`docs/TEAM_SETUP_GUIDE.md`).
 
 ## Proposed TEST_PLAN.md text
 
