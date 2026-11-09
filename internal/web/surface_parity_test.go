@@ -16,6 +16,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/config"
 	"github.com/awslabs/ferret-scan/v2/internal/core"
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	formatterShared "github.com/awslabs/ferret-scan/v2/internal/formatters/shared"
 	"github.com/awslabs/ferret-scan/v2/internal/goldencorpus"
 )
@@ -38,10 +40,12 @@ import (
 // an entry whose case no longer differs, which is what keeps this list from outliving the reason.
 var webSurfaceAllowed = map[string]string{
 	// The corpus scans these three with a 1ns PHONE budget (FileCase.ValidatorBudgets, the golden
-	// corpus's stand-in for --validator-budget, #771), so its scan is Incomplete by construction. /scan
-	// takes no budget: runFullCLIScan builds its core.ScanConfig without ValidatorBudgets, and
-	// cmd/main.go validateWebModeFlags refuses --validator-budget with --web. The findings agree; only
-	// the Incomplete flag differs. Whether the web should take a budget is in webUndecided.
+	// corpus's stand-in for --validator-budget, #771), so its scan is Incomplete wherever the clock
+	// has moved by the time the deadline is checked (every CI platform but Windows; see
+	// TestWebSurfaceAllowlistIsLive). /scan takes no budget: runFullCLIScan builds its
+	// core.ScanConfig without ValidatorBudgets, and cmd/main.go validateWebModeFlags refuses
+	// --validator-budget with --web. The findings agree; only the Incomplete flag differs. Whether
+	// the web should take a budget is in webUndecided.
 	"file_docx_cut_short_without_metadata/<incomplete>": "web applies no validator budget: runFullCLIScan sets no ValidatorBudgets and validateWebModeFlags refuses --validator-budget, so the case's 1ns PHONE budget never cuts /scan short (#907)",
 	"file_docx_cut_short_with_metadata/<incomplete>":    "web applies no validator budget: runFullCLIScan sets no ValidatorBudgets and validateWebModeFlags refuses --validator-budget, so the case's 1ns PHONE budget never cuts /scan short (#907)",
 	"file_txt_cut_short_twin/<incomplete>":              "web applies no validator budget: runFullCLIScan sets no ValidatorBudgets and validateWebModeFlags refuses --validator-budget, so the case's 1ns PHONE budget never cuts /scan short (#907)",
@@ -216,6 +220,27 @@ type surfaceCase struct {
 	content []byte
 	checks  []string
 	corpus  func(t *testing.T) *core.ScanResult
+	// timeBudget is true when the corpus scans this case under a per-validator TimeLimit (a
+	// FileCase.ValidatorBudgets entry), the one option the corpus takes that /scan cannot; see
+	// TestWebSurfaceAllowlistIsLive for why that matters on a coarse clock.
+	timeBudget bool
+}
+
+// coarseClock reports whether this platform's clock may not have moved between two consecutive
+// readings, so a sub-millisecond context deadline arms a timer instead of expiring at once. Windows
+// is the one CI platform where that holds (0.5-15.6 ms ticks; TEST_PLAN dimension 12).
+func coarseClock() bool {
+	return runtime.GOOS == "windows"
+}
+
+// hasTimeBudget reports whether any of the case's validator budgets is a wall-clock limit.
+func hasTimeBudget(budgets map[string]execguard.ValidatorBudget) bool {
+	for _, b := range budgets {
+		if b.TimeLimit > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // surfaceCases mirrors the two corpus scan paths exactly: internal/goldencorpus golden_test.go
@@ -247,6 +272,7 @@ func surfaceCases() []surfaceCase {
 		fc := fc
 		out = append(out, surfaceCase{
 			name: fc.Name, relPath: "file/" + fc.Name + "/" + filepath.ToSlash(fc.Filename), content: fc.Content, checks: fc.Checks,
+			timeBudget: hasTimeBudget(fc.ValidatorBudgets),
 			corpus: func(t *testing.T) *core.ScanResult {
 				t.Helper()
 				native := filepath.Join(t.TempDir(), fc.Filename)
@@ -351,6 +377,17 @@ func TestWebScanMatchesCorpusScan(t *testing.T) {
 
 // TestWebSurfaceAllowlistIsLive fails for a webSurfaceAllowed entry whose case no longer differs, or
 // that names no case, so a fixed divergence cannot keep an exemption alive.
+//
+// An "<incomplete>" entry is checked structurally as well: its case must carry a wall-clock validator
+// budget, because that is the only mechanism the allowlist records for the Incomplete flag (the corpus
+// takes FileCase.ValidatorBudgets; /scan takes none). The diff-based check of such an entry runs only
+// where the budget is deterministic. A 1ns TimeLimit is context.WithTimeout(ctx, 1ns): it cancels
+// synchronously only when the clock has already moved past the deadline, and on Windows the clock
+// ticks every 0.5-15.6 ms (execguard.LoopBudget's doc), so a PHONE scan over ten short lines finishes
+// inside the budget whenever no tick falls in it, and the corpus side reads Incomplete=false or true
+// run to run. The cases' findings do not depend on it (the fixture holds no phone numbers), which is
+// why the golden corpus is stable there and only this liveness check saw it: the Windows job failed
+// on every main commit from #919 onward with "no <incomplete> difference any more".
 func TestWebSurfaceAllowlistIsLive(t *testing.T) {
 	h := parityServer(t)
 	byName := map[string]surfaceCase{}
@@ -366,6 +403,18 @@ func TestWebSurfaceAllowlistIsLive(t *testing.T) {
 		if !ok {
 			t.Errorf("webSurfaceAllowed names %q, which is not a golden-corpus case", key)
 			continue
+		}
+		if typ == "<incomplete>" {
+			if !c.timeBudget {
+				t.Errorf("webSurfaceAllowed[%q]: the case scans under no validator time budget, so an Incomplete "+
+					"difference would be a divergence to fix, not a recorded mechanism; remove the entry", key)
+				continue
+			}
+			if coarseClock() {
+				t.Logf("webSurfaceAllowed[%q]: diff-based liveness skipped on %s, where a 1ns budget is not a "+
+					"deterministic cut-short (execguard.LoopBudget); the structural check above still holds", key, runtime.GOOS)
+				continue
+			}
 		}
 		diffs := caseDifferences(t, h, c)
 		if typ != "" && len(diffs[typ]) == 0 {
