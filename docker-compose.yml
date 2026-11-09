@@ -12,7 +12,7 @@ services:
     image: ferret-scan:local
     container_name: ferret-scan
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - .:/data:ro
       - ~/.ferret-scan:/home/ferret/.ferret-scan

@@ -636,9 +636,9 @@ container-build:
 container-run:
 	@echo "Running container..."
 	@if command -v docker >/dev/null 2>&1; then \
-		docker run -p 8080:8080 --rm ferret-scan:latest; \
+		docker run -p 127.0.0.1:8080:8080 --rm ferret-scan:latest --web --port 8080; \
 	elif command -v finch >/dev/null 2>&1; then \
-		finch run -p 8080:8080 --rm ferret-scan:latest; \
+		finch run -p 127.0.0.1:8080:8080 --rm ferret-scan:latest --web --port 8080; \
 	else \
 		echo "Error: Neither Docker nor Finch found"; \
 		exit 1; \
@@ -655,9 +655,9 @@ container-test:
 		echo "Error: Neither Docker nor Finch found"; \
 		exit 1; \
 	fi; \
-	$$CONTAINER_CMD run -d --name ferret-test -p 8081:8080 ferret-scan:latest; \
+	$$CONTAINER_CMD run -d --name ferret-test -p 127.0.0.1:8081:8080 ferret-scan:latest --web --port 8080; \
 	sleep 5; \
-	curl -f http://localhost:8081/health || ($$CONTAINER_CMD stop ferret-test && $$CONTAINER_CMD rm ferret-test && exit 1); \
+	curl -f http://127.0.0.1:8081/health || { $$CONTAINER_CMD stop ferret-test; $$CONTAINER_CMD rm ferret-test; exit 1; }; \
 	$$CONTAINER_CMD stop ferret-test; \
 	$$CONTAINER_CMD rm ferret-test; \
 	echo "✓ Container test passed with $$CONTAINER_CMD"
