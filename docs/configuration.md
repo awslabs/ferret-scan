@@ -18,7 +18,7 @@ All validators now include advanced false positive prevention and enhanced accur
 
 ### Validator-Specific Enhancements
 - **IP Address Validator**: RFC-compliant sensitivity filtering (excludes private, reserved, documentation ranges)
-- **Credit Card Validator**: Mathematical validation with Luhn algorithm and test pattern filtering
+- **Credit Card Validator**: Mathematical validation with Luhn algorithm; known test numbers (the card numbers payment processors publish for their sandboxes, a test-pattern list, repeating shapes) are still reported, so still redacted, but capped at LOW 15
 - **Email Validator**: Advanced domain validation with context analysis
 - **Phone Validator**: International format support with cross-validator false positive prevention
 - **SSN Validator**: Domain-aware validation with HR/Tax/Healthcare context understanding
@@ -361,7 +361,7 @@ profiles:
           - copyright
 ```
 
-When a type is disabled, the validator will skip all pattern matching for that category. Debug logging (`--debug`) will show which types have been disabled. The `--disable-ip-types` CLI flag takes precedence over the config file setting.
+When a type is disabled, the validator will skip all pattern matching for that category. Debug logging (`--debug`) will show which types have been disabled. The `--disable-ip-types` CLI flag takes precedence over both the config file setting and the active profile's, on `--file` and `--stdin` alike, and its list replaces the configured set rather than adding to it: with a profile that disables `copyright`, `--disable-ip-types patent` reports copyright notices again and skips patents.
 
 #### Internal URL Pattern Configuration
 
@@ -1027,7 +1027,11 @@ command line follows the same rule. Each strategy's behaviour is fixed and takes
 - `format_preserving` masks the value while keeping its length and separators,
   e.g. `***-**-4100`.
 - `synthetic` substitutes a realistic fake value, always generated with
-  `crypto/rand`.
+  `crypto/rand`. A value keeps one fake for the whole run, in every file and
+  format, and two different values of a kind never share one (a generic
+  copyright or confidentiality notice excepted, since it identifies nobody); a
+  second run draws new fakes. `--stdin`, a `pkg/scan` call and each `pkg/redact`
+  request are runs of their own.
 
 ### Strategy Behaviour
 

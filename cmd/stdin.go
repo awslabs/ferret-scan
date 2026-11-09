@@ -10,10 +10,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/awslabs/ferret-scan/v2/internal/config"
 	"github.com/awslabs/ferret-scan/v2/internal/core"
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
@@ -202,6 +204,8 @@ func runStdinScan(in stdinScanInputs) int {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
 	}
+	// The checks core.ScanContent will run for these, and the one it cannot run on piped content.
+	checksRun, checksNotApplicable := stdinChecksRun(checks)
 
 	scanCfg := core.ContentScanConfig{
 		VirtualPath:        in.stdinName,
@@ -258,7 +262,7 @@ func runStdinScan(in stdinScanInputs) int {
 			if err := suppressionManager.GenerateSuppressionRules(allMatches, reason, false); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to generate suppression rules: %v\n", err)
 			} else {
-				fmt.Fprintln(os.Stderr, "Updated suppression rules: existing rules had last_seen_at updated, new rules added (disabled by default)")
+				suppressions.WriteGenerationReport(os.Stderr, suppressionManager.LastGeneration())
 				fmt.Fprintln(os.Stderr, "Edit the suppression file to enable specific rules by setting 'enabled: true'")
 			}
 		} else {
@@ -309,7 +313,8 @@ func runStdinScan(in stdinScanInputs) int {
 	// so prose there breaks `2> findings.json`. That arm suppresses a disclosure for a mechanical
 	// reason, not because the operator asked for quiet.
 	if !stdinStderrCarriesFindings(finalCfg, in.outputFile) {
-		reportConfigProvenance(os.Stderr, cfg, in.flags.configFile)
+		reportConfigProvenance(os.Stderr, cfg, in.flags.configFile,
+			configChecksNarrowingFor(cfg, effectiveProfileName, checksRun, checksNotApplicable))
 		// Same rule for the built-in precommit profile's remaining override (#768).
 		reportBuiltinProfileChecks(os.Stderr, cfg, effectiveProfileName)
 		// Same rule for detection that config, a profile or --disable-ip-types switched off, and for a
@@ -345,6 +350,19 @@ func runStdinScan(in stdinScanInputs) int {
 		}
 	}
 
+	// What the findings report says about this run beyond the findings, for whichever of the two report
+	// sites below writes it. See stdinFormatterOptions.
+	report := &stdinReport{
+		precommitConfig:        precommitConfig,
+		outputToFile:           in.outputFile != "",
+		elapsed:                elapsed,
+		suppressedCount:        suppressedCount,
+		disabledDetectionTypes: result.DisabledDetectionTypes,
+		notExamined:            stdinNotExamined(result, scanCfg.VirtualPath),
+		scope: scopeInputsFor(checksRun, checksNotApplicable, result.DisabledDetectionTypes,
+			run, in.flags, suppressionManager),
+	}
+
 	// Redaction path: emit redacted content on stdout (or --output if set)
 	// and findings on stderr (or alongside redacted content when --output
 	// captures redacted bytes). This is the streaming/lambda use case —
@@ -367,7 +385,7 @@ func runStdinScan(in stdinScanInputs) int {
 		if isFlagSet("redaction-output-dir") {
 			fmt.Fprintln(os.Stderr, "Note: --redaction-output-dir is not supported with --stdin and will be ignored; the redacted content is written to stdout")
 		}
-		return runStdinRedaction(in, finalCfg, content, unsuppressedMatches, suppressedMatches, precommitConfig, stdinEncoding, incompleteCount)
+		return runStdinRedaction(in, finalCfg, content, unsuppressedMatches, suppressedMatches, precommitConfig, stdinEncoding, incompleteCount, report)
 	}
 
 	// Resolve formatter.
@@ -388,17 +406,7 @@ func runStdinScan(in stdinScanInputs) int {
 		return 1
 	}
 
-	formatterOptions := formatters.FormatterOptions{
-		ConfidenceLevel: confidenceFilter,
-		Verbose:         finalCfg.verbose,
-		NoColor:         finalCfg.noColor,
-		ShowMatch:       finalCfg.showMatch,
-		PrecommitMode:   effectivePrecommitQuiet(precommitConfig),
-		// Resolved once by precommit.Resolve, so the message the user reads and the exit code
-		// returned below cannot disagree. See precommit.Decision.
-		PrecommitBlockMessage: precommit.Resolve(unsuppressedMatches, precommitConfig).Message,
-		Limit:                 in.limit,
-	}
+	formatterOptions := stdinFormatterOptions(finalCfg, confidenceFilter, in.limit, unsuppressedMatches, report)
 
 	var formatted string
 	var formatErr error
@@ -464,6 +472,7 @@ func runStdinPreprocessOnly(label, content string) int {
 // AND signal upstream that something was matched, and --fail-on-incomplete
 // escalates a cut-short scan to 3 exactly as it does for --file (#770):
 // incompleteCount is the caller's count of inputs not fully examined (0 or 1).
+// report is what the findings report says about the run; see stdinFormatterOptions.
 //
 // A cut-short stream is still emitted, as for clean input -- the redacted text
 // with whatever WAS found masked -- because --file writes its partial copy too,
@@ -483,6 +492,7 @@ func runStdinRedaction(
 	precommitConfig *precommit.PrecommitConfig,
 	inputEncoding preprocessors.TextEncoding,
 	incompleteCount int,
+	report *stdinReport,
 ) int {
 	// Parsed and validated by applyRedactionStrategy at the top of runStdin.
 	strategy := finalCfg.redactionStrategy
@@ -533,7 +543,7 @@ func runStdinRedaction(
 	//     they run the command without redirects. In that case suppress
 	//     the findings emit and print a one-line tip pointing at the
 	//     pipe shapes that capture them.
-	formatted, formatErr := formatStdinFindings(matches, suppressedMatches, finalCfg, in.limit, precommitConfig)
+	formatted, formatErr := formatStdinFindings(matches, suppressedMatches, finalCfg, in.limit, report)
 	if formatErr != nil {
 		printPrecommitError(precommitConfig,
 			fmt.Sprintf("Error formatting results: %v", formatErr),
@@ -602,12 +612,15 @@ func writePrecommitStdinIncompleteNotice(w io.Writer, label string) {
 // formatStdinFindings is a small helper used by runStdinRedaction so the
 // formatter logic isn't duplicated. It returns the formatted findings string
 // (possibly empty when there are no matches and no suppressed matches).
+//
+// report may be nil, which means no pre-commit config and nothing known about the run beyond the
+// flags: no stats block and no scope. runStdinRedaction always passes one.
 func formatStdinFindings(
 	matches []detector.Match,
 	suppressedMatches []detector.SuppressedMatch,
 	finalCfg *finalConfiguration,
 	limit int,
-	precommitConfig *precommit.PrecommitConfig,
+	report *stdinReport,
 ) (string, error) {
 	formatter, exists := formatters.Get(finalCfg.format)
 	if !exists {
@@ -622,8 +635,54 @@ func formatStdinFindings(
 	// capped exactly like the non-redaction path's. It only ever bounds the
 	// report: the caller already redacted against the FULL match set, so a
 	// smaller report can never mean less redacted content.
+	opts := stdinFormatterOptions(finalCfg, confidenceFilter, limit, matches, report)
+	if finalCfg.showSuppressed {
+		return formatter.Format(matches, suppressedMatches, opts)
+	}
+	return formatter.Format(matches, nil, opts)
+}
+
+// stdinReport is what a --stdin findings report says about the run beyond the findings themselves.
+type stdinReport struct {
+	precommitConfig        *precommit.PrecommitConfig
+	outputToFile           bool
+	elapsed                time.Duration
+	suppressedCount        int
+	disabledDetectionTypes map[string][]string
+	notExamined            []formatters.NotExaminedFile
+	// scope is everything NewScanScope needs except the confidence filter, which each report site
+	// parses itself.
+	scope formatters.ScopeInputs
+}
+
+// stdinFormatterOptions is the ONE FormatterOptions both --stdin report sites build: the report runStdinScan
+// writes to stdout or --output, and the one runStdinRedaction writes beside the redacted stream (#904).
+//
+// There were two keyed literals, and neither set Stats, NotExamined, OutputToFile or a scope, so the JSON
+// document was `{"results": [...]}` whatever happened: no stats block, so a cut-short or narrowed stdin
+// scan read as complete, and `--stdin --pre-commit-mode --output r.json` on clean input wrote 0 bytes
+// where --file writes the 171-byte `{"stats":…,"results":[]}` document. Go does not flag a field missing
+// from a keyed literal, which is how #699's expiry field reached one of main()'s copies and not this
+// path's; one constructor is how a field added here reaches both report sites.
+//
+// Stats is the file path's block for one virtual file (total_files 1), set for every format but text.
+// Text renders Stats as a "Scan Summary" block that --stdin text has never printed, and a full-scope
+// text report must keep its bytes; the machine formats carry the same facts as data. NotExamined and
+// FailOnIncomplete carry a cut-short scan into junit, sarif and gitlab-sast as --file does (#770), and
+// the stderr warning stays.
+func stdinFormatterOptions(
+	finalCfg *finalConfiguration,
+	confidence map[string]bool,
+	limit int,
+	matches []detector.Match,
+	r *stdinReport,
+) formatters.FormatterOptions {
+	var precommitConfig *precommit.PrecommitConfig
+	if r != nil {
+		precommitConfig = r.precommitConfig
+	}
 	opts := formatters.FormatterOptions{
-		ConfidenceLevel: confidenceFilter,
+		ConfidenceLevel: confidence,
 		Verbose:         finalCfg.verbose,
 		NoColor:         finalCfg.noColor,
 		ShowMatch:       finalCfg.showMatch,
@@ -632,11 +691,224 @@ func formatStdinFindings(
 		// returned below cannot disagree. See precommit.Decision.
 		PrecommitBlockMessage: precommit.Resolve(matches, precommitConfig).Message,
 		Limit:                 limit,
+		FailOnIncomplete:      finalCfg.failOnIncomplete,
 	}
-	if finalCfg.showSuppressed {
-		return formatter.Format(matches, suppressedMatches, opts)
+	if r == nil {
+		return opts
 	}
-	return formatter.Format(matches, nil, opts)
+	// An explicitly requested artifact is written even when pre-commit mode would otherwise stay
+	// silent, as on --file. See FormatterOptions.OutputToFile (#353).
+	opts.OutputToFile = r.outputToFile
+	opts.NotExamined = r.notExamined
+	if finalCfg.format != "text" {
+		opts.Stats = r.stats(matches)
+	}
+	scope := r.scope
+	scope.ConfidenceLevel = confidence
+	opts.Scan = formatters.NewScanScope(scope)
+	return opts
+}
+
+// stats is the file path's stats block for a run over one virtual file. The counts are over the
+// matches the report renders, which is what --file counts them over.
+func (r *stdinReport) stats(matches []detector.Match) *formatters.ScanStats {
+	var high, medium, low int
+	for _, m := range matches {
+		switch {
+		case m.Confidence >= 90:
+			high++
+		case m.Confidence >= 60:
+			medium++
+		default:
+			low++
+		}
+	}
+	return &formatters.ScanStats{
+		TotalFiles: 1,
+		// A cut-short input is counted processed AND not examined, as --file counts a cut-short file:
+		// it was read and partly scanned.
+		FilesProcessed:         1,
+		FilesNotExamined:       len(r.notExamined),
+		DisabledDetectionTypes: r.disabledDetectionTypes,
+		TotalFindings:          len(matches),
+		High:                   high,
+		Medium:                 medium,
+		Low:                    low,
+		Suppressed:             r.suppressedCount,
+		Duration:               r.elapsed.Seconds(),
+	}
+}
+
+// stdinNotExamined is the structured not-examined entry for a cut-short --stdin scan, with the cause
+// core.ScanContent stated and the detail humanized as --file humanizes it.
+func stdinNotExamined(result *core.ScanResult, label string) []formatters.NotExaminedFile {
+	if result == nil || len(result.NotExamined) == 0 {
+		return nil
+	}
+	entries := make([]unscannedEntry, 0, len(result.NotExamined))
+	for _, nf := range result.NotExamined {
+		cause, ok := fromProducerCause(nf.Cause)
+		if !ok {
+			// ScanContent names only cut-shorts; an unstated cause on this path is one.
+			cause = causeCutShort
+		}
+		path := nf.Path
+		if path == "" {
+			path = label
+		}
+		entries = append(entries, unscannedEntry{Path: path, Cause: cause, Detail: humanizeReason(path, nf.Detail)})
+	}
+	return toFormatterNotExamined(entries)
+}
+
+// The scope block both input paths render (#904). These helpers live beside the --stdin report because
+// --file builds its FormatterOptions from them too, and one copy is what keeps the two paths agreeing.
+
+// stdinChecksRun is the checks core.ScanContent runs for this --stdin scan, and the one it cannot run.
+//
+// core.ScanContent builds its validators from ParseChecksToRun(checks) and then deletes METADATA, which
+// has no file for the metadata extractors to read; this is that set, from the same call. It is not an
+// echo of --checks: an echo would list METADATA as run. core.ScanResult has no field for the set it
+// built, which is the better source (follow-up).
+func stdinChecksRun(checks []string) (run, notApplicable []string) {
+	for name, enabled := range core.ParseChecksToRun(checks) {
+		if enabled && name != "METADATA" {
+			run = append(run, name)
+		}
+	}
+	sort.Strings(run)
+	return run, []string{"METADATA"}
+}
+
+// validatorNames is the check names of a validator set: on --file, the set handed to the detector.
+func validatorNames(validators map[string]detector.Validator) []string {
+	names := make([]string, 0, len(validators))
+	for name := range validators {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// fileScanScope is --file's scope block: the validator set main() handed the detector, the parsed
+// confidence filter, and what those validators report config disabled. nil for a full-scope run.
+func fileScanScope(
+	validators map[string]detector.Validator,
+	confidence map[string]bool,
+	disabled map[string][]string,
+	run *preparedRun,
+	flags extractedFlags,
+	sm *suppressions.SuppressionManager,
+) *formatters.ScanScope {
+	in := scopeInputsFor(validatorNames(validators), nil, disabled, run, flags, sm)
+	in.ConfidenceLevel = confidence
+	return formatters.NewScanScope(in)
+}
+
+// scopeInputsFor gathers what both input paths know about a run for formatters.NewScanScope, except
+// the confidence filter. The profile and the config source come from what prepareRun settled, not
+// from re-reading flags: the profile is the one the run is under, whether --profile or pre-commit
+// mode selected it.
+func scopeInputsFor(
+	checksRun, notApplicable []string,
+	disabled map[string][]string,
+	run *preparedRun,
+	flags extractedFlags,
+	sm *suppressions.SuppressionManager,
+) formatters.ScopeInputs {
+	in := formatters.ScopeInputs{
+		ChecksRun:               checksRun,
+		AllChecks:               core.CheckNames(),
+		ChecksNotApplicable:     notApplicable,
+		DisabledDetectionTypes:  disabled,
+		SuppressionRulesEnabled: suppressionRulesInForce(sm),
+	}
+	if run == nil {
+		return in
+	}
+	if run.activeProfile != nil && run.effectiveProfileName != "" {
+		by := formatters.ProfileSelectedByPrecommit
+		if flags.profileName != "" {
+			by = formatters.ProfileSelectedByFlag
+		}
+		in.Profile = &formatters.ScanProfile{Name: run.effectiveProfileName, SelectedBy: by}
+	}
+	sourcePath := ""
+	if run.cfg != nil {
+		sourcePath = run.cfg.SourcePath
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = ""
+	}
+	in.Config = formatters.ConfigSourceOf(sourcePath, flags.configFile != "", cwd)
+	return in
+}
+
+// suppressionRulesInForce counts the rules IsSuppressed can apply: enabled, applied by the loader (#866)
+// and not expired, in a manager that is itself enabled.
+func suppressionRulesInForce(sm *suppressions.SuppressionManager) int {
+	if sm == nil || !sm.IsEnabled() {
+		return 0
+	}
+	now := time.Now()
+	n := 0
+	for _, rule := range sm.ListSuppressions() {
+		if rule.Enabled && rule.NotApplied == "" && (rule.ExpiresAt == nil || now.Before(*rule.ExpiresAt)) {
+			n++
+		}
+	}
+	return n
+}
+
+// configChecksNarrowing is the checks a working-directory config limited a run to, for the provenance
+// note (#673 §2): the note used to say only that such a config "can disable detection types".
+type configChecksNarrowing struct {
+	run, notRun, notApplicable []string
+	total                      int
+}
+
+// String is the note's clause, "EMAIL (18 of 19 not run)", naming what the input path cannot run so
+// the counts add up: "EMAIL (17 of 19 not run, METADATA not applicable)" on --stdin.
+func (n *configChecksNarrowing) String() string {
+	ran := "no check"
+	if len(n.run) > 0 {
+		ran = strings.Join(n.run, ", ")
+	}
+	counts := fmt.Sprintf("%d of %d not run", len(n.notRun), n.total)
+	if len(n.notApplicable) > 0 {
+		counts += ", " + strings.Join(n.notApplicable, ", ") + " not applicable"
+	}
+	return ran + " (" + counts + ")"
+}
+
+// configChecksNarrowingFor returns what the CONFIG narrowed about the checks that ran, or nil when it
+// narrowed nothing: --checks chose them, the built-in precommit profile chose them (a config may widen
+// that profile's set but not narrow it, #768), or every check ran.
+func configChecksNarrowingFor(cfg *config.Config, effectiveProfileName string, checksRun, notApplicable []string) *configChecksNarrowing {
+	if cfg == nil || isFlagSet("checks") || cfg.BuiltinProfile(effectiveProfileName) != nil {
+		return nil
+	}
+	all := core.CheckNames()
+	skip := make(map[string]bool, len(checksRun)+len(notApplicable))
+	for _, name := range checksRun {
+		skip[name] = true
+	}
+	for _, name := range notApplicable {
+		skip[name] = true
+	}
+	var notRun []string
+	for _, name := range all {
+		if !skip[name] {
+			notRun = append(notRun, name)
+		}
+	}
+	if len(notRun) == 0 {
+		return nil
+	}
+	run := append([]string(nil), checksRun...)
+	sort.Strings(run)
+	return &configChecksNarrowing{run: run, notRun: notRun, notApplicable: notApplicable, total: len(all)}
 }
 
 // shouldSuppressStdinProse returns true when the human-readable progress

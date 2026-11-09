@@ -6,6 +6,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,16 +17,67 @@ type failingExporter struct{ err error }
 
 func (f failingExporter) ExportAuditLog(string) error { return f.err }
 
+// captureStderr runs fn with os.Stderr pointed at a temp file and returns what fn wrote there. The
+// functions under test print their operator-facing message straight to os.Stderr, so without this a
+// test that drives an error path prints an `Error:` line into the package's own output; `go test`
+// shows that output whenever the package fails for any other reason, which is how a passing test's
+// deliberate "confidence must be between 0 and 1" came to read as a product failure in a Windows CI
+// log. Only for tests that do not call t.Parallel: a sequential top-level test runs alone, so no other
+// test writes to os.Stderr while it is swapped.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "stderr-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	os.Stderr = f
+	defer func() {
+		os.Stderr = old
+		_ = f.Close()
+	}()
+	fn()
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	out, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
 // TestAnAuditLogThatDoesNotValidateFailsTheRun: ExportAuditLog writes nothing when an entry does not
 // validate, and that used to reach the same `Warning:` at exit 0 as an unwritable path (#865). The CLI
-// cannot be made to produce an invalid entry, so the validation branch is driven through the seam.
+// cannot be made to produce an invalid entry (manager.go divides the 0-100 score by 100), so the
+// validation branch is driven through the seam, and the message it prints is asserted here rather than
+// left to appear in the package's output.
 func TestAnAuditLogThatDoesNotValidateFailsTheRun(t *testing.T) {
 	invalid := errors.New("failed to export audit logs: content_redactions[0].confidence must be between 0 and 1")
-	if err := exportRedactionAuditLog(failingExporter{invalid}, "audit.json", true, nil); !errors.Is(err, invalid) {
+	var err error
+	stderr := captureStderr(t, func() {
+		err = exportRedactionAuditLog(failingExporter{invalid}, "audit.json", true, nil)
+	})
+	if !errors.Is(err, invalid) {
 		t.Errorf("a validation failure returned %v, want it back so the caller exits 1", err)
 	}
-	if err := exportRedactionAuditLog(failingExporter{}, "audit.json", true, nil); err != nil {
+	for _, want := range []string{
+		"Error: Failed to export redaction audit log: " + invalid.Error(),
+		"Check that the audit log's directory exists and is writable; redacted files already written are left in place",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr lacks %q; got:\n%s", want, stderr)
+		}
+	}
+
+	stderr = captureStderr(t, func() {
+		err = exportRedactionAuditLog(failingExporter{}, "audit.json", true, nil)
+	})
+	if err != nil {
 		t.Errorf("a successful export returned %v", err)
+	}
+	if stderr != "" {
+		t.Errorf("a quiet successful export wrote to stderr, want nothing:\n%s", stderr)
 	}
 }
 

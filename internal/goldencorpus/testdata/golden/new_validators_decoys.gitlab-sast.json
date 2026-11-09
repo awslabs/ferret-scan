@@ -81,7 +81,7 @@
     {
       "category": "sast",
       "confidence": "Low",
-      "description": "Ferret Scan detected medical or healthcare identifier in this file.\n\n**Location:** <golden:new_validators_decoys> (line 7)\n**Confidence:** LOW (40.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nshape only 1EG4-TE5-MK73 without context\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove patient identifiers (MRN, Medicare MBI, insurance member ID) or replace them with synthetic values, and confirm the record's handling requirements. A DEA number is also a prescribing credential. An NPI is published publicly and is usually safe alone.",
+      "description": "Ferret Scan detected medical or healthcare identifier in this file.\n\n**Location:** <golden:new_validators_decoys> (line 7)\n**Confidence:** LOW (40.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nshape only 1EG4-TE5-MK73 without context\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove patient identifiers (MRN, Medicare MBI, NHS or CHI number, insurance member ID) or replace them with synthetic values, and confirm the record's handling requirements. A DEA number is also a prescribing credential. An NPI is published publicly and is usually safe alone.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {

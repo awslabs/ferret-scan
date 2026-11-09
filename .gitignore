@@ -257,3 +257,7 @@ uv.lock
 # keeps `git status` readable — an 11MB untracked directory at the top of every
 # status listing is how a real stray file gets overlooked.
 .perfbase/
+
+# Local real-world document corpus for test-plan dimension 9 (docs/testing/TEST_PLAN.md); never committed.
+ferret-corpus/
+/corpus/

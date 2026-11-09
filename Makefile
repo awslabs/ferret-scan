@@ -636,9 +636,9 @@ container-build:
 container-run:
 	@echo "Running container..."
 	@if command -v docker >/dev/null 2>&1; then \
-		docker run -p 8080:8080 --rm ferret-scan:latest; \
+		docker run -p 127.0.0.1:8080:8080 --rm ferret-scan:latest --web --port 8080; \
 	elif command -v finch >/dev/null 2>&1; then \
-		finch run -p 8080:8080 --rm ferret-scan:latest; \
+		finch run -p 127.0.0.1:8080:8080 --rm ferret-scan:latest --web --port 8080; \
 	else \
 		echo "Error: Neither Docker nor Finch found"; \
 		exit 1; \
@@ -655,9 +655,9 @@ container-test:
 		echo "Error: Neither Docker nor Finch found"; \
 		exit 1; \
 	fi; \
-	$$CONTAINER_CMD run -d --name ferret-test -p 8081:8080 ferret-scan:latest; \
+	$$CONTAINER_CMD run -d --name ferret-test -p 127.0.0.1:8081:8080 ferret-scan:latest --web --port 8080; \
 	sleep 5; \
-	curl -f http://localhost:8081/health || ($$CONTAINER_CMD stop ferret-test && $$CONTAINER_CMD rm ferret-test && exit 1); \
+	curl -f http://127.0.0.1:8081/health || { $$CONTAINER_CMD stop ferret-test; $$CONTAINER_CMD rm ferret-test; exit 1; }; \
 	$$CONTAINER_CMD stop ferret-test; \
 	$$CONTAINER_CMD rm ferret-test; \
 	echo "✓ Container test passed with $$CONTAINER_CMD"
@@ -670,6 +670,21 @@ release-snapshot:
 release-test:
 	@echo "Testing GoReleaser configuration..."
 	@goreleaser check
+
+# Surface parity (#907): the golden-corpus inputs, and CORPUS=<dir> when set, through the host CLI,
+# the host web UI on 127.0.0.1, the container CLI and the container web UI published on 127.0.0.1
+# only, diffed. Builds the image from this checkout unless SURFACE_PARITY_ARGS passes --image.
+# A green run on all four surfaces is what scripts/pr-checklist.sh reports as dimension 14.
+# docs/testing/SURFACE_PARITY.md documents the flags, the output and the allowlist.
+.PHONY: surface-parity surface-parity-inputs
+surface-parity:
+	@./scripts/surface-parity.sh $(SURFACE_PARITY_ARGS)
+
+# Write the golden-corpus inputs to SURFACE_PARITY_INPUTS (an absolute directory) and stop, for
+# running one surface by hand.
+surface-parity-inputs:
+	@test -n "$(SURFACE_PARITY_INPUTS)" || { echo "set SURFACE_PARITY_INPUTS=/absolute/dir"; exit 2; }
+	@GOLDEN_DUMP_DIR="$(SURFACE_PARITY_INPUTS)" go test -count=1 -run '^TestDumpInputs$$' ./internal/goldencorpus/
 
 # Test cleanup functionality
 test-cleanup:
@@ -795,3 +810,23 @@ sync-go-version:
 	@echo "📝 Updated files may need to be committed:"
 	@echo "   git add go.mod .go-version Dockerfile .gitlab-ci.yml"
 	@echo "   git commit -m 'chore: sync Go version to $(shell cat .go-version)'"
+
+# Real-file corpus: the standing instrument behind TEST_PLAN dimension 9 and the other dimensions a
+# real document can answer (CORPUS_PLAN.md in the corpus root). The corpus lives next to this
+# repository, ../ferret-corpus, or CORPUS=<dir> (or $FERRET_CORPUS_DIR), and is never committed.
+# PRIVATE=1 adds the operator's private set, which is reported as aggregates only.
+.PHONY: corpus-fetch corpus-ab corpus-baseline
+
+# Fetch, top up and verify the public set (licence-clean files in every format the router reads,
+# one MANIFEST.tsv row each); idempotent, and a complete corpus is checked without a network call.
+corpus-fetch:
+	@./scripts/corpus-fetch.sh $(if $(CORPUS),--corpus $(CORPUS),)
+
+# BASE (default origin/main) against HEAD (default HEAD) on every dimension; takes long, see the log.
+corpus-ab:
+	@./scripts/corpus-ab.sh $(or $(BASE),origin/main) $(or $(HEAD),HEAD) $(if $(CORPUS),--corpus $(CORPUS),) $(if $(PRIVATE),--include-private,)
+
+# Record BASE (default origin/main) as <corpus>/baselines/<sha>.json, which later A/Bs and the
+# standing timing fixtures read.
+corpus-baseline:
+	@./scripts/corpus-ab.sh --baseline $(or $(BASE),origin/main) $(if $(CORPUS),--corpus $(CORPUS),) $(if $(PRIVATE),--include-private,)

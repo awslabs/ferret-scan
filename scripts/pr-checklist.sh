@@ -147,6 +147,23 @@ else
   na "8 web / CSP" "no web/template/asset file touched"
 fi
 
+# 14. surfaces (web + container). /scan and /export consume every validator, formatter, suppression
+#     and config change, and the image runs the same binary in another runtime, so "no web file
+#     touched" says nothing about them (#907). The comparison needs a container runtime and minutes,
+#     so it is not run here: scripts/surface-parity.sh writes a marker under the git dir after a green
+#     run of all four surfaces, recording the checkout's content (a tree object), and this line is RAN
+#     only when that content is this checkout's. N/A only for a diff of docs and tests alone.
+sp_marker="$(git rev-parse --git-dir)/surface-parity.ok"
+sp_state="$(scripts/surface-parity.sh --print-state 2>/dev/null || true)"
+if [ -f "$sp_marker" ] && [ -n "$sp_state" ] && [ "$(sed -n 's/^state=//p' "$sp_marker")" = "$sp_state" ]; then
+  ok "14 surfaces (web+container)" "make surface-parity green on this checkout at $(sed -n 's/^when=//p' "$sp_marker")"
+elif echo "$changed" | grep -qvE '(\.md$|^docs/|_test\.go$|/testdata/|^changelog\.d/)'; then
+  todo "14 surfaces (web+container)" "run make surface-parity on this checkout (host CLI, host web,
+                                   container CLI, container web); a green run marks this RAN"
+else
+  na "14 surfaces (web+container)" "docs and tests only; no surface consumes this diff"
+fi
+
 # 10. non-vacuity — a new test must fail on the pre-change code.
 if echo "$changed" | grep -q '_test\.go$'; then
   todo "10 non-vacuity" "new tests MUST fail on the parent commit; prove it by reverting

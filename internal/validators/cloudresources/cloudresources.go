@@ -69,6 +69,9 @@ type Validator struct {
 	// Custom patterns from configuration.
 	customPatterns []*regexp.Regexp
 
+	// configWarnings are the configured values Configure could not use; see ConfigWarnings.
+	configWarnings []config.ValueWarning
+
 	// Observability (following standard pattern).
 	observer observability.Observer
 }
@@ -769,6 +772,14 @@ var validProviderNames = map[string]bool{
 
 // Configure loads enabled_providers and custom_patterns from the
 // "cloud_resources" section of the validators configuration.
+//
+// A value it cannot use is dropped, as it always was, and is now also recorded
+// for ConfigWarnings (#903). Before, the debug observer was the only channel for
+// three of those shapes, and no observer is attached when Configure runs, so
+// all ten measured misconfigurations were silent in every mode, --debug
+// included; a non-bool provider, a scalar custom_patterns and a non-string
+// entry had no message at all. An absent key, or one present with no value,
+// configures nothing and is not a defect.
 func (v *Validator) Configure(cfg *config.Config) {
 	if cfg == nil || cfg.Validators == nil {
 		return
@@ -778,33 +789,99 @@ func (v *Validator) Configure(cfg *config.Config) {
 		return
 	}
 
-	if providers, ok := cloudConfig["enabled_providers"].(map[string]interface{}); ok {
-		for provider, enabled := range providers {
+	providersPath := config.ValidatorKeyPath("cloud_resources", "enabled_providers")
+	switch providers := cloudConfig["enabled_providers"].(type) {
+	case nil:
+	case map[string]interface{}:
+		// In name order, so the warnings read the same on every run; each provider is
+		// set independently, so the order changes nothing else.
+		names := make([]string, 0, len(providers))
+		for name := range providers {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, provider := range names {
+			path := providersPath + "." + provider
 			if !validProviderNames[provider] {
 				v.logDetail(fmt.Sprintf("Warning: unknown provider name %q in enabled_providers, skipping", provider))
+				v.warnValue(path, unknownProviderProblem(provider), "ignored")
 				continue
 			}
-			if enabledBool, ok := enabled.(bool); ok {
-				v.enabledProviders[provider] = enabledBool
+			switch enabled := providers[provider].(type) {
+			case bool:
+				v.enabledProviders[provider] = enabled
+			case nil:
+				// `aws:` with no value sets nothing, like an absent key.
+			default:
+				v.warnValue(path, config.NotABoolean(enabled),
+					fmt.Sprintf("ignored; %s detection stays %s", provider, onOff(v.enabledProviders[provider])))
 			}
 		}
-	} else if _, exists := cloudConfig["enabled_providers"]; exists {
+	default:
 		v.logDetail("Warning: enabled_providers has unexpected type, expected map[string]interface{}")
+		v.warnValue(providersPath, config.WrongType("a map of provider names to true or false", providers),
+			"ignored; it switches no provider on or off")
 	}
 
-	if patterns, ok := cloudConfig["custom_patterns"].([]interface{}); ok {
-		for _, pattern := range patterns {
-			if patternStr, ok := pattern.(string); ok {
-				if regex, err := regexp.Compile(patternStr); err == nil {
-					v.customPatterns = append(v.customPatterns, regex)
-				} else {
-					v.logDetail(fmt.Sprintf("Invalid custom pattern %q: %v", patternStr, err))
-				}
+	patternsPath := config.ValidatorKeyPath("cloud_resources", "custom_patterns")
+	switch patterns := cloudConfig["custom_patterns"].(type) {
+	case nil:
+	case []interface{}:
+		for i, pattern := range patterns {
+			path := config.ElementPath(patternsPath, i)
+			patternStr, ok := pattern.(string)
+			if !ok {
+				v.warnValue(path, config.WrongType("a pattern string", pattern), "skipped")
+				continue
 			}
+			regex, err := regexp.Compile(patternStr)
+			if err != nil {
+				v.logDetail(fmt.Sprintf("Invalid custom pattern %q: %v", patternStr, err))
+				v.warnValue(path, config.InvalidRegex(err), "skipped")
+				continue
+			}
+			v.customPatterns = append(v.customPatterns, regex)
 		}
+	default:
+		v.warnValue(patternsPath, config.WrongType("a list of patterns", patterns),
+			"ignored; it adds no custom pattern")
 	}
 
 	v.logStartup()
+}
+
+// ConfigWarnings returns the configured values Configure could not use, in the order it met them,
+// across every Configure call (#903). It records them rather than printing: the caller that owns the
+// output prints them, so they reach every entry point and never write into a stream that carries a
+// findings document. The slice is a copy.
+func (v *Validator) ConfigWarnings() []config.ValueWarning {
+	return append([]config.ValueWarning(nil), v.configWarnings...)
+}
+
+func (v *Validator) warnValue(path, problem, effect string) {
+	v.configWarnings = append(v.configWarnings, config.NewValueWarning(path, problem, effect))
+}
+
+// unknownProviderProblem names what is wrong with a provider name enabled_providers does not know. A name
+// that is a known one in another case gets that name: provider names are lower case, and `AWS: false`
+// was measured leaving aws detection on with nothing said.
+func unknownProviderProblem(name string) string {
+	if lower := strings.ToLower(name); lower != name && validProviderNames[lower] {
+		return fmt.Sprintf("unknown provider (names are lower case: %q)", lower)
+	}
+	known := make([]string, 0, len(validProviderNames))
+	for n := range validProviderNames {
+		known = append(known, n)
+	}
+	sort.Strings(known)
+	return "unknown provider (known: " + strings.Join(known, ", ") + ")"
+}
+
+func onOff(on bool) string {
+	if on {
+		return "on"
+	}
+	return "off"
 }
 
 func (v *Validator) logStartup() {

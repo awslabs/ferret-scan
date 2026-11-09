@@ -144,6 +144,9 @@ type Validator struct {
 	// Configuration tracking
 	patternsConfigured bool
 
+	// configWarnings are the configured values Configure could not use; see ConfigWarnings.
+	configWarnings []config.ValueWarning
+
 	// Social media profile clustering configuration
 	clusteringConfig SocialMediaClusteringConfig
 
@@ -348,14 +351,21 @@ func (v *Validator) SetObserver(observer observability.Observer) {
 	v.observer = observer
 }
 
-// Configure configures the validator with custom settings from the configuration
+// Configure configures the validator with custom settings from the configuration.
+//
+// A value it cannot use is dropped, as it always was, and is now also recorded for ConfigWarnings
+// (#903): a scalar where a list or map belongs, a non-string entry, a pattern RE2 rejects. Before, a
+// partly invalid pattern list reached only the debug channels, an all-invalid platform_patterns wrote a
+// generic warning straight to os.Stderr, and a scalar or non-string entry had no message at all.
+// Configure writes nothing to os.Stderr now; its details go to the debug observer when one is attached.
+// An absent key, or one present with no value, configures nothing and is not a defect.
 func (v *Validator) Configure(cfg *config.Config) {
 	// Enhanced error handling for configuration loading failures
 	defer func() {
 		if r := recover(); r != nil {
 			// Log panic recovery
-			if os.Getenv("FERRET_DEBUG") == "1" {
-				fmt.Fprintf(os.Stderr, "[ERROR] Social Media Validator: Configuration panic: %v\n", r)
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Configuration panic: %v", r))
 			}
 			// Ensure validator is in a safe state after panic
 			v.patternsConfigured = false
@@ -386,6 +396,8 @@ func (v *Validator) Configure(cfg *config.Config) {
 		return
 	}
 
+	patternsPath := config.ValidatorKeyPath("social_media", "platform_patterns")
+
 	// Update platform patterns if provided
 	if patterns, ok := smConfig["platform_patterns"].(map[string]any); ok {
 		// Set configuration flag to true when platform_patterns section is present
@@ -402,68 +414,105 @@ func (v *Validator) Configure(cfg *config.Config) {
 		validPlatforms := make(map[string][]string)
 		totalPatterns := 0
 		totalInvalid := 0
+		// Values that cannot be used, recorded after the loop: only then is it known which
+		// platforms kept a pattern, which decides what dropping each one cost.
+		var rejected []rejectedPattern
 
-		// Process each platform's patterns
-		for platform, platformPatternsAny := range patterns {
-			if platformPatternsList, ok := platformPatternsAny.([]any); ok {
-				validPatterns := []string{}
-				invalidCount := 0
-
-				// Validate each pattern for this platform
-				for _, patternAny := range platformPatternsList {
-					if patternStr, ok := patternAny.(string); ok {
-						// Add case-insensitive flag if not already present
-						processedPattern := v.ensureCaseInsensitive(patternStr)
-
-						// Validate regex pattern using regexp.Compile()
-						if _, err := regexp.Compile(processedPattern); err != nil {
-							// Log warning for invalid pattern but continue with valid ones
-							if v.observer != nil && v.observer.Debug() != nil {
-								v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Invalid %s pattern '%s': %v", platform, patternStr, err))
-								v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Skipping invalid regex pattern for %s: '%s' - Error: %v", platform, patternStr, err))
-							}
-
-							// Log invalid pattern in debug mode
-							if os.Getenv("FERRET_DEBUG") == "1" {
-								fmt.Fprintf(os.Stderr, "[DEBUG] Social Media: Invalid %s pattern: %v\n", platform, err)
-							}
-							invalidCount++
-							totalInvalid++
-							continue
-						}
-						validPatterns = append(validPatterns, processedPattern)
-						totalPatterns++
-					}
+		// Process each platform's patterns, in name order so the warnings read the same on every
+		// run (each platform's patterns are kept independently, so the order changes nothing else)
+		platforms := make([]string, 0, len(patterns))
+		for platform := range patterns {
+			platforms = append(platforms, platform)
+		}
+		sort.Strings(platforms)
+		for _, platform := range platforms {
+			platformPath := patternsPath + "." + platform
+			platformPatternsList, ok := patterns[platform].([]any)
+			if !ok {
+				// `github:` with no value loads nothing, like an absent platform. A scalar
+				// (`github: 'github\.com/…'`) was measured dropping every github finding silently.
+				if raw := patterns[platform]; raw != nil {
+					rejected = append(rejected, rejectedPattern{
+						rejectedValue: rejectedValue{path: platformPath, problem: config.WrongType("a list of patterns", raw)},
+						platform:      platform,
+						whole:         true,
+					})
 				}
+				continue
+			}
+			validPatterns := []string{}
+			invalidCount := 0
 
-				// Store only valid patterns for this platform
+			// Validate each pattern for this platform
+			for i, patternAny := range platformPatternsList {
+				path := config.ElementPath(platformPath, i)
+				patternStr, ok := patternAny.(string)
+				if !ok {
+					rejected = append(rejected, rejectedPattern{
+						rejectedValue: rejectedValue{path: path, problem: config.WrongType("a pattern string", patternAny)},
+						platform:      platform,
+					})
+					continue
+				}
+				// Add case-insensitive flag if not already present
+				processedPattern := v.ensureCaseInsensitive(patternStr)
+
+				// Validate regex pattern using regexp.Compile(). The string checked is the one
+				// that is compiled for the scan, (?i) included.
+				if _, err := regexp.Compile(processedPattern); err != nil {
+					// Log warning for invalid pattern but continue with valid ones
+					if v.observer != nil && v.observer.Debug() != nil {
+						v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Invalid %s pattern '%s': %v", platform, patternStr, err))
+						v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Skipping invalid regex pattern for %s: '%s' - Error: %v", platform, patternStr, err))
+					}
+					rejected = append(rejected, rejectedPattern{
+						rejectedValue: rejectedValue{path: path, problem: config.InvalidRegex(err)},
+						platform:      platform,
+					})
+					invalidCount++
+					totalInvalid++
+					continue
+				}
+				validPatterns = append(validPatterns, processedPattern)
+				totalPatterns++
+			}
+
+			// Store only valid patterns for this platform
+			if len(validPatterns) > 0 {
+				validPlatforms[platform] = validPatterns
+			}
+
+			// Log platform-specific pattern validation results
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Platform %s pattern validation: %d valid, %d invalid patterns", platform, len(validPatterns), invalidCount))
 				if len(validPatterns) > 0 {
-					validPlatforms[platform] = validPatterns
-				}
-
-				// Log platform-specific pattern validation results
-				if v.observer != nil && v.observer.Debug() != nil {
-					v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Platform %s pattern validation: %d valid, %d invalid patterns", platform, len(validPatterns), invalidCount))
-					if len(validPatterns) > 0 {
-						v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Successfully loaded %d patterns for platform %s", len(validPatterns), platform))
-						for i, pattern := range validPatterns {
-							v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("  %s pattern %d: %s", platform, i+1, pattern))
-						}
-					}
-					if invalidCount > 0 {
-						v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Skipped %d invalid patterns for platform %s", invalidCount, platform))
+					v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Successfully loaded %d patterns for platform %s", len(validPatterns), platform))
+					for i, pattern := range validPatterns {
+						v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("  %s pattern %d: %s", platform, i+1, pattern))
 					}
 				}
-
-				// Log platform patterns in debug mode
-				if os.Getenv("FERRET_DEBUG") == "1" && len(validPatterns) > 0 {
-					fmt.Fprintf(os.Stderr, "[DEBUG] Social Media: %s loaded %d patterns\n", platform, len(validPatterns))
+				if invalidCount > 0 {
+					v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Skipped %d invalid patterns for platform %s", invalidCount, platform))
 				}
 			}
 		}
 
 		// Store only valid platform patterns
 		v.platformPatterns = validPlatforms
+
+		for _, r := range rejected {
+			effect := "skipped"
+			if r.whole {
+				effect = "ignored"
+			}
+			switch {
+			case len(validPlatforms) == 0:
+				effect += "; no platform has a valid pattern, so social media detection is off"
+			case len(validPlatforms[r.platform]) == 0:
+				effect += "; " + r.platform + " has no valid pattern, so " + r.platform + " is not detected"
+			}
+			v.warnValue(r.path, r.problem, effect)
+		}
 
 		// Log overall pattern validation summary
 		if v.observer != nil && v.observer.Debug() != nil {
@@ -476,11 +525,6 @@ func (v *Validator) Configure(cfg *config.Config) {
 			}
 		}
 
-		// Log total patterns in debug mode
-		if os.Getenv("FERRET_DEBUG") == "1" && len(validPlatforms) > 0 {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Social Media: Loaded %d patterns across %d platforms\n", totalPatterns, len(validPlatforms))
-		}
-
 		// Handle case where all configured patterns are invalid - log warning
 		if len(validPlatforms) == 0 && len(patterns) > 0 {
 			v.logNoSocialMediaPatterns("all configured social media patterns are invalid")
@@ -489,25 +533,24 @@ func (v *Validator) Configure(cfg *config.Config) {
 		// Recompile patterns (only valid ones now)
 		v.compilePlatformPatterns()
 	} else {
+		// A present value that is not a map configures nothing, like an absent key, but the
+		// operator wrote it.
+		if raw := smConfig["platform_patterns"]; raw != nil {
+			effect := "ignored"
+			if len(v.compiledPatterns) == 0 {
+				effect = "ignored; social media detection is off"
+			}
+			v.warnValue(patternsPath, config.WrongType("a map of platform names to pattern lists", raw), effect)
+		}
 		// No platform_patterns configuration provided
 		if !v.patternsConfigured {
 			v.logNoSocialMediaPatterns("no social media patterns configured")
-
-			// Log no patterns in debug mode
-			if os.Getenv("FERRET_DEBUG") == "1" {
-				fmt.Fprintf(os.Stderr, "[INFO] Social Media: No patterns configured - detection disabled\n")
-			}
 		}
 	}
 
 	// Update positive keywords if provided
-	if keywords, ok := smConfig["positive_keywords"].([]any); ok {
-		customKeywords := []string{}
-		for _, keyword := range keywords {
-			if keywordStr, ok := keyword.(string); ok {
-				customKeywords = append(customKeywords, keywordStr)
-			}
-		}
+	if customKeywords, ok := v.configuredStrings(smConfig["positive_keywords"],
+		config.ValidatorKeyPath("social_media", "positive_keywords"), "the positive keywords in effect are unchanged"); ok {
 		if len(customKeywords) > 0 {
 			v.positiveKeywords = customKeywords
 			if v.observer != nil && v.observer.Debug() != nil {
@@ -517,13 +560,8 @@ func (v *Validator) Configure(cfg *config.Config) {
 	}
 
 	// Update negative keywords if provided
-	if keywords, ok := smConfig["negative_keywords"].([]any); ok {
-		customKeywords := []string{}
-		for _, keyword := range keywords {
-			if keywordStr, ok := keyword.(string); ok {
-				customKeywords = append(customKeywords, keywordStr)
-			}
-		}
+	if customKeywords, ok := v.configuredStrings(smConfig["negative_keywords"],
+		config.ValidatorKeyPath("social_media", "negative_keywords"), "the negative keywords in effect are unchanged"); ok {
 		if len(customKeywords) > 0 {
 			v.negativeKeywords = customKeywords
 			if v.observer != nil && v.observer.Debug() != nil {
@@ -533,19 +571,21 @@ func (v *Validator) Configure(cfg *config.Config) {
 	}
 
 	// Update platform-specific keywords if provided
-	if platformKeywords, ok := smConfig["platform_keywords"].(map[string]any); ok {
+	keywordsPath := config.ValidatorKeyPath("social_media", "platform_keywords")
+	switch platformKeywords := smConfig["platform_keywords"].(type) {
+	case nil:
+	case map[string]any:
 		customPlatformKeywords := make(map[string][]string)
-		for platform, keywordsAny := range platformKeywords {
-			if keywordsList, ok := keywordsAny.([]any); ok {
-				keywords := []string{}
-				for _, keyword := range keywordsList {
-					if keywordStr, ok := keyword.(string); ok {
-						keywords = append(keywords, keywordStr)
-					}
-				}
-				if len(keywords) > 0 {
-					customPlatformKeywords[platform] = keywords
-				}
+		platforms := make([]string, 0, len(platformKeywords))
+		for platform := range platformKeywords {
+			platforms = append(platforms, platform)
+		}
+		sort.Strings(platforms)
+		for _, platform := range platforms {
+			keywords, ok := v.configuredStrings(platformKeywords[platform], keywordsPath+"."+platform,
+				"it adds no "+platform+" keyword")
+			if ok && len(keywords) > 0 {
+				customPlatformKeywords[platform] = keywords
 			}
 		}
 		if len(customPlatformKeywords) > 0 {
@@ -554,6 +594,9 @@ func (v *Validator) Configure(cfg *config.Config) {
 				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Loaded custom platform keywords for %d platforms", len(customPlatformKeywords)))
 			}
 		}
+	default:
+		v.warnValue(keywordsPath, config.WrongType("a map of platform names to keyword lists", platformKeywords),
+			"ignored; the platform keywords in effect are unchanged")
 	}
 
 	// Update allowlist patterns if provided.
@@ -562,37 +605,57 @@ func (v *Validator) Configure(cfg *config.Config) {
 	// existing configuration keeps working. If both are present the inclusive spelling
 	// wins, and the older one is ignored rather than merged — a silent union of two lists
 	// would make the effective configuration depend on which key the reader noticed.
+	// Either key, present but not a list, is recorded; the older one only when it is read.
+	allowlistPath := config.ValidatorKeyPath("social_media", "allowlist_patterns")
 	allowlistKeyed, ok := smConfig["allowlist_patterns"].([]any)
 	if !ok {
+		if raw := smConfig["allowlist_patterns"]; raw != nil {
+			v.warnValue(allowlistPath, config.WrongType("a list of patterns", raw), "ignored")
+		}
+		allowlistPath = config.ValidatorKeyPath("social_media", legacyAllowlistKey)
 		allowlistKeyed, ok = smConfig["whitelist_patterns"].([]any)
+		if raw := smConfig["whitelist_patterns"]; !ok && raw != nil {
+			v.warnValue(allowlistPath, config.WrongType("a list of patterns", raw), "ignored")
+		}
 	}
 	if allowlistPatterns := allowlistKeyed; ok {
 		customAllowlistPatterns := []string{}
 		validAllowlistPatterns := []string{}
 		invalidCount := 0
+		var rejected []rejectedValue
 
-		for _, patternAny := range allowlistPatterns {
-			if patternStr, ok := patternAny.(string); ok {
-				// Add case-insensitive flag if not already present
-				processedPattern := v.ensureCaseInsensitive(patternStr)
-
-				// Validate regex pattern
-				if _, err := regexp.Compile(processedPattern); err != nil {
-					// Log warning for invalid allowlist pattern but continue with valid ones
-					if v.observer != nil && v.observer.Debug() != nil {
-						v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Invalid allowlist pattern '%s': %v", patternStr, err))
-					}
-
-					// Log invalid allowlist pattern in debug mode
-					if os.Getenv("FERRET_DEBUG") == "1" {
-						fmt.Fprintf(os.Stderr, "[DEBUG] Social Media: Invalid allowlist pattern: %v\n", err)
-					}
-					invalidCount++
-					continue
-				}
-				customAllowlistPatterns = append(customAllowlistPatterns, patternStr)
-				validAllowlistPatterns = append(validAllowlistPatterns, processedPattern)
+		for i, patternAny := range allowlistPatterns {
+			path := config.ElementPath(allowlistPath, i)
+			patternStr, ok := patternAny.(string)
+			if !ok {
+				rejected = append(rejected, rejectedValue{path: path, problem: config.WrongType("a pattern string", patternAny)})
+				continue
 			}
+			// Add case-insensitive flag if not already present
+			processedPattern := v.ensureCaseInsensitive(patternStr)
+
+			// Validate regex pattern
+			if _, err := regexp.Compile(processedPattern); err != nil {
+				// Log warning for invalid allowlist pattern but continue with valid ones
+				if v.observer != nil && v.observer.Debug() != nil {
+					v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Invalid allowlist pattern '%s': %v", patternStr, err))
+				}
+				rejected = append(rejected, rejectedValue{path: path, problem: config.InvalidRegex(err)})
+				invalidCount++
+				continue
+			}
+			customAllowlistPatterns = append(customAllowlistPatterns, patternStr)
+			validAllowlistPatterns = append(validAllowlistPatterns, processedPattern)
+		}
+
+		// An allowlist entry that is dropped excludes nothing: what it would have
+		// excluded is reported. `(?<=github\.com/)…` was measured doing exactly that.
+		effect := "skipped; what it would have excluded is reported"
+		if len(validAllowlistPatterns) == 0 {
+			effect += "; no allowlist pattern from this list applies"
+		}
+		for _, r := range rejected {
+			v.warnValue(r.path, r.problem, effect)
 		}
 
 		if len(validAllowlistPatterns) > 0 {
@@ -604,17 +667,67 @@ func (v *Validator) Configure(cfg *config.Config) {
 					v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("  Allowlist pattern %d: %s", i+1, pattern))
 				}
 			}
-
-			// Log allowlist patterns in debug mode
-			if os.Getenv("FERRET_DEBUG") == "1" && len(validAllowlistPatterns) > 0 {
-				fmt.Fprintf(os.Stderr, "[DEBUG] Social Media: Loaded %d allowlist patterns\n", len(validAllowlistPatterns))
-			}
 		} else if invalidCount > 0 {
 			// All allowlist patterns were invalid
 			if v.observer != nil && v.observer.Debug() != nil {
 				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("All %d configured allowlist patterns are invalid", invalidCount))
 			}
 		}
+	}
+}
+
+// legacyAllowlistKey is the older spelling of allowlist_patterns, still read so existing configuration
+// keeps working; it names that key in a config warning.
+const legacyAllowlistKey = "whitelist_patterns"
+
+// ConfigWarnings returns the configured values Configure could not use, in the order it met them,
+// across every Configure call (#903). It records them rather than printing: the caller that owns the
+// output prints them, so they reach every entry point and never write into a stream that carries a
+// findings document. The slice is a copy.
+func (v *Validator) ConfigWarnings() []config.ValueWarning {
+	return append([]config.ValueWarning(nil), v.configWarnings...)
+}
+
+func (v *Validator) warnValue(path, problem, effect string) {
+	v.configWarnings = append(v.configWarnings, config.NewValueWarning(path, problem, effect))
+}
+
+// rejectedValue is a configured entry Configure could not use, held until the effect of dropping it
+// is known.
+type rejectedValue struct {
+	path    string
+	problem string
+}
+
+// rejectedPattern is a rejected platform_patterns value: one entry, or (whole) the platform's value.
+type rejectedPattern struct {
+	rejectedValue
+	platform string
+	whole    bool
+}
+
+// configuredStrings reads a configured list of strings, the shape of the keyword keys. ok is false when
+// the value is absent, null or not a list, which configures nothing; a value that is present and not a
+// list is recorded (unchangedEffect says what stays in place), and so is each entry that is not a string,
+// which is skipped as it always was.
+func (v *Validator) configuredStrings(raw any, path, unchangedEffect string) (values []string, ok bool) {
+	switch list := raw.(type) {
+	case nil:
+		return nil, false
+	case []any:
+		values = []string{}
+		for i, item := range list {
+			s, isString := item.(string)
+			if !isString {
+				v.warnValue(config.ElementPath(path, i), config.WrongType("a string", item), "skipped")
+				continue
+			}
+			values = append(values, s)
+		}
+		return values, true
+	default:
+		v.warnValue(path, config.WrongType("a list of strings", raw), "ignored; "+unchangedEffect)
+		return nil, false
 	}
 }
 
@@ -2343,7 +2456,8 @@ func (v *Validator) ensureCaseInsensitive(pattern string) string {
 	return "(?i)" + pattern
 }
 
-// logConfigurationError logs configuration loading errors with comprehensive context
+// logConfigurationError logs configuration loading errors with comprehensive context, to the debug
+// observer (it wrote the same facts to os.Stderr under FERRET_DEBUG before #903).
 func (v *Validator) logConfigurationError(errorType string, reason string) {
 	// Log through observability system if available
 	if v.observer != nil && v.observer.Debug() != nil {
@@ -2351,36 +2465,25 @@ func (v *Validator) logConfigurationError(errorType string, reason string) {
 		v.observer.Debug().LogDetail("socialmedia", "Social media detection is disabled due to configuration error")
 	}
 
-	// Also log to stderr in debug mode for comprehensive error tracking
-	if os.Getenv("FERRET_DEBUG") == "1" {
-		fmt.Fprintf(os.Stderr, "[ERROR] Social Media Validator: Configuration loading failed\n")
-		fmt.Fprintf(os.Stderr, "[ERROR]   Error Type: %s\n", errorType)
-		fmt.Fprintf(os.Stderr, "[ERROR]   Reason: %s\n", reason)
-		fmt.Fprintf(os.Stderr, "[ERROR]   Action: Social media detection disabled\n")
-		fmt.Fprintf(os.Stderr, "[ERROR]   Solution: Check configuration file format and structure\n")
-	}
-
 	// Set safe defaults
 	v.patternsConfigured = false
 	v.logNoSocialMediaPatterns(reason)
 }
 
-// logNoSocialMediaPatterns logs informational messages when no social media patterns are active
-// Implements configuration status tracking and logging similar to intellectual property validator
+// logNoSocialMediaPatterns logs, to the debug observer, why no social media pattern is active.
+// Implements configuration status tracking and logging similar to intellectual property validator.
+//
+// It used to write to os.Stderr as well: [INFO] lines under FERRET_DEBUG, and for "all configured
+// social media patterns are invalid" an unconditional "Warning: Social media detection disabled: …"
+// that named neither the pattern nor the error and bypassed pkg/scan's LogWriter (#903). Each invalid
+// pattern is now a config warning of its own, with its path and RE2's error, which the caller prints;
+// the detail below stays on the debug channel.
 func (v *Validator) logNoSocialMediaPatterns(reason string) {
 	message := "Social media detection disabled: " + reason + ". Configure 'validators.social_media.platform_patterns' to enable social media detection."
 
 	// Log to debug observer for detailed logging
 	if v.observer != nil && v.observer.Debug() != nil {
 		v.observer.Debug().LogDetail("socialmedia", message)
-	}
-
-	// Also log to stderr in debug mode for comprehensive audit trail
-	if os.Getenv("FERRET_DEBUG") == "1" {
-		fmt.Fprintf(os.Stderr, "[INFO] Social Media Validator: No patterns configured\n")
-		fmt.Fprintf(os.Stderr, "[INFO]   Reason: %s\n", reason)
-		fmt.Fprintf(os.Stderr, "[INFO]   Status: Social media detection disabled\n")
-		fmt.Fprintf(os.Stderr, "[INFO]   Solution: Configure 'validators.social_media.platform_patterns' to enable detection\n")
 	}
 
 	// Continue with existing detailed guidance logging
@@ -2416,44 +2519,6 @@ func (v *Validator) logNoSocialMediaPatterns(reason string) {
 			"      - \"test\"\n" +
 			"      - \"placeholder\""
 		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Configuration guidance for social media patterns:\n%s", guidance))
-
-		// Also log configuration guidance to stderr in verbose/debug mode
-		if os.Getenv("FERRET_DEBUG") == "1" {
-			fmt.Fprintf(os.Stderr, "[INFO] Configuration guidance for social media patterns:\n")
-			fmt.Fprintf(os.Stderr, "%s\n", guidance)
-		}
-	}
-
-	// Handle different logging scenarios based on reason
-	switch reason {
-	case "all configured social media patterns are invalid":
-		// Warning logging when all configured patterns are invalid
-		fmt.Fprintf(os.Stderr, "Warning: %s\n", message)
-		// Also include configuration guidance in the warning for quiet mode
-		fmt.Fprintf(os.Stderr, "Configure valid regex patterns in 'validators.social_media.platform_patterns' to enable social media detection.\n")
-
-	case "empty platform_patterns map configured":
-		// Informational logging when patterns map is empty
-		if os.Getenv("FERRET_DEBUG") == "1" {
-			fmt.Fprintf(os.Stderr, "[INFO] %s\n", message)
-		}
-
-	case "no social media patterns configured":
-		// Informational logging when no social media patterns are configured
-		if os.Getenv("FERRET_DEBUG") == "1" {
-			fmt.Fprintf(os.Stderr, "[INFO] %s\n", message)
-		}
-
-	case "all social media patterns failed to compile during regex compilation":
-		// Additional case for compilation failures - treat as warning
-		fmt.Fprintf(os.Stderr, "Warning: %s\n", message)
-		fmt.Fprintf(os.Stderr, "Check regex syntax in 'validators.social_media.platform_patterns' configuration.\n")
-
-	default:
-		// Default case - log as informational in debug mode
-		if os.Getenv("FERRET_DEBUG") == "1" {
-			fmt.Fprintf(os.Stderr, "[INFO] %s\n", message)
-		}
 	}
 }
 
@@ -2533,20 +2598,6 @@ func (v *Validator) compilePlatformPatterns() {
 						v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("%s pattern %d contains invalid regex syntax - check for unescaped special characters", platform, i+1))
 					}
 				}
-
-				// Also log to stderr in debug mode for comprehensive error tracking
-				if os.Getenv("FERRET_DEBUG") == "1" {
-					fmt.Fprintf(os.Stderr, "[ERROR] Social Media Validator: Failed to compile %s pattern\n", platform)
-					fmt.Fprintf(os.Stderr, "[ERROR]   Pattern %d: %s\n", i+1, pattern)
-					fmt.Fprintf(os.Stderr, "[ERROR]   Error: %v\n", err)
-					fmt.Fprintf(os.Stderr, "[ERROR]   Action: Skipping pattern and continuing with remaining patterns\n")
-					// Provide helpful context for common regex errors
-					if strings.Contains(err.Error(), "missing closing") {
-						fmt.Fprintf(os.Stderr, "[ERROR]   Hint: Check for unmatched brackets or parentheses in the pattern\n")
-					} else if strings.Contains(err.Error(), "invalid") {
-						fmt.Fprintf(os.Stderr, "[ERROR]   Hint: Check for unescaped special regex characters\n")
-					}
-				}
 				continue
 			}
 
@@ -2572,14 +2623,6 @@ func (v *Validator) compilePlatformPatterns() {
 				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Successfully compiled %d regex patterns for platform %s", compiledCount, platform))
 			}
 		}
-
-		// Also log to stderr in debug mode for comprehensive audit trail
-		if os.Getenv("FERRET_DEBUG") == "1" {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Social Media Validator: Platform %s compilation summary\n", platform)
-			fmt.Fprintf(os.Stderr, "[DEBUG]   Total patterns: %d\n", len(patterns))
-			fmt.Fprintf(os.Stderr, "[DEBUG]   Successfully compiled: %d\n", compiledCount)
-			fmt.Fprintf(os.Stderr, "[DEBUG]   Failed to compile: %d\n", failedCount)
-		}
 	}
 
 	// Log overall compilation summary in debug mode
@@ -2590,24 +2633,13 @@ func (v *Validator) compilePlatformPatterns() {
 		}
 	}
 
-	// Also log to stderr in debug mode for comprehensive audit trail
-	if os.Getenv("FERRET_DEBUG") == "1" {
-		fmt.Fprintf(os.Stderr, "[DEBUG] Social Media Validator: Overall compilation summary\n")
-		fmt.Fprintf(os.Stderr, "[DEBUG]   Total platforms: %d\n", len(v.platformPatterns))
-		fmt.Fprintf(os.Stderr, "[DEBUG]   Successfully compiled: %d patterns\n", totalCompiled)
-		fmt.Fprintf(os.Stderr, "[DEBUG]   Failed to compile: %d patterns\n", totalFailed)
-		fmt.Fprintf(os.Stderr, "[DEBUG]   Active platforms: %d\n", len(v.compiledPatterns))
-		if len(v.compiledPatterns) > 0 {
-			fmt.Fprintf(os.Stderr, "[DEBUG]   Platforms with compiled patterns: %v\n", v.getPlatformNames(v.compiledPatterns))
-		}
-	}
-
 	// Log performance metrics for pattern compilation
 	if v.observer != nil && v.observer.Debug() != nil {
 		v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Pattern compilation performance: %d cache hits, %d new compilations", cacheHits, totalCompiled-cacheHits))
 	}
 
-	// If all patterns failed to compile, log a warning
+	// If all patterns failed to compile, log it (debug observer only: Configure has already
+	// recorded each pattern RE2 rejected as a config warning, and nothing here writes to os.Stderr)
 	if totalCompiled == 0 && len(v.platformPatterns) > 0 {
 		v.logNoSocialMediaPatterns("all social media patterns failed to compile during regex compilation")
 	}
@@ -2686,9 +2718,6 @@ func (v *Validator) compileAllowlistPatterns() {
 			if v.observer != nil && v.observer.Debug() != nil {
 				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Skipping empty allowlist pattern at index %d", i+1))
 			}
-			if os.Getenv("FERRET_DEBUG") == "1" {
-				fmt.Fprintf(os.Stderr, "[WARNING] Social Media Validator: Empty allowlist pattern at index %d - skipping\n", i+1)
-			}
 			continue
 		}
 
@@ -2705,14 +2734,6 @@ func (v *Validator) compileAllowlistPatterns() {
 			if v.observer != nil && v.observer.Debug() != nil {
 				v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Failed to compile allowlist pattern %d: '%s' - Error: %v", i+1, pattern, err))
 			}
-
-			// Also log to stderr in debug mode
-			if os.Getenv("FERRET_DEBUG") == "1" {
-				fmt.Fprintf(os.Stderr, "[ERROR] Social Media Validator: Failed to compile allowlist pattern\n")
-				fmt.Fprintf(os.Stderr, "[ERROR]   Pattern %d: %s\n", i+1, pattern)
-				fmt.Fprintf(os.Stderr, "[ERROR]   Error: %v\n", err)
-				fmt.Fprintf(os.Stderr, "[ERROR]   Action: Skipping pattern and continuing with remaining patterns\n")
-			}
 			continue
 		}
 
@@ -2727,14 +2748,6 @@ func (v *Validator) compileAllowlistPatterns() {
 		if compiledCount > 0 {
 			v.observer.Debug().LogDetail("socialmedia", fmt.Sprintf("Successfully compiled %d allowlist regex patterns", compiledCount))
 		}
-	}
-
-	// Also log to stderr in debug mode
-	if os.Getenv("FERRET_DEBUG") == "1" {
-		fmt.Fprintf(os.Stderr, "[DEBUG] Social Media Validator: Allowlist compilation summary\n")
-		fmt.Fprintf(os.Stderr, "[DEBUG]   Total patterns: %d\n", len(v.allowlistPatterns))
-		fmt.Fprintf(os.Stderr, "[DEBUG]   Successfully compiled: %d\n", compiledCount)
-		fmt.Fprintf(os.Stderr, "[DEBUG]   Failed to compile: %d\n", failedCount)
 	}
 }
 

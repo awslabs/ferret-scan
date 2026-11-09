@@ -175,7 +175,12 @@ func loadConfiguration(configFile string) *config.Config {
 //
 // NOT gated on --quiet. That flag suppresses progress output; which config governed the
 // run is a disclosure, and in CI (where --quiet is most used) it matters more, not less.
-func reportConfigProvenance(w io.Writer, cfg *config.Config, explicitConfigFlag string) {
+//
+// narrowed, when given and non-nil, is what the config limited the checks to, and the note names
+// it instead of saying only that the config "can disable detection types" (#673 §2, #904): that
+// wording read the same for a config that switched off every check but one as for one that set
+// only an output format. Variadic so the note's existing callers keep their three arguments.
+func reportConfigProvenance(w io.Writer, cfg *config.Config, explicitConfigFlag string, narrowed ...*configChecksNarrowing) {
 	if w == nil || cfg == nil || cfg.SourcePath == "" {
 		return
 	}
@@ -197,6 +202,13 @@ func reportConfigProvenance(w io.Writer, cfg *config.Config, explicitConfigFlag 
 	rel, inside := paths.RelInside(cwd, cfg.SourcePath)
 	if !inside {
 		// Outside the working directory: the user config dir or similar. Expected.
+		return
+	}
+	if len(narrowed) > 0 && narrowed[0] != nil {
+		// Check names only, never config contents: they are the fixed vocabulary --checks takes.
+		fmt.Fprintf(w,
+			"Note: using project config %s found in the working directory; "+
+				"it limits checks to %s.\n", rel, narrowed[0])
 		return
 	}
 	fmt.Fprintf(w,
@@ -1419,6 +1431,13 @@ func main() {
 	// what governed the scan, not progress output.
 	disabledDetectionTypes, unrecognisedDisabledTypes := collectDisabledDetectionTypes(standardValidators)
 	reportDisabledDetectionTypes(os.Stderr, disabledDetectionTypes, unrecognisedDisabledTypes)
+	// Configured values these validators could not use (#903): a regex RE2 rejects, an entry of the wrong
+	// type. Each was dropped, so what it configured did not happen. Ungated, like the disclosure above and
+	// for the same reason, and unlike the unknown-key warning: --quiet and pre-commit mode are where a
+	// pattern that silently stopped detecting matters most.
+	for _, w := range core.ConfigWarnings(standardValidators) {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+	}
 
 	// Set up dual path validation integration
 	var dualPathObserver *observability.StandardObserver
@@ -1913,6 +1932,9 @@ func main() {
 		// discovered by walking up for .git. Empty means "root unknown", which a formatter
 		// degrades to a basename — never a dropped finding.
 		SourceRoot: resolveReportRoot(inputPaths),
+		// What this run could report, from the validator set handed to the detector above; nil for
+		// a run that ran in full, which therefore keeps every byte (#904). See fileScanScope.
+		Scan: fileScanScope(standardValidators, confidenceFilter, disabledDetectionTypes, run, flags, suppressionManager),
 	}
 
 	// Process all files using parallel processing
@@ -1980,7 +2002,8 @@ func main() {
 	//
 	// It writes to stderr, so scripts parsing results on stdout are unaffected, and it never changes
 	// the exit code.
-	reportConfigProvenance(os.Stderr, cfg, flags.configFile)
+	reportConfigProvenance(os.Stderr, cfg, flags.configFile,
+		configChecksNarrowingFor(cfg, effectiveProfileName, validatorNames(standardValidators), nil))
 
 	// The built-in precommit profile's one remaining override of a config, named
 	// under the same rule as the note above (#768).
@@ -2336,7 +2359,7 @@ func main() {
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to generate suppression rules: %v\n", err)
 			} else {
-				fmt.Fprintf(os.Stderr, "Updated suppression rules: existing rules had last_seen_at updated, new rules added (disabled by default)\n")
+				suppressions.WriteGenerationReport(os.Stderr, suppressionManager.LastGeneration())
 				fmt.Fprintf(os.Stderr, "Edit the suppression file to enable specific rules by setting 'enabled: true'\n")
 			}
 		} else {

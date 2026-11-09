@@ -150,7 +150,7 @@ profiles:
           - copyright
 ```
 
-Note: The `--disable-ip-types` CLI flag takes precedence over the config file setting.
+Note: The `--disable-ip-types` CLI flag takes precedence over both the config file setting and the active profile's, on `--file` and `--stdin` alike, and its list replaces the configured set rather than adding to it: with the profile above, `--disable-ip-types patent` reports copyright notices again and skips patents.
 
 ### Basic Profile Configuration
 

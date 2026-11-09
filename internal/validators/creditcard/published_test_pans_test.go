@@ -182,6 +182,38 @@ func expectCapped(before detector.Match) detector.Match {
 	return want
 }
 
+// pairedWithListedCard reports whether m is a security code paired with a card whose value is
+// on the published list, among the findings of the same scan.
+func pairedWithListedCard(v *Validator, m detector.Match, all []detector.Match) bool {
+	if m.Metadata[cardFrameKey] != frameSecurityCode || m.Metadata["paired"] != true {
+		return false
+	}
+	for _, c := range all {
+		if c.LineNumber != m.Metadata["paired_card_line"] {
+			continue
+		}
+		if _, listed := publishedTestPANSet[v.cleanCreditCardNumber(c.Text)]; listed {
+			return true
+		}
+	}
+	return false
+}
+
+// expectCappedCode is what the cap may change on a security code paired with a listed value:
+// its confidence to min(before, 15) and its ceiling to the card's 15. Nothing else.
+func expectCappedCode(before detector.Match) detector.Match {
+	want := before
+	if want.Confidence > testValueCeiling {
+		want.Confidence = testValueCeiling
+	}
+	want.Metadata = make(map[string]any, len(before.Metadata)+1)
+	for k, val := range before.Metadata {
+		want.Metadata[k] = val
+	}
+	want.Metadata[confidenceCeilingKey] = testValueCeiling
+	return want
+}
+
 // TestPublishedTestPANCapIsMinOfTheUncappedScore toggles the list over every listed value in
 // every measured shape: the finding set, Text, LineNumber, Type and Context are identical, and
 // a listed value's confidence is exactly min(before, 15). A displayed form whose digits are not
@@ -201,6 +233,10 @@ func TestPublishedTestPANCapIsMinOfTheUncappedScore(t *testing.T) {
 				want := before[i]
 				if _, listed := publishedTestPANSet[on.cleanCreditCardNumber(before[i].Text)]; listed {
 					want = expectCapped(before[i])
+				} else if pairedWithListedCard(on, before[i], before) {
+					// A security code takes its card's score and ceiling (#905), so the cap
+					// reaches the code beside a listed value as well.
+					want = expectCappedCode(before[i])
 				}
 				if !reflect.DeepEqual(after[i], want) {
 					t.Errorf("%q: with the list\n  got  %+v\n  want %+v", content, after[i], want)
@@ -316,8 +352,10 @@ func TestSuppressionRuleForTheUncappedFindingStillMatches(t *testing.T) {
 	content := "Card number: 378282246310005\n{\"number\": \"3566002020360505\", \"cvc\": \"123\"}\nname,card_number\nJordan Q,6011000990139424\n"
 	before, _ := withoutList().ValidateContent(content, "cards.txt")
 	after, _ := NewValidator().ValidateContent(content, "cards.txt")
-	if len(before) != 3 || len(after) != 3 {
-		t.Fatalf("want 3 findings each way, got %d without the list and %d with it", len(before), len(after))
+	// Three cards, and the labelled "cvc" beside the second one (#905), which takes its card's
+	// score and so moves with it.
+	if len(before) != 4 || len(after) != 4 {
+		t.Fatalf("want 4 findings each way, got %d without the list and %d with it", len(before), len(after))
 	}
 	for _, m := range before {
 		if m.Confidence <= testValueCeiling {

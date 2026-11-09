@@ -57,8 +57,8 @@ docker run --rm -v $(pwd):/data \
   public.ecr.aws/awslabs/ferret-scan:latest \
   --file /data/sample.txt
 
-# Run in web mode
-docker run --rm -p 8080:8080 \
+# Run in web mode, reachable from this machine only
+docker run --rm -p 127.0.0.1:8080:8080 \
   public.ecr.aws/awslabs/ferret-scan:latest \
   --web --port 8080
 ```

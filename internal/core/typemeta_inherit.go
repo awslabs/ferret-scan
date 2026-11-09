@@ -169,7 +169,9 @@ var typeParent = map[string]string{
 	"RECOVERY_CODES": "OTP",
 
 	// The SSN validator reports an ITIN under its own type (#884). It is the same nine-digit US
-	// taxpayer number shape, issued by the IRS from the 9xx areas the SSA never uses.
+	// taxpayer number shape, issued by the IRS from the 9xx areas the SSA never uses. Like the cloud
+	// sub-types above it also has copy of its own (supplementalDescriptors), because "Social Security
+	// Number Detected" misnames it; the mapping still supplies its weight.
 	"ITIN": "SSN",
 }
 
@@ -206,21 +208,22 @@ var supplementalDescriptors = map[string]TypeDescriptor{
 	"MEDICAL_ID": {
 		SARIFShort: "Medical Identifier Detected",
 		SARIFFull: "A healthcare identifier — a medical record number, a Medicare Beneficiary " +
-			"Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in " +
-			"the scanned content. Most of these identify a PATIENT and are protected health information; " +
-			"an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least " +
-			"sensitive of the group.",
+			"Identifier, a UK NHS number, a Scottish CHI number, an NPI, a DEA registration number or an " +
+			"insurance member ID — was detected in the scanned content. Most of these identify a PATIENT " +
+			"and are protected health information; an NPI identifies a PRACTITIONER and is published in a " +
+			"public registry, so it is the least sensitive of the group.",
 		SARIFHelp: "Treat a patient identifier as protected health information: remove it, or replace it " +
-			"with a synthetic value, and check whether the surrounding record must be handled under HIPAA " +
-			"or an equivalent regime. A DEA number additionally authorises controlled-substance " +
+			"with a synthetic value, and check whether the surrounding record must be handled under HIPAA, " +
+			"the UK GDPR or an equivalent regime. A DEA number additionally authorises controlled-substance " +
 			"prescribing, so it is a credential as well as an identifier. An NPI on its own is public " +
 			"information and usually needs no action — but an NPI beside a patient identifier links a " +
 			"named clinician to a named patient.",
 		SARIFSensitivityWeight: 8.0,
 		GitLabCheckDesc:        "Medical or healthcare identifier",
-		GitLabRemediation: "Remove patient identifiers (MRN, Medicare MBI, insurance member ID) or replace " +
-			"them with synthetic values, and confirm the record's handling requirements. A DEA number is " +
-			"also a prescribing credential. An NPI is published publicly and is usually safe alone.",
+		GitLabRemediation: "Remove patient identifiers (MRN, Medicare MBI, NHS or CHI number, insurance " +
+			"member ID) or replace them with synthetic values, and confirm the record's handling " +
+			"requirements. A DEA number is also a prescribing credential. An NPI is published publicly and " +
+			"is usually safe alone.",
 		GitLabName: "Medical Identifier Detected",
 	},
 
@@ -317,12 +320,36 @@ var supplementalDescriptors = map[string]TypeDescriptor{
 		SARIFHelp: "Remove the license number or replace it with a synthetic value. Because several " +
 			"jurisdictions derive the number from the holder's name and date of birth, the number itself " +
 			"can disclose those details even without them appearing in the text. Formats vary by " +
-			"jurisdiction, so verify a finding against the issuing state's pattern before dismissing it.",
+			"jurisdiction and several share one shape, so the finding's format property names the shape " +
+			"it matched, not the jurisdiction that issued it: NY_GA_9D is New York or Georgia, and a " +
+			"number from elsewhere with a US shape is reported under that shape's name (a contiguous " +
+			"Ontario number as NJ_1L14D, a contiguous Quebec number as FL_MI_1L12D). Check the value " +
+			"against every jurisdiction that uses its shape before dismissing it.",
 		SARIFSensitivityWeight: 7.0,
 		GitLabCheckDesc:        "Driver's license number",
 		GitLabRemediation: "Remove the driver's license number or replace it with a synthetic value. In " +
 			"several jurisdictions the number encodes the holder's name and date of birth.",
 		GitLabName: "Driver's License Detected",
+	},
+
+	// An ITIN reported "Social Security Number Detected" through its family: the same shape, but a
+	// different number from a different agency. Its own copy is used; the weight (10) still comes
+	// from SSN through typeParent.
+	"ITIN": {
+		SARIFShort: "Individual Taxpayer Identification Number Detected",
+		SARIFFull: "An IRS Individual Taxpayer Identification Number (ITIN) was detected in the scanned " +
+			"content. The IRS issues an ITIN to a person who needs a US taxpayer identification number " +
+			"but is not eligible for a Social Security Number. It is written like an SSN, nine digits " +
+			"beginning with 9, and it identifies its holder to the IRS as an SSN does, so it is " +
+			"sensitive personal information in the same way.",
+		SARIFHelp: "Handle an ITIN as you would an SSN: remove it, or replace it with synthetic test data, " +
+			"and keep real values in a system with access controls rather than in source, configuration " +
+			"files or logs. An ITIN appears on tax returns, payroll and banking records, so check the " +
+			"surrounding record for the holder's name and other identifiers.",
+		GitLabCheckDesc: "Individual Taxpayer Identification Number (ITIN)",
+		GitLabRemediation: "Remove ITINs from code and documentation, or replace them with synthetic test " +
+			"data. An ITIN identifies a taxpayer to the IRS as an SSN does.",
+		GitLabName: "Individual Taxpayer Identification Number Detected",
 	},
 }
 

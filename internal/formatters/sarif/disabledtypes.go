@@ -25,9 +25,10 @@ const disabledTypesNotificationID = "ferret-scan/detection-disabled-by-config"
 
 // attachDisabledDetectionTypes discloses that config switched detection sub-types off (#293).
 //
-// SARIF gets this and CSV/text/JUnit do not, because SARIF is the format most likely to be consumed
-// by a machine with nobody reading stderr — which is exactly the reader who would otherwise take a
-// narrowed scan for a clean one. Measured before this existed: a copyright notice scanned with
+// SARIF got this first because it is the format most likely to be consumed by a machine with nobody
+// reading stderr — which is exactly the reader who would otherwise take a narrowed scan for a clean
+// one. (JUnit, gitlab-sast and text now carry the sub-types too, in the scope block a narrowed run
+// renders; csv has no slot. See formatters.ScanScope.) Measured before this existed: a copyright notice scanned with
 // `--config` naming a file that disabled `copyright` produced a valid SARIF document with zero
 // results, zero notifications, and zero bytes of stderr.
 //
@@ -58,39 +59,10 @@ func attachDisabledDetectionTypes(run *SARIFRun, options formatters.FormatterOpt
 			len(subTypes), name, strings.Join(subTypes, ", "))))
 	}
 
-	// One invocation for one run: extend the existing entry if another disclosure created it.
-	if len(run.Invocations) > 0 {
-		run.Invocations[0].ToolExecutionNotifications = append(
-			run.Invocations[0].ToolExecutionNotifications, notifications...)
-	} else {
-		run.Invocations = append(run.Invocations, SARIFInvocation{
-			// True, always. Its only required member, and false means "the analysis did not
-			// complete", which consumers may treat as grounds to discard results. The analysis
-			// completed exactly as configured; it was configured to look at less.
-			ExecutionSuccessful:        true,
-			ToolExecutionNotifications: notifications,
-		})
-	}
-
-	// Declare the descriptor the notifications reference, exactly once.
-	for _, existing := range run.Tool.Driver.Notifications {
-		if existing.ID == disabledTypesNotificationID {
-			return
-		}
-	}
-	run.Tool.Driver.Notifications = append(run.Tool.Driver.Notifications, SARIFRule{
-		ID: disabledTypesNotificationID,
-		ShortDescription: SARIFMessage{
-			Text: "Configuration disabled detection sub-types, so this report covers less than the full validator set",
-		},
-		FullDescription: SARIFMessage{
-			Text: "A configuration file switched specific detection sub-types off for this run, so " +
-				"no finding of those sub-types could be produced for any file. The results present " +
-				"are accurate; what cannot be concluded is that the disabled sub-types are absent. " +
-				"A config discovered in the working directory governs the scan, so in CI this can " +
-				"be set by the same change the scan is reviewing.",
-		},
-	})
+	// One invocation for one run, extended if another disclosure created it, and the descriptor the
+	// notifications reference declared exactly once. Shared with attachScope, whose checks-not-run
+	// notification is the same class of fact (#904).
+	appendNarrowingNotifications(run, notifications...)
 }
 
 // newDisabledTypesNotification builds one notification.

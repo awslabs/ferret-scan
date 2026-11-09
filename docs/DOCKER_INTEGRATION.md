@@ -60,17 +60,25 @@ docker run --rm \
 
 ```bash
 # Start web server on port 8080
-docker run --rm -p 8080:8080 ferret-scan --web --port 8080
+docker run --rm -p 127.0.0.1:8080:8080 ferret-scan --web --port 8080
 
 # Custom port
-docker run --rm -p 9000:9000 ferret-scan --web --port 9000
+docker run --rm -p 127.0.0.1:9000:9000 ferret-scan --web --port 9000
 
 # With persistent configuration
 docker run --rm \
-  -p 8080:8080 \
+  -p 127.0.0.1:8080:8080 \
   -v ~/.ferret-scan:/home/ferret/.ferret-scan \
   ferret-scan --web --port 8080
 ```
+
+The `127.0.0.1:` prefix keeps the UI on this machine: inside the container the server binds
+`0.0.0.0` (the image sets `FERRET_CONTAINER_MODE=true`), so the publish is the boundary, and to use
+the UI from another machine you forward the port over SSH from that machine
+(`ssh -L 8080:127.0.0.1:8080 <docker-host>`, then open `http://localhost:8080`) rather than
+publishing it more widely. Keep every port on the way equal (the host port, the container port,
+`--port` and a tunnel's local port), as these examples do: the UI refuses a scan whose browser
+`Origin` names a port other than the one it listens on.
 
 ## Pre-commit Integration
 

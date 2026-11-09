@@ -444,7 +444,7 @@ func TestHonestlyLargeChunkIsStillCapped(t *testing.T) {
 //
 // My first attempt gated extractIPTC alongside the JFIF comment scan, on the reasoning that both use a
 // 2-byte marker. Measured over a 4,000-file real-image sample, that cost 41 findings on TIFFs — 40 of
-// them false positives worth losing, and one that was not: exiftool reports By-line "Jonathan Hess" on
+// them false positives worth losing, and one that was not: exiftool reports a photographer's By-line on
 // /Applications/Xcode.app/.../ResizeN-S.tiff, which this tool reported at PERSON_NAME 92 and stopped
 // reporting.
 //
@@ -456,7 +456,7 @@ func TestIPTCStillRunsOnNonJPEG(t *testing.T) {
 	dir := t.TempDir()
 
 	// A valid IPTC By-line record: 1C 02, record type 0x50, a 2-byte length, then the value.
-	const byline = "Jonathan Hess"
+	const byline = "Sample Photographer"
 	iptc := []byte{0x1C, 0x02, 0x50, 0x00, byte(len(byline))}
 	iptc = append(iptc, []byte(byline)...)
 

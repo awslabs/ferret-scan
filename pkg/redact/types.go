@@ -63,12 +63,15 @@ const (
 //
 // Field semantics:
 //
-//   - Type names a finding type. Match is exact and case-sensitive. Most
-//     validators emit a single type ("EMAIL", "SSN", "PHONE"), but the
-//     credit-card validator emits brand-specific types: "VISA",
-//     "MASTERCARD", "AMERICAN_EXPRESS", "DISCOVER", "JCB",
-//     "DINERS_CLUB", "UNKNOWN_CARD". To suppress all credit-card
-//     findings you must enumerate the brands you want to allow.
+//   - Type names a finding type. Match is exact and case-sensitive. Some
+//     validators emit a single type ("PHONE"); others emit several. The
+//     SSN validator emits "SSN" and "ITIN". The email validator emits the
+//     class of address it found ("BUSINESS", "GMAIL", ...), and "EMAIL"
+//     only for an address no class fits. The credit-card validator emits
+//     the brand: "VISA", "MASTERCARD", "AMERICAN_EXPRESS", "DISCOVER",
+//     "JCB", "DINERS_CLUB", "MAESTRO", "UNIONPAY", or "CREDIT_CARD" when
+//     the brand is unknown. To suppress all of one validator's findings
+//     you must enumerate its types.
 //
 //     TODO(future): a redact.ExpandTypeAliases([]string{"CREDIT_CARD"})
 //     helper or an Aliases []string field would close the gap. Tracked
@@ -139,12 +142,15 @@ type Request struct {
 // Finding is safe to log directly: the fmt verbs %v / %+v will not leak
 // the input payload because Match is not a field.
 type Finding struct {
-	// Type is the validator-assigned classification. For most checks
-	// this is the parent name (e.g. "EMAIL", "SSN", "PHONE"). For
-	// credit cards it is the brand-specific name emitted by the
-	// validator: "VISA", "MASTERCARD", "AMERICAN_EXPRESS",
-	// "DISCOVER", "JCB", "DINERS_CLUB", or "UNKNOWN_CARD". Suppression
-	// rules match this exact string — see Rule.Type.
+	// Type is the validator-assigned classification. For some checks
+	// this is the check name (e.g. "PHONE"); for others it is a
+	// sub-type: the SSN validator emits "SSN" or "ITIN", the email
+	// validator the class of address ("BUSINESS", "GMAIL", ...; "EMAIL"
+	// when no class fits), and the credit-card validator the brand
+	// ("VISA", "MASTERCARD", "AMERICAN_EXPRESS", "DISCOVER", "JCB",
+	// "DINERS_CLUB", "MAESTRO", "UNIONPAY", or "CREDIT_CARD" when the
+	// brand is unknown). Suppression rules match this exact string —
+	// see Rule.Type.
 	//
 	// To enumerate the actual type names produced by a given input,
 	// inspect Result.AuditRecord().FindingsByType after a Redact call.

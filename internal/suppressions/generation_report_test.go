@@ -4,8 +4,10 @@
 package suppressions
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
@@ -74,4 +76,26 @@ func TestGenerationCountsWhatItDid(t *testing.T) {
 			t.Errorf("%+v, want %+v", got, want)
 		}
 	})
+}
+
+// TestTheGenerationReportIsPrinted: the line --generate-suppressions prints replaces "existing rules had
+// last_seen_at updated, new rules added", which it printed whatever had happened (#885).
+func TestTheGenerationReportIsPrinted(t *testing.T) {
+	var buf bytes.Buffer
+	WriteGenerationReport(&buf, GenerationReport{Added: 3, Refreshed: 12})
+	if want := "Updated suppression rules: added 3 (disabled by default), refreshed 12, re-anchored 0, migrated 0 " +
+		"to the current hash formula\n"; buf.String() != want {
+		t.Errorf("%q\nwant %q", buf.String(), want)
+	}
+
+	buf.Reset()
+	WriteGenerationReport(&buf, GenerationReport{ReAnchored: 5, Ambiguous: 2, Unmatched: 1, NotEvaluated: 4})
+	lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+	if len(lines) != 5 || !strings.Contains(lines[0], "re-anchored 5,") ||
+		!strings.HasPrefix(lines[1], "Note: 5 rule(s) whose finding moved to another line now name that line") ||
+		!strings.HasPrefix(lines[2], "Note: 2 rule(s) were not re-anchored because their finding cannot be told apart") ||
+		!strings.HasPrefix(lines[3], "Note: 1 rule(s) for files with findings in this run matched none of them") ||
+		lines[4] != "Note: re-anchoring stopped at its limit of 500000 comparisons; 4 rule(s) were not considered and are unchanged" {
+		t.Errorf("report:\n%s", buf.String())
+	}
 }

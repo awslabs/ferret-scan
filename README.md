@@ -1,17 +1,31 @@
-# ferret-scan
+<!-- Header: the logo already carries the "Ferret Scan" wordmark, so it stands in for the title.
+     A table is the one layout GitHub renders side by side; it strips style attributes but keeps
+     width= on <img>, align= and valign= on cells. Badges that can change are all LIVE shields
+     endpoints (go.mod, PyPI, the latest release, the licence file, the stars count, the Go Tests
+     workflow); nothing in the row is hand-typed, so it cannot go stale again. -->
+<table>
+  <tr>
+    <td width="112" valign="middle">
+      <a href="https://github.com/awslabs/ferret-scan"><img src="docs/images/ferret-scan-logo-original.png" alt="Ferret Scan" width="96" /></a>
+    </td>
+    <td valign="middle">
+      <h1 id="ferret-scan" style="margin:0">ferret-scan</h1>
+      <p><strong>Find and redact sensitive data before it leaks.</strong></p>
+      <p>
+        <a href="LICENSE.txt"><img src="https://img.shields.io/github/license/awslabs/ferret-scan?label=License" alt="License" /></a>
+        <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/awslabs/ferret-scan?logo=go&logoColor=white&label=Go" alt="Go version from go.mod" /></a>
+        <a href="https://github.com/awslabs/ferret-scan/releases/latest"><img src="https://img.shields.io/github/v/release/awslabs/ferret-scan?logo=github&label=Release" alt="Latest release" /></a>
+        <a href="https://pypi.org/project/ferret-scan/"><img src="https://img.shields.io/pypi/v/ferret-scan?logo=pypi&logoColor=white&label=PyPI" alt="PyPI version" /></a>
+        <a href="https://github.com/awslabs/ferret-scan#install"><img src="https://img.shields.io/github/v/release/awslabs/ferret-scan?logo=homebrew&logoColor=white&label=Homebrew&color=FBB040" alt="Homebrew formula version (tracks the latest release)" /></a>
+        <a href="https://gallery.ecr.aws/awslabs/ferret-scan"><img src="https://img.shields.io/github/v/release/awslabs/ferret-scan?logo=amazonaws&logoColor=white&label=ECR%20Public&color=FF9900" alt="ECR Public image version (tracks the latest release)" /></a>
+        <a href="https://github.com/awslabs/ferret-scan/actions/workflows/go-test.yml"><img src="https://img.shields.io/github/actions/workflow/status/awslabs/ferret-scan/go-test.yml?branch=main&label=Go%20Tests" alt="Go Tests on main" /></a>
+        <a href="https://github.com/awslabs/ferret-scan/stargazers"><img src="https://img.shields.io/github/stars/awslabs/ferret-scan?style=social" alt="GitHub stars" /></a>
+      </p>
+    </td>
+  </tr>
+</table>
 
-<p align="center">
-  <img src="docs/images/ferret-scan-logo-original.png" alt="ferret-scan" width="240" />
-</p>
-
-**Find and redact sensitive data before it leaks.** A single-binary Go CLI (plus embedded web UI and Go library — `pkg/scan` for detection, `pkg/redact` for redaction) that detects PII, secrets, and IP markers in your files and streams — then redacts them in place, format-preserving, with context-aware confidence scoring. No runtime dependencies. No data leaves your host.
-
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.txt)
-[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
-[![PyPI](https://img.shields.io/pypi/v/ferret-scan?logo=pypi&logoColor=white&label=PyPI)](https://pypi.org/project/ferret-scan/)
-[![Homebrew](https://img.shields.io/badge/Homebrew-ferret--scan-FBB040?logo=homebrew&logoColor=white)](https://github.com/awslabs/ferret-scan#install)
-[![ECR Public](https://img.shields.io/badge/ECR%20Public-ferret--scan-FF9900?logo=amazonaws&logoColor=white)](https://gallery.ecr.aws/awslabs/ferret-scan)
-[![GitHub stars](https://img.shields.io/github/stars/awslabs/ferret-scan?style=social)](https://github.com/awslabs/ferret-scan)
+A single-binary Go CLI (plus embedded web UI and Go library — `pkg/scan` for detection, `pkg/redact` for redaction) that detects PII, secrets, and IP markers in your files and streams — then redacts them in place, format-preserving, with context-aware confidence scoring. No runtime dependencies. No data leaves your host.
 
 ![ferret-scan demo](docs/images/demo.svg)
 
@@ -47,7 +61,7 @@ Sensitive values are masked while the shape of the data survives — so downstre
 
 ## Why ferret-scan
 
-- **Confidence you can act on.** Scoring is context-aware, not just regex. A credit card in a financial document scores higher than the same digits in a test fixture, because the engine re-weights on document type and surrounding domain. Findings land in three bands: **HIGH (90–100)**, **MEDIUM (60–89)**, **LOW (0–59)**.
+- **Confidence you can act on.** Scoring is context-aware, not just regex. A credit card in a financial document scores higher than the same digits in a test fixture, because the engine re-weights on document type and surrounding domain. The document type (CSV, TSV, JSON, configuration, code, ...) is read from the whole document, not from its first screen: every line up to 32 KiB and 2,000 lines, and evenly spaced windows of a longer one. Findings land in three bands: **HIGH (90–100)**, **MEDIUM (60–89)**, **LOW (0–59)**.
 - **Redaction that composes.** The stdin gateway streams redacted bytes to stdout and findings to stderr, so it drops into any Unix pipe or CI step. Three strategies: `simple`, `format_preserving` (default), and `synthetic` (realistic fakes for building test datasets).
 - **Explainable, offline.** `--explain` attaches a plain-language rationale, a verdict (`likely_real` / `likely_test` / `uncertain`), and a drafted suppression reason to every finding. Fully deterministic — no network, no LLM.
 - **Ships everywhere.** One static binary, no runtime deps, a `scratch`-based Docker image (~5–10 MB), a `pip` package, a Homebrew tap, a pre-commit hook, and a stable Go library (`pkg/scan` + `pkg/redact`).
@@ -80,20 +94,20 @@ Nineteen validators, each purpose-built. Enable a subset with `--checks CREDIT_C
 
 | Validator | What it catches | Notes |
 |---|---|---|
-| `CREDIT_CARD` | Card numbers across 15+ brands | Luhn-validated; emits `VISA`, `MASTERCARD`, `AMERICAN_EXPRESS`, …; filters known test patterns |
-| `SECRETS` | API keys, tokens, credentials | Entropy analysis + 40+ patterns (AWS keys, GitHub tokens, Stripe, …) |
-| `SSN` | US Social Security Numbers | Domain-aware (HR / Tax / Healthcare context) |
-| `BANK_ACCOUNT` | Routing numbers, IBANs, SWIFT/BIC | ABA checksum, IBAN mod-97, SWIFT format; emits `ABA_ROUTING`, `IBAN`, `SWIFT_BIC`, `US_BANK_ACCOUNT` |
+| `CREDIT_CARD` | Card numbers from 8 brands: Visa, Mastercard, American Express, Discover, JCB, Diners Club, UnionPay, Maestro | Luhn-validated; emits `VISA`, `MASTERCARD`, `AMERICAN_EXPRESS`, `DISCOVER`, `JCB`, `DINERS_CLUB`, `UNIONPAY`, `MAESTRO`; a known test number (the card numbers payment processors publish for their sandboxes, a short test-pattern list, repeating shapes) is still reported, so still redacted, but capped at LOW 15 |
+| `SECRETS` | API keys, tokens, credentials | Provider tokens (AWS long-term `AKIA` and temporary `ASIA` access keys, GitHub, Google Cloud, Stripe, GitLab, Docker Hub, Slack), PEM/PGP private keys, JWTs, AWS secret keys, credentials in URLs (`scheme://user:pass@host`), keyword-labelled values, and entropy analysis. Temporary `ASIA` keys are HIGH beside their secret key or session token and LOW 55 alone; a joined key name (`apikey`, `accesstoken`) counts like `api_key`; an exact-length `sha1-` to `sha512-` integrity digest (lockfile `integrity`, `<script integrity>`, CSP) is skipped |
+| `SSN` | US Social Security Numbers and IRS ITINs | Domain-aware (HR / Tax / Healthcare context); emits `SSN` and `ITIN` (9XX area, 4th–5th digits 50–65, 70–88, 90–92 or 94–99) |
+| `BANK_ACCOUNT` | Routing numbers, IBANs, SWIFT/BIC | ABA checksum; IBAN registry length + BBAN structure + mod-97 (all 89 SWIFT IBAN Registry countries, compact or grouped in fours); SWIFT format; emits `ABA_ROUTING`, `IBAN`, `SWIFT_BIC`, `US_BANK_ACCOUNT` |
 | `OTP` | 2FA secrets and recovery codes | `otpauth://` URIs, TOTP/HOTP secrets (base32), recovery code blocks; emits `OTPAUTH_URI`, `OTP_SECRET`, `RECOVERY_CODES` |
 | `DATE_OF_BIRTH` | Dates of birth in PII context | Very conservative — requires DOB keywords; dates without context score <30 |
 | `PHYSICAL_ADDRESS` | US street addresses | Requires street-type suffix (St/Ave/Blvd/…); emits `US_STREET_ADDRESS`, `PO_BOX` |
-| `DRIVERS_LICENSE` | US driver's license numbers | State-specific formats (top 10 states); keyword-dependent to avoid FPs |
-| `MEDICAL_ID` | Healthcare identifiers | NPI (Luhn-validated), DEA (checksum), MRN, insurance IDs, Medicare MBI |
+| `DRIVERS_LICENSE` | Driver's license numbers | Eight US state shapes (CA, TX/PA, FL/MI, NY/GA, IL, OH, NJ, WI), Great Britain DVLA, and Ontario and Quebec as printed; `format` names the shape, not the issuing state; keyword-dependent to avoid FPs |
+| `MEDICAL_ID` | Healthcare identifiers | NPI (Luhn-validated), DEA (checksum; all 18 registrant letters, either case), MRN, insurance IDs, Medicare MBI (either case), UK NHS and Scottish CHI numbers (mod-11, beside a label naming them) |
 | `EMAIL` | Email addresses | Emits `BUSINESS` for known SaaS/corporate domains |
-| `PHONE` | Phone numbers | International formats |
+| `PHONE` | Phone numbers | US/Canada (incl. toll-free), UK and European national forms; `+CC` and `00`-prefixed international forms, gated on E.164 country codes; trunk `(0)` forms; `tel:` links and vCard `TEL` values; extensions |
 | `IP_ADDRESS` | IPv4 / IPv6 addresses | Skips RFC1918 / reserved / test ranges; context-keyword gated |
-| `PASSPORT` | Passport numbers | US / UK / CA / EU + MRZ |
-| `VIN` | Vehicle Identification Numbers | ISO 3779, position-9 check digit, WMI manufacturer lookup |
+| `PASSPORT` | Passport numbers | US / UK / CA / EU (letters in either case; a value with a lowercase letter needs an adjacent passport label) + MRZ |
+| `VIN` | Vehicle Identification Numbers | ISO 3779; the position-9 check digit is required in North America (`1`–`5`, `7`) and China (`H`, `L`), and elsewhere a VIN without one needs a known manufacturer prefix (WMI) or a VIN label |
 | `PERSON_NAME` | Personal names | Embedded name databases, titles, nobiliary particles, cultural variations |
 | `CLOUD_RESOURCES` | Cloud resource identifiers | AWS ARNs, Azure IDs, GCP, OCI, IBM CRN, Alibaba |
 | `INTELLECTUAL_PROPERTY` | IP / confidentiality markers | Patents, trademarks, copyrights, trade secrets |
@@ -148,7 +162,7 @@ cat customer-export.csv | ferret-scan --stdin --enable-redaction --redaction-str
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.10.0
+    rev: v2.5.5
     hooks:
       - id: ferret-scan
 ```
@@ -183,7 +197,7 @@ Launch a local, CloudScape-styled interface for interactive scanning, folder dra
 ferret-scan --web
 ```
 
-It binds to `127.0.0.1` by default (auto-detecting `0.0.0.0` only inside containers), enforces CSRF/Origin checks, and sends CSP headers. To expose it on your LAN, pass `--bind 0.0.0.0` — note the UI has no authentication, so do this only on trusted networks.
+It binds to `127.0.0.1` by default (auto-detecting `0.0.0.0` only inside containers, where the port publish is the boundary: publish it as `-p 127.0.0.1:8080:8080`), enforces CSRF/Origin checks, and sends CSP headers. The UI has no authentication, so to use it from another machine, forward the port over SSH (`ssh -L 8080:127.0.0.1:8080 <host>`) rather than widening the bind; `--bind 0.0.0.0` exposes it to every host that can reach this one, and prints a warning at startup.
 
 ![ferret-scan web UI — main interface](docs/images/webui-main-interface.png)
 
@@ -306,7 +320,7 @@ This is an architecture the public API enables; ferret-scan itself ships the CLI
 | Code | Meaning |
 |---|---|
 | `0` | The scan ran. **Findings do not change the exit code** — they are reported in the output. |
-| `1` | The run failed: bad arguments (including an input path that does not exist), an unreadable config, an output file that cannot be written, or a report that could not be formatted. Nothing usable was produced. |
+| `1` | The run failed: bad arguments (including an input path that does not exist), an unreadable config, an output file that cannot be written, a redaction audit log that cannot be written or validated, or a report that could not be formatted. No findings report was produced; redacted copies written before the failure are left in place (the audit log is exported after them). |
 | `2` | `--preprocess-only` only: there were no files to preprocess. (An ordinary scan of an empty directory, a glob with no matches, or a tree where every file was excluded exits `0` with `total_files: 0` — an honest empty report, not a failure.) |
 | `3` | `--fail-on-incomplete` only: the run completed but did not fully do what was asked — a file was not fully scanned, or findings were reported and not redacted. See [Coverage disclosure](docs/COVERAGE_DISCLOSURE.md). |
 

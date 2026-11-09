@@ -73,6 +73,14 @@ type FormatterOptions struct {
 	// (position depends on format: header for text, top-level field for JSON).
 	Stats *ScanStats
 
+	// Scan, when non-nil, says the run was NARROWED and what it could report: json/yaml `scan`, junit
+	// <properties>, sarif run.properties plus a notification when checks did not run, gitlab-sast
+	// scan.messages, and one text "Scope:" line. csv has no slot for it.
+	//
+	// nil renders nothing, and NewScanScope returns nil for a run that ran in full, so a full-scope
+	// report is byte-identical to one written before this field existed (#904).
+	Scan *ScanScope
+
 	// NotExaminedFooter, when non-empty, is appended INSIDE the text formatter's
 	// summary block, between the summary's closing rule and a final single rule.
 	//

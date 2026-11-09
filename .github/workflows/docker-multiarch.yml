@@ -17,6 +17,8 @@ on:
       - 'internal/**'
       - 'Makefile'
       - 'scripts/container-redaction-smoke.sh'
+      - 'scripts/surface-parity.sh'
+      - 'scripts/surface-parity/**'
   pull_request:
     branches:
       - main
@@ -33,6 +35,8 @@ on:
       - 'internal/**'
       - 'Makefile'
       - 'scripts/container-redaction-smoke.sh'
+      - 'scripts/surface-parity.sh'
+      - 'scripts/surface-parity/**'
   workflow_dispatch:
     inputs:
       platforms:
@@ -130,7 +134,7 @@ jobs:
 
       - name: Log in to GitHub Container Registry
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -301,6 +305,23 @@ jobs:
       - name: Smoke-test redaction in the image
         run: scripts/container-redaction-smoke.sh ferret-scan:smoke
 
+      # The golden-corpus inputs through the image's CLI and its web UI, before anything is pushed
+      # (#907): the two surfaces must report the same findings; redaction under simple and
+      # format_preserving into /tmp/out and /home/ferret/out must leave no reported value; and the
+      # runtime facts must hold (version and commit equal to this build's, a non-root user, a write
+      # into TMPDIR, the web port published on 127.0.0.1 only). Go builds the host binary the version
+      # is compared with and writes the inputs. Measured locally: 28.5 s for --surfaces container.
+      - name: Set up Go for the surface parity check
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: '.go-version'
+
+      - name: Surface parity in the image
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          GIT_COMMIT: ${{ github.sha }}
+        run: scripts/surface-parity.sh --image ferret-scan:smoke --surfaces container
+
       - name: Build and push Docker image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -351,7 +372,7 @@ jobs:
 
       - name: Upload Trivy scan results to GitHub Security tab
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
-        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: "trivy-results.sarif"
           category: "trivy-container-scan"
@@ -419,7 +440,7 @@ jobs:
           echo "docker run --rm -v \$(pwd):/data ${GHCR_REGISTRY}/${GHCR_REPOSITORY}:latest --file /data/sample.txt" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "# Run web mode" >> "$GITHUB_STEP_SUMMARY"
-          echo "docker run --rm -p 8080:8080 ${GHCR_REGISTRY}/${GHCR_REPOSITORY}:latest --web --port 8080" >> "$GITHUB_STEP_SUMMARY"
+          echo "docker run --rm -p 127.0.0.1:8080:8080 ${GHCR_REGISTRY}/${GHCR_REPOSITORY}:latest --web --port 8080" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
   security-scan:
@@ -442,7 +463,7 @@ jobs:
       # because the GHCR package is private by default and the v7 grype
       # resolver requires explicit auth on the oci-registry path.
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -465,7 +486,7 @@ jobs:
           config: ".grype.yaml"
 
       - name: Upload Grype scan results
-        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: ${{ steps.scan-ghcr.outputs.sarif }}
           category: "grype-container-scan"

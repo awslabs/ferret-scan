@@ -51,6 +51,37 @@ func Short() string {
 	return Version
 }
 
+// reportCommitLength is how much of GitCommit a REPORT carries.
+//
+// Twelve, not forty, because a report is scanned too: by this tool in a self-scan, by a
+// reviewer's pre-commit hook when the report is committed, by any secret scanner it reaches.
+// Measured for #904 by scanning report-shaped JSON with the CLI: a 40-hex commit under
+// `commit` or `ferretScanCommit` scans as API_KEY_OR_SECRET LOW 55, and its 12-hex prefix
+// under either key scans clean.
+const reportCommitLength = 12
+
+// ReportCommit is GitCommit as a report should carry it: a leading hex commit id longer than
+// 12 digits is cut to 12, and anything after it is kept ("5fecf59c1dec-dirty"); any other
+// value is returned as injected ("unknown" on a development build, or the 7-12 digits the
+// Makefile's `git rev-parse --short` stamps).
+//
+// --version and the web /health endpoint keep printing GitCommit in full; only documents that
+// travel take the short form.
+func ReportCommit() string {
+	run := 0
+	for run < len(GitCommit) && isHexDigit(GitCommit[run]) {
+		run++
+	}
+	if run > reportCommitLength {
+		return GitCommit[:reportCommitLength] + GitCommit[run:]
+	}
+	return GitCommit
+}
+
+func isHexDigit(c byte) bool {
+	return '0' <= c && c <= '9' || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F'
+}
+
 // Full returns detailed version information
 func Full() map[string]string {
 	return map[string]string{
