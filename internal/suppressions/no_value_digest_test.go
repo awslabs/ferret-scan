@@ -178,21 +178,23 @@ func TestHashSensitiveDataIsStillOnlyUsedForIdentity(t *testing.T) {
 		t.Fatalf("no call to hashSensitiveData found; either it was renamed or this guard is now " +
 			"vacuous")
 	}
-	// Both remaining calls must be inside findingHashVersion, which is the identity.
+	// Both remaining calls must be inside the identity: identityParts, the composite that
+	// findingHashVersion hashes, split around the line number so re-anchoring can recompute the
+	// identity at another line from the same parts (#885).
 	for _, ln := range callSites {
 		inIdentity := false
 		for back := ln - 1; back >= 0 && back > ln-60; back-- {
 			if strings.HasPrefix(lines[back], "func ") {
-				inIdentity = strings.Contains(lines[back], "findingHashVersion")
+				inIdentity = strings.Contains(lines[back], ") identityParts(")
 				break
 			}
 		}
 		if !inIdentity {
-			t.Errorf("suppression.go:%d calls hashSensitiveData outside findingHashVersion.\n"+
+			t.Errorf("suppression.go:%d calls hashSensitiveData outside identityParts.\n"+
 				"  %s\n\nA value digest may only contribute to a rule's IDENTITY. Writing one into "+
 				"rule metadata puts an enumerable fingerprint of the value into a file teams commit, "+
 				"which is what #673 removed from four sites.", ln, strings.TrimSpace(lines[ln-1]))
 		}
 	}
-	t.Logf("hashSensitiveData is called at %d site(s), all inside findingHashVersion", len(callSites))
+	t.Logf("hashSensitiveData is called at %d site(s), all inside identityParts", len(callSites))
 }
