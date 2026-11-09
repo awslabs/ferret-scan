@@ -167,6 +167,40 @@ var Cases = []Case{
 			"invalid-luhn 4532015112830367\n",
 	},
 	{
+		Name: "creditcard_track_and_code_decoys",
+		Description: "The #905 decoys, which must stay EMPTY. Lines 1-15 are the security-code rule's " +
+			"decoys with no card anywhere in the case: the context-only labels cid, csc, cvn and " +
+			"\"security code\" are reported only with a card within three lines (lines 1, 3, 9, 10); a " +
+			"value must be exactly three or four digits ended by white space, a quote, one of , ; | ) ] " +
+			"} < > & or a '.' that does not start a decimal, after at most one of : = # (lines 2, 4, 8, " +
+			"11-15); lines 5-7 carry no value. Lines 16-20 are a Track 1, a Track 2, a URL-encoded " +
+			"Track 2, a bare EMV tag 57 and a TLV-encoded tag 57 whose PAN fails Luhn: a frame needs " +
+			"a Luhn-valid PAN, so none is reported. Positive frames, labelled codes, their scores and " +
+			"the brand-only decoys that carry a card are unit tests in internal/validators/creditcard, " +
+			"so this case adds no finding to the census.",
+		Checks: []string{"CREDIT_CARD"},
+		Input: "CID 1234 called at 09:14\n" +
+			"Content-ID: <cid:1234@mail.invalid>\n" +
+			"CSC 2024 annual report\n" +
+			"// csc : 2014-09-25 Registry Services\n" +
+			"if exp < 100 { return }\n" +
+			"<input name=\"cvv\" maxlength=\"4\">\n" +
+			"cvc_check: pass\n" +
+			"cvn := 123\n" +
+			"Security code: 1234\n" +
+			"CVN 789\n" +
+			"CVV: 12\n" +
+			"CVV: 12345\n" +
+			"CVV: ***\n" +
+			"CVV: 123.45\n" +
+			"CVV2 2024-11-07\n" +
+			"%B4000001234567890^PUBLIC/JOHN Q^281210100000000000000000000000000?\n" +
+			";4000001234567890=281210100000000000000?\n" +
+			"track2=%3B4000001234567890%3D281210100000000000000%3F\n" +
+			"tag57=4000001234567890D28121010000000000000F\n" +
+			"57134000001234567890D28121010000000000000F\n",
+	},
+	{
 		Name: "creditcard_phone_overlap",
 		Description: "A space-separated card whose trailing groups look like a phone number. Written " +
 			"when the PHONE validator also fired inside the card, to lock the overlap fix: " +

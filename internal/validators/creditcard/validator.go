@@ -312,9 +312,21 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	// card somewhere else (an identifier on the line, its column header). See bareRunCeiling.
 	labels := bareRunLabels{content: content}
 
+	// Card frames and security codes (#905, frames.go and security_code.go). reported holds the
+	// spans of the current line's PAN findings, so a frame never reports a PAN twice; cards holds
+	// the best card finding of every line that has one, and codes the labelled security codes
+	// waiting to be paired with the cards up to codeWindow lines after them.
+	var (
+		reported []panSpan
+		cards    []lineCard
+		codes    []codeCandidate
+	)
+
 	for lineNum, line := range lines {
 		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
 		if execguard.LineLoopCancelled(ctx, lineNum) {
+			// The codes found so far are genuine findings; pair them with the cards seen so far.
+			matches = v.appendSecurityCodes(matches, codes, cards, originalPath)
 			if finishTiming != nil {
 				finishTiming(false, map[string]interface{}{"cancelled": true, "match_count": len(matches)})
 			}
@@ -336,6 +348,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		contextImpact := v.analyzeContextLower(lowerLine)
 		tabularLine := v.isTabularData(line, "")
 		labels.reset(lineNum, line)
+		lineStart := len(matches)
+		reported = reported[:0]
 
 		// Find potential matches. The pattern requires a delimiter on BOTH sides
 		// of the number, so a naive FindAllStringSubmatch (non-overlapping over
@@ -384,87 +398,12 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			vendor := v.detectCardVendor(cleanMatch)
 			// Note: Don't skip unknown vendors for CalculateConfidence compatibility
 
-			// Now do more expensive operations only for valid candidates. calculateConfidence
-			// sets not_test=false for a test-pattern literal.
-			confidence, checks := v.calculateConfidence(match, cleanMatch)
-
 			// Context analysis. The window slice uses the KNOWN match offset
 			// (matchStart/matchEnd) rather than re-running strings.Index over the
 			// whole line for every match — both faster and free of the latent
 			// first-occurrence bug when a token repeats on the line. The
 			// per-line contextImpact/tabularLine values are reused (see above).
 			contextInfo := v.buildContextInfoAt(line, matchStart, matchEnd)
-			confidence += contextImpact
-
-			// Check for tabular data and boost confidence
-			if tabularLine {
-				confidence += 10 // Boost for tabular data
-			}
-
-			// Apply bounds
-			if confidence > 100 {
-				confidence = 100
-			} else if confidence < 0 {
-				confidence = 0
-			}
-
-			// CRITICAL: Ensure test patterns and suspicious numbers maintain minimum confidence
-			// This must happen AFTER context analysis to prevent filtering
-			if !checks["not_test"] || !checks["not_repeating"] {
-				if confidence > testValueCeiling {
-					confidence = testValueCeiling // Hard cap for test patterns
-				}
-				if confidence < 1.0 {
-					confidence = 1.0 // Minimum confidence to ensure detection
-				}
-			}
-
-			// Value-intrinsic floor.
-			//
-			// A negative keyword — hard, or soft with no positive card word on the
-			// line — contributes -100, which zeroed the score and dropped the
-			// candidate at the gate below. For a Luhn-valid number that made the
-			// finding INVISIBLE rather than low-ranked: nothing was emitted,
-			// stats.suppressed stayed 0, and — because redaction only rewrites
-			// what was emitted — the number passed through --enable-redaction in
-			// cleartext. Verified: "Payment card 4532015112830366" redacts to
-			// "************0366", while the same line with the word "test"
-			// appended produced no redacted output at all.
-			//
-			// Since the keyword is part of the document, anyone who can put a word
-			// on the line can suppress the card on it. Luhn validity, by contrast,
-			// is intrinsic to the value and not attacker-deniable, so it earns a
-			// floor: the keyword may demote the finding as far as the bottom of
-			// LOW, but it may not erase it. That is enough for redaction to cover
-			// it (confirmed: a 15-confidence VISA is rewritten to
-			// ************0366) and low enough to stay out of a
-			// `--confidence high,medium` triage view. It does show up in the
-			// default `--confidence all` listing, marked [LOW] — the intended
-			// trade: a visible low-ranked line beats a silent cleartext pass.
-			//
-			// This mirrors the forced minimum directly above, which already refuses
-			// to let a known test pattern be zeroed away, and is deliberately
-			// narrow: the score is unchanged whenever it was going to be positive
-			// anyway, so nothing that was already reported is re-ranked. What it
-			// does change is the set of *suppressed-to-zero* candidates, which now
-			// appear at the floor instead of vanishing — measured over 600 real
-			// plain-text files that is +6 findings in 1 file, all LOW, all decoy
-			// labels (UUID / MD5 / config-hash), with 0 findings lost and 0
-			// confidences changed. Those are FPs the keyword was right about; the
-			// trade is deliberate, because the value alone cannot separate them
-			// from a real PAN (the "MD5 hash" decoy is a Luhn-valid Mastercard
-			// BIN), and the alternative is the cleartext pass above.
-			//
-			// No Luhn re-check is needed here — a candidate only reaches this point
-			// by passing luhnCheck above, and known test patterns were already
-			// pinned to at least 1.0, so they never fall through to this branch.
-			// This replaces the previous `if confidence <= 0 { continue }` drop:
-			// with the floor in place no Luhn-valid candidate can reach zero, so
-			// that gate became unreachable and kept the misleading appearance that
-			// suppression-to-nothing was still possible here.
-			if confidence <= 0 {
-				confidence = intrinsicValueFloor
-			}
 
 			// Bare-run ceiling (#802, see bareRunCeiling): a bare run whose line said nothing
 			// either way is held to MEDIUM unless a label elsewhere names it as a card. This is
@@ -473,36 +412,9 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			// raise. The cheap tests run first; labels.namesCard is computed at most once per
 			// line and the table once per document.
 			capEligible := contextImpact == 0 && isBareDigitRun(match) && !labels.namesCard(v, matchStart)
-			if capEligible && confidence > bareRunCeiling {
-				confidence = bareRunCeiling
-			}
-
-			// Published test number (#883, published_test_pans.go): capped at testValueCeiling
-			// and marked not_test=false. This is the LAST score step, after the floor, so the
-			// result is exactly min(score, testValueCeiling). It does not go through the
-			// test-pattern clamp above, which would take a value whose negative word floored it
-			// at 15 down to 1.
-			confidence = v.capPublishedTestPAN(cleanMatch, confidence, checks)
+			confidence, checks := v.scoreCandidate(match, cleanMatch, contextImpact, tabularLine, capEligible)
 
 			cardType := v.getCreditCardType(cleanMatch)
-			meta := map[string]any{
-				"card_type":         cardType,
-				"vendor":            vendor,
-				"validation_checks": checks,
-				"context_impact":    contextImpact,
-				"source":            "preprocessed_content",
-				"original_file":     originalPath,
-			}
-			// The bound the bridge must hold the value to after its own adjustment. A value that
-			// is itself a test value (published, on the test-pattern list, or a repeating shape;
-			// capPublishedTestPAN has already set not_test=false for a published one) is held at
-			// testValueCeiling whatever its line says; otherwise a bare run with no card label is
-			// held at bareRunCeiling. The keyword floor publishes nothing (see testValueCeiling).
-			if !checks["not_test"] || !checks["not_repeating"] {
-				meta[confidenceCeilingKey] = testValueCeiling
-			} else if capEligible {
-				meta[confidenceCeilingKey] = bareRunCeiling
-			}
 			matches = append(matches, detector.Match{
 				Text:       match,
 				LineNumber: lineNum + 1,
@@ -511,10 +423,22 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				Filename:   originalPath,
 				Validator:  "creditcard",
 				Context:    contextInfo,
-				Metadata:   meta,
+				Metadata:   cardMetadata(cardType, vendor, checks, contextImpact, originalPath, capEligible),
 			})
+			reported = append(reported, panSpan{start: matchStart, end: matchEnd})
+		}
+
+		if frames := findFrames(line); len(frames) > 0 {
+			matches = v.appendFrameMatches(matches, frames, line, lineNum, lowerLine, contextImpact, tabularLine, &labels, reported, originalPath)
+		}
+		if card, ok := bestCard(matches[lineStart:], lineNum); ok {
+			cards = append(cards, card)
+		}
+		if mayHoldSecurityCode(lowerLine) {
+			codes = v.appendCodeCandidates(codes, line, lineNum, lowerLine)
 		}
 	}
+	matches = v.appendSecurityCodes(matches, codes, cards, originalPath)
 
 	if finishTiming != nil {
 		finishTiming(true, map[string]interface{}{
@@ -525,6 +449,129 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	}
 
 	return matches, nil
+}
+
+// panSpan is where a PAN finding sits within its line, in bytes.
+type panSpan struct {
+	start, end int
+}
+
+// scoreCandidate scores a Luhn-valid candidate and returns the validation checks behind the score:
+// the value's own score (calculateConfidence), the keyword impact of its line, the tabular boost,
+// the test-value caps, the intrinsic floor, the bare-run ceiling when held is true, and the
+// published-test-number cap, in that order. ValidateContent scores every PAN through it, and a card
+// frame (frames.go) scores its PAN through it with the frame's own impact and held false.
+//
+// calculateConfidence sets not_test=false for a test-pattern literal.
+func (v *Validator) scoreCandidate(match, cleanMatch string, impact float64, tabular, held bool) (float64, map[string]bool) {
+	confidence, checks := v.calculateConfidence(match, cleanMatch)
+	confidence += impact
+
+	// Check for tabular data and boost confidence
+	if tabular {
+		confidence += 10 // Boost for tabular data
+	}
+
+	// Apply bounds
+	if confidence > 100 {
+		confidence = 100
+	} else if confidence < 0 {
+		confidence = 0
+	}
+
+	// CRITICAL: Ensure test patterns and suspicious numbers maintain minimum confidence
+	// This must happen AFTER context analysis to prevent filtering
+	if !checks["not_test"] || !checks["not_repeating"] {
+		if confidence > testValueCeiling {
+			confidence = testValueCeiling // Hard cap for test patterns
+		}
+		if confidence < 1.0 {
+			confidence = 1.0 // Minimum confidence to ensure detection
+		}
+	}
+
+	// Value-intrinsic floor.
+	//
+	// A negative keyword — hard, or soft with no positive card word on the
+	// line — contributes -100, which zeroed the score and dropped the
+	// candidate at the gate below. For a Luhn-valid number that made the
+	// finding INVISIBLE rather than low-ranked: nothing was emitted,
+	// stats.suppressed stayed 0, and — because redaction only rewrites
+	// what was emitted — the number passed through --enable-redaction in
+	// cleartext. Verified: "Payment card 4532015112830366" redacts to
+	// "************0366", while the same line with the word "test"
+	// appended produced no redacted output at all.
+	//
+	// Since the keyword is part of the document, anyone who can put a word
+	// on the line can suppress the card on it. Luhn validity, by contrast,
+	// is intrinsic to the value and not attacker-deniable, so it earns a
+	// floor: the keyword may demote the finding as far as the bottom of
+	// LOW, but it may not erase it. That is enough for redaction to cover
+	// it (confirmed: a 15-confidence VISA is rewritten to
+	// ************0366) and low enough to stay out of a
+	// `--confidence high,medium` triage view. It does show up in the
+	// default `--confidence all` listing, marked [LOW] — the intended
+	// trade: a visible low-ranked line beats a silent cleartext pass.
+	//
+	// This mirrors the forced minimum directly above, which already refuses
+	// to let a known test pattern be zeroed away, and is deliberately
+	// narrow: the score is unchanged whenever it was going to be positive
+	// anyway, so nothing that was already reported is re-ranked. What it
+	// does change is the set of *suppressed-to-zero* candidates, which now
+	// appear at the floor instead of vanishing — measured over 600 real
+	// plain-text files that is +6 findings in 1 file, all LOW, all decoy
+	// labels (UUID / MD5 / config-hash), with 0 findings lost and 0
+	// confidences changed. Those are FPs the keyword was right about; the
+	// trade is deliberate, because the value alone cannot separate them
+	// from a real PAN (the "MD5 hash" decoy is a Luhn-valid Mastercard
+	// BIN), and the alternative is the cleartext pass above.
+	//
+	// No Luhn re-check is needed here — a candidate only reaches this point
+	// by passing luhnCheck, and known test patterns were already
+	// pinned to at least 1.0, so they never fall through to this branch.
+	// This replaces the previous `if confidence <= 0 { continue }` drop:
+	// with the floor in place no Luhn-valid candidate can reach zero, so
+	// that gate became unreachable and kept the misleading appearance that
+	// suppression-to-nothing was still possible here.
+	if confidence <= 0 {
+		confidence = intrinsicValueFloor
+	}
+
+	// Bare-run ceiling (#802, see bareRunCeiling).
+	if held && confidence > bareRunCeiling {
+		confidence = bareRunCeiling
+	}
+
+	// Published test number (#883, published_test_pans.go): capped at testValueCeiling
+	// and marked not_test=false. This is the LAST score step, after the floor, so the
+	// result is exactly min(score, testValueCeiling). It does not go through the
+	// test-pattern clamp above, which would take a value whose negative word floored it
+	// at 15 down to 1.
+	return v.capPublishedTestPAN(cleanMatch, confidence, checks), checks
+}
+
+// cardMetadata is the Metadata of a card finding scored by scoreCandidate with the same impact and
+// held.
+func cardMetadata(cardType, vendor string, checks map[string]bool, impact float64, originalPath string, held bool) map[string]any {
+	meta := map[string]any{
+		"card_type":         cardType,
+		"vendor":            vendor,
+		"validation_checks": checks,
+		"context_impact":    impact,
+		"source":            "preprocessed_content",
+		"original_file":     originalPath,
+	}
+	// The bound the bridge must hold the value to after its own adjustment. A value that
+	// is itself a test value (published, on the test-pattern list, or a repeating shape;
+	// capPublishedTestPAN has already set not_test=false for a published one) is held at
+	// testValueCeiling whatever its line says; otherwise a bare run with no card label is
+	// held at bareRunCeiling. The keyword floor publishes nothing (see testValueCeiling).
+	if !checks["not_test"] || !checks["not_repeating"] {
+		meta[confidenceCeilingKey] = testValueCeiling
+	} else if held {
+		meta[confidenceCeilingKey] = bareRunCeiling
+	}
+	return meta
 }
 
 // bareRunLabels looks for a card label for a bare run whose own line carried no keyword, in
