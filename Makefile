@@ -320,12 +320,19 @@ setup-team:
 	else \
 		echo "✓ GitHub Actions workflow already exists"; \
 	fi
+	@# The workflow runs scripts/self-scan.sh with .ferret-scan/selfscan.yaml and the ledger that profile
+	@# names (#927); a copy of the workflow alone exits 2 on its first run. Existing files are kept.
+	@mkdir -p scripts .ferret-scan
+	@if [ ! -f "scripts/self-scan.sh" ]; then cp scripts/self-scan.sh scripts/ 2>/dev/null || echo "⚠️  scripts/self-scan.sh not found; the workflow needs it."; fi
+	@if [ ! -f ".ferret-scan/selfscan.yaml" ]; then cp .ferret-scan/selfscan.yaml .ferret-scan/ 2>/dev/null || echo "⚠️  .ferret-scan/selfscan.yaml not found; the workflow needs a profile."; fi
+	@echo "   Edit .ferret-scan/selfscan.yaml (excludes, suppressions.file) for this repository and create"
+	@echo "   the ledger it names (scripts/self-scan.sh --regenerate <file>); see docs/testing/SELF_SCAN.md."
 	@echo ""
 	@echo "🎉 Team setup complete!"
 	@echo ""
 	@echo "📋 Next steps:"
 	@echo "  1. Review and commit the configuration files:"
-	@echo "     git add .ferret-scan.yaml .pre-commit-config.yaml .github/workflows/ferret-scan.yml"
+	@echo "     git add .ferret-scan.yaml .pre-commit-config.yaml .github/workflows/ferret-scan.yml scripts/self-scan.sh .ferret-scan/selfscan.yaml"
 	@echo "     git commit -m 'Add Ferret Scan team security configuration'"
 	@echo ""
 	@echo "  2. Team members should run: make setup-developer"

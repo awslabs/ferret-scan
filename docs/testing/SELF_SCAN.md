@@ -183,7 +183,8 @@ below `[Unreleased]`), so the release pull request regenerates the ledger for th
 
 `.github/workflows/ferret-scan.yml` runs this script in block mode: on a pull request over the files
 the PR changes (`--scope changed --files …`, any extension), and over the whole tree on a push to
-`main` and on a manual run (`--scope tree`). The script's exit is the gate: 1 for a HIGH finding the
+`main` and on a manual run with `scan_scope: full-repository` (`--scope tree`; the dispatch default,
+`changed-files`, scans the last commit's files). The script's exit is the gate: 1 for a HIGH finding the
 ledger does not cover, 2 for a scan that failed or did not fully examine a file, both red. The
 workflow reads `summary.env` for the job summary and the pull-request comment, which show HIGH,
 suppressed and not-examined counts and point here; `cmd/self_scan_workflow_test.go` pins that contract
