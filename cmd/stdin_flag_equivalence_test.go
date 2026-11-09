@@ -132,6 +132,15 @@ var parityFixtures = map[string]string{
 	"nopat.yaml": "profiles:\n  nopatent:\n    description: no patents\n    validators:\n      intellectual_property:\n" +
 		"        disabled_types: [patent]\n",
 	"exp.yaml": "suppressions:\n  expires_in: 30d\n",
+	// budget.txt is the cut-short fixture the budget rows scan: ten addresses and about 1 MB of
+	// neutral filler, cutShortBudgetParas. A 1ns budget is a timer, not an already-expired deadline,
+	// on a clock as coarse as Windows's (ticks of 0.5-15.6 ms), so a validator over four short
+	// lines finishes before the timer fires and the budget never shows; the rows then compared two
+	// uncut scans and failed as "proves nothing" on windows-latest while passing on the other two
+	// runners. Over this filler PHONE is still polling its context when the timer fires on any
+	// clock (#797 measured its pass at 400-600 ms), so the cut is deterministic. Same fixture and
+	// reasoning as TestCutShortRedactionFollowsTheFileRule.
+	"budget.txt": strings.Join(cutShortBudgetParas(), "\n") + "\n",
 }
 
 // paritySide is one input path of one row, with a scratch directory for what it writes.
@@ -213,10 +222,15 @@ func stdinParityRows() []parityRow {
 		{name: "pre-commit-mode with a disabled sub-type", fixture: "ip.txt",
 			args: with("--checks", "INTELLECTUAL_PROPERTY", "--pre-commit-mode", "--disable-ip-types", "trade_secret"),
 			base: with("--checks", "INTELLECTUAL_PROPERTY", "--pre-commit-mode"), project: projectReport},
-		{name: "validator-budget", flag: "validator-budget", fixture: "pii.txt",
-			args: with("--validator-budget", "all=1ns"), base: with(), project: projectCutShort},
-		{name: "fail-on-incomplete", flag: "fail-on-incomplete", fixture: "pii.txt",
-			args: with("--validator-budget", "all=1ns", "--fail-on-incomplete"), base: with("--validator-budget", "all=1ns"), project: projectCutShort},
+		// Both budget rows scan budget.txt with --checks EMAIL,PHONE and budget PHONE only: the cut has
+		// to come from a validator whose pass outlasts the clock tick (see the fixture's comment), and
+		// EMAIL's ten findings are what the two paths are compared on once PHONE is cut.
+		{name: "validator-budget", flag: "validator-budget", fixture: "budget.txt",
+			args: with("--checks", "EMAIL,PHONE", "--validator-budget", "PHONE=1ns"),
+			base: with("--checks", "EMAIL,PHONE"), project: projectCutShort},
+		{name: "fail-on-incomplete", flag: "fail-on-incomplete", fixture: "budget.txt",
+			args: with("--checks", "EMAIL,PHONE", "--validator-budget", "PHONE=1ns", "--fail-on-incomplete"),
+			base: with("--checks", "EMAIL,PHONE", "--validator-budget", "PHONE=1ns"), project: projectCutShort},
 		{name: "format", flag: "format", fixture: "pii.txt", args: with("--format", "yaml"), base: with(), project: projectFormat},
 		{name: "output", flag: "output", fixture: "pii.txt", args: with("--output", phOut), base: with(), project: projectOutputFile},
 		{name: "verbose", flag: "verbose", fixture: "pii.txt", args: []string{"--format", "text", "--verbose"},
