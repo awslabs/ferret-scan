@@ -1,0 +1,267 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+package phone
+
+// e164Codes is every assigned ITU-T E.164 country calling code: the code's main region, the national
+// (significant) number lengths its plan allows, and whether the plan writes a trunk "0" in front of
+// a national number, which international display forms show as "(0)". The E.164 gate
+// (international.go) reads only this table, so a code missing here is a number never reported in
+// the "+CC" or "00CC" form, and never redacted.
+//
+// GENERATED DATA, not hand-maintained. Regenerate it, and check it for drift, from libphonenumber's
+// PhoneNumberMetadata.xml (Apache-2.0, github.com/google/libphonenumber):
+//
+//	E164_METADATA_XML=/path/to/PhoneNumberMetadata.xml UPDATE_E164_CODES=1 \
+//	    go test ./internal/validators/phone/ -run TestE164CodesMatchMetadata
+//
+// Without UPDATE_E164_CODES the same command fails on any added, removed or changed code, and without
+// E164_METADATA_XML it skips. What was read is recorded here:
+//
+//	read 2026-11-07 from https://raw.githubusercontent.com/google/libphonenumber/v9.0.43/resources/PhoneNumberMetadata.xml
+//	sha256 5bbfb6f2e63ba1131fc867cd1cf48aa131047772523723a10c230db12fb6e2df
+//	254 territories, 215 calling codes
+//
+// A code's lengths are the union, over every territory sharing it and every number type, of
+// libphonenumber's "possibleLengths national": the lengths a number may have once the country code
+// is written, so local-only lengths are excluded and so are numbers that cannot be dialled from
+// abroad. The 15-digit E.164 maximum is applied separately, by the gate.
+//
+// # Why generated
+//
+// The map this replaces held 36 hand-typed codes with no lengths, so "+33 1 99 00 47 18" and
+// "+44 (0)161 496 0815" could not be checked, the "00" form had no bound at all, and a code that does
+// not exist ("+553 274 123 784", "00" followed by "0") passed for a country (#889).
+var e164Codes = map[string]e164Code{
+	// shared by AG AI AS BB BM BS CA DM DO GD GU JM KN KY LC MP MS PR SX TC TT US VC VG VI
+	"1": {region: "US", lengths: 1<<7 | 1<<10},
+	// shared by KZ RU
+	"7":  {region: "RU", lengths: 1<<10 | 1<<14},
+	"20": {region: "EG", lengths: 1<<8 | 1<<9 | 1<<10, trunk0: true},
+	"27": {region: "ZA", lengths: 1<<5 | 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10, trunk0: true},
+	"30": {region: "GR", lengths: 1<<10 | 1<<11 | 1<<12},
+	"31": {region: "NL", lengths: 1<<5 | 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11, trunk0: true},
+	"32": {region: "BE", lengths: 1<<8 | 1<<9, trunk0: true},
+	"33": {region: "FR", lengths: 1 << 9, trunk0: true},
+	"34": {region: "ES", lengths: 1 << 9},
+	"36": {region: "HU", lengths: 1<<8 | 1<<9},
+	// shared by IT VA
+	"39": {region: "IT", lengths: 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12},
+	"40": {region: "RO", lengths: 1<<6 | 1<<9, trunk0: true},
+	"41": {region: "CH", lengths: 1<<9 | 1<<12, trunk0: true},
+	"43": {region: "AT", lengths: 1<<4 | 1<<5 | 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12 | 1<<13, trunk0: true},
+	// shared by GB GG IM JE
+	"44": {region: "GB", lengths: 1<<7 | 1<<9 | 1<<10, trunk0: true},
+	"45": {region: "DK", lengths: 1 << 8},
+	"46": {region: "SE", lengths: 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<12, trunk0: true},
+	// shared by NO SJ
+	"47": {region: "NO", lengths: 1<<5 | 1<<8},
+	"48": {region: "PL", lengths: 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10},
+	"49": {region: "DE", lengths: 1<<4 | 1<<5 | 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12 | 1<<13 | 1<<14 | 1<<15, trunk0: true},
+	"51": {region: "PE", lengths: 1<<8 | 1<<9, trunk0: true},
+	"52": {region: "MX", lengths: 1 << 10},
+	"53": {region: "CU", lengths: 1<<6 | 1<<7 | 1<<8 | 1<<10, trunk0: true},
+	"54": {region: "AR", lengths: 1<<10 | 1<<11, trunk0: true},
+	"55": {region: "BR", lengths: 1<<8 | 1<<9 | 1<<10 | 1<<11, trunk0: true},
+	"56": {region: "CL", lengths: 1<<9 | 1<<10 | 1<<11},
+	"57": {region: "CO", lengths: 1<<8 | 1<<10 | 1<<11, trunk0: true},
+	"58": {region: "VE", lengths: 1 << 10, trunk0: true},
+	"60": {region: "MY", lengths: 1<<8 | 1<<9 | 1<<10, trunk0: true},
+	// shared by AU CC CX
+	"61":  {region: "AU", lengths: 1<<5 | 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<12, trunk0: true},
+	"62":  {region: "ID", lengths: 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12 | 1<<13 | 1<<14 | 1<<15 | 1<<16 | 1<<17, trunk0: true},
+	"63":  {region: "PH", lengths: 1<<6 | 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12 | 1<<13, trunk0: true},
+	"64":  {region: "NZ", lengths: 1<<5 | 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10, trunk0: true},
+	"65":  {region: "SG", lengths: 1<<8 | 1<<10 | 1<<11},
+	"66":  {region: "TH", lengths: 1<<8 | 1<<9 | 1<<10 | 1<<13, trunk0: true},
+	"81":  {region: "JP", lengths: 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12 | 1<<13 | 1<<14 | 1<<15 | 1<<16 | 1<<17, trunk0: true},
+	"82":  {region: "KR", lengths: 1<<5 | 1<<6 | 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12 | 1<<13 | 1<<14, trunk0: true},
+	"84":  {region: "VN", lengths: 1<<7 | 1<<8 | 1<<9 | 1<<10, trunk0: true},
+	"86":  {region: "CN", lengths: 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12, trunk0: true},
+	"90":  {region: "TR", lengths: 1<<7 | 1<<10 | 1<<12 | 1<<13, trunk0: true},
+	"91":  {region: "IN", lengths: 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12 | 1<<13, trunk0: true},
+	"92":  {region: "PK", lengths: 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12, trunk0: true},
+	"93":  {region: "AF", lengths: 1 << 9, trunk0: true},
+	"94":  {region: "LK", lengths: 1 << 9, trunk0: true},
+	"95":  {region: "MM", lengths: 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10, trunk0: true},
+	"98":  {region: "IR", lengths: 1<<4 | 1<<5 | 1<<6 | 1<<7 | 1<<10, trunk0: true},
+	"211": {region: "SS", lengths: 1 << 9, trunk0: true},
+	// shared by EH MA
+	"212": {region: "MA", lengths: 1 << 9, trunk0: true},
+	"213": {region: "DZ", lengths: 1<<8 | 1<<9, trunk0: true},
+	"216": {region: "TN", lengths: 1 << 8},
+	"218": {region: "LY", lengths: 1 << 9, trunk0: true},
+	"220": {region: "GM", lengths: 1<<7 | 1<<9},
+	"221": {region: "SN", lengths: 1 << 9},
+	"222": {region: "MR", lengths: 1 << 8},
+	"223": {region: "ML", lengths: 1 << 8},
+	"224": {region: "GN", lengths: 1<<8 | 1<<9},
+	"225": {region: "CI", lengths: 1 << 10},
+	"226": {region: "BF", lengths: 1 << 8},
+	"227": {region: "NE", lengths: 1 << 8},
+	"228": {region: "TG", lengths: 1 << 8},
+	"229": {region: "BJ", lengths: 1 << 10},
+	"230": {region: "MU", lengths: 1<<7 | 1<<8 | 1<<10},
+	"231": {region: "LR", lengths: 1<<7 | 1<<8 | 1<<9, trunk0: true},
+	"232": {region: "SL", lengths: 1 << 8, trunk0: true},
+	"233": {region: "GH", lengths: 1<<8 | 1<<9, trunk0: true},
+	"234": {region: "NG", lengths: 1<<10 | 1<<11 | 1<<12 | 1<<13 | 1<<14, trunk0: true},
+	"235": {region: "TD", lengths: 1 << 8},
+	"236": {region: "CF", lengths: 1 << 8},
+	"237": {region: "CM", lengths: 1<<8 | 1<<9},
+	"238": {region: "CV", lengths: 1 << 7},
+	"239": {region: "ST", lengths: 1 << 7},
+	"240": {region: "GQ", lengths: 1 << 9},
+	"241": {region: "GA", lengths: 1<<7 | 1<<8},
+	"242": {region: "CG", lengths: 1 << 9},
+	"243": {region: "CD", lengths: 1<<7 | 1<<8 | 1<<9 | 1<<10, trunk0: true},
+	"244": {region: "AO", lengths: 1 << 9},
+	"245": {region: "GW", lengths: 1<<7 | 1<<9},
+	"246": {region: "IO", lengths: 1 << 7},
+	"247": {region: "AC", lengths: 1<<5 | 1<<6},
+	"248": {region: "SC", lengths: 1 << 7},
+	"249": {region: "SD", lengths: 1 << 9, trunk0: true},
+	"250": {region: "RW", lengths: 1<<8 | 1<<9, trunk0: true},
+	"251": {region: "ET", lengths: 1 << 9, trunk0: true},
+	"252": {region: "SO", lengths: 1<<6 | 1<<7 | 1<<8 | 1<<9, trunk0: true},
+	"253": {region: "DJ", lengths: 1 << 8},
+	"254": {region: "KE", lengths: 1<<7 | 1<<8 | 1<<9 | 1<<10, trunk0: true},
+	"255": {region: "TZ", lengths: 1 << 9, trunk0: true},
+	"256": {region: "UG", lengths: 1 << 9, trunk0: true},
+	"257": {region: "BI", lengths: 1 << 8},
+	"258": {region: "MZ", lengths: 1<<8 | 1<<9},
+	"260": {region: "ZM", lengths: 1 << 9, trunk0: true},
+	"261": {region: "MG", lengths: 1 << 9, trunk0: true},
+	// shared by RE YT
+	"262": {region: "RE", lengths: 1 << 9, trunk0: true},
+	"263": {region: "ZW", lengths: 1<<7 | 1<<9 | 1<<10, trunk0: true},
+	"264": {region: "NA", lengths: 1<<8 | 1<<9, trunk0: true},
+	"265": {region: "MW", lengths: 1<<7 | 1<<9, trunk0: true},
+	"266": {region: "LS", lengths: 1 << 8},
+	"267": {region: "BW", lengths: 1<<7 | 1<<8 | 1<<10},
+	"268": {region: "SZ", lengths: 1<<8 | 1<<9},
+	"269": {region: "KM", lengths: 1 << 7},
+	// shared by SH TA
+	"290": {region: "SH", lengths: 1<<4 | 1<<5},
+	"291": {region: "ER", lengths: 1 << 7, trunk0: true},
+	"297": {region: "AW", lengths: 1 << 7},
+	"298": {region: "FO", lengths: 1 << 6},
+	"299": {region: "GL", lengths: 1 << 6},
+	"350": {region: "GI", lengths: 1 << 8},
+	"351": {region: "PT", lengths: 1 << 9},
+	"352": {region: "LU", lengths: 1<<4 | 1<<5 | 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11},
+	"353": {region: "IE", lengths: 1<<7 | 1<<8 | 1<<9 | 1<<10, trunk0: true},
+	"354": {region: "IS", lengths: 1<<7 | 1<<9},
+	"355": {region: "AL", lengths: 1<<6 | 1<<7 | 1<<8 | 1<<9, trunk0: true},
+	"356": {region: "MT", lengths: 1 << 8},
+	"357": {region: "CY", lengths: 1 << 8},
+	// shared by AX FI
+	"358": {region: "FI", lengths: 1<<5 | 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12, trunk0: true},
+	"359": {region: "BG", lengths: 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<12, trunk0: true},
+	"370": {region: "LT", lengths: 1 << 8, trunk0: true},
+	"371": {region: "LV", lengths: 1 << 8},
+	"372": {region: "EE", lengths: 1<<7 | 1<<8 | 1<<10},
+	"373": {region: "MD", lengths: 1 << 8, trunk0: true},
+	"374": {region: "AM", lengths: 1 << 8, trunk0: true},
+	"375": {region: "BY", lengths: 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11},
+	"376": {region: "AD", lengths: 1<<6 | 1<<8 | 1<<9},
+	"377": {region: "MC", lengths: 1<<8 | 1<<9, trunk0: true},
+	"378": {region: "SM", lengths: 1<<8 | 1<<10},
+	"380": {region: "UA", lengths: 1<<9 | 1<<10, trunk0: true},
+	"381": {region: "RS", lengths: 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12, trunk0: true},
+	"382": {region: "ME", lengths: 1<<8 | 1<<9, trunk0: true},
+	"383": {region: "XK", lengths: 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12, trunk0: true},
+	"385": {region: "HR", lengths: 1<<7 | 1<<8 | 1<<9, trunk0: true},
+	"386": {region: "SI", lengths: 1<<5 | 1<<6 | 1<<7 | 1<<8, trunk0: true},
+	"387": {region: "BA", lengths: 1<<8 | 1<<9, trunk0: true},
+	"389": {region: "MK", lengths: 1 << 8, trunk0: true},
+	"420": {region: "CZ", lengths: 1<<9 | 1<<10 | 1<<11 | 1<<12},
+	"421": {region: "SK", lengths: 1<<6 | 1<<7 | 1<<9, trunk0: true},
+	"423": {region: "LI", lengths: 1<<7 | 1<<9, trunk0: true},
+	"500": {region: "FK", lengths: 1 << 5},
+	"501": {region: "BZ", lengths: 1<<7 | 1<<11},
+	"502": {region: "GT", lengths: 1<<8 | 1<<11},
+	"503": {region: "SV", lengths: 1<<7 | 1<<8 | 1<<11},
+	"504": {region: "HN", lengths: 1<<8 | 1<<11},
+	"505": {region: "NI", lengths: 1 << 8},
+	"506": {region: "CR", lengths: 1<<8 | 1<<10},
+	"507": {region: "PA", lengths: 1<<7 | 1<<8 | 1<<10 | 1<<11},
+	"508": {region: "PM", lengths: 1<<6 | 1<<9, trunk0: true},
+	"509": {region: "HT", lengths: 1 << 8},
+	// shared by BL GP MF
+	"590": {region: "GP", lengths: 1 << 9, trunk0: true},
+	"591": {region: "BO", lengths: 1<<8 | 1<<9, trunk0: true},
+	"592": {region: "GY", lengths: 1 << 7},
+	"593": {region: "EC", lengths: 1<<8 | 1<<9 | 1<<10 | 1<<11, trunk0: true},
+	"594": {region: "GF", lengths: 1 << 9, trunk0: true},
+	"595": {region: "PY", lengths: 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11, trunk0: true},
+	"596": {region: "MQ", lengths: 1 << 9, trunk0: true},
+	"597": {region: "SR", lengths: 1<<6 | 1<<7},
+	"598": {region: "UY", lengths: 1<<4 | 1<<5 | 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12 | 1<<13, trunk0: true},
+	// shared by BQ CW
+	"599": {region: "CW", lengths: 1<<7 | 1<<8},
+	"670": {region: "TL", lengths: 1<<7 | 1<<8},
+	"672": {region: "NF", lengths: 1 << 6},
+	"673": {region: "BN", lengths: 1 << 7},
+	"674": {region: "NR", lengths: 1 << 7},
+	"675": {region: "PG", lengths: 1<<7 | 1<<8},
+	"676": {region: "TO", lengths: 1<<5 | 1<<7},
+	"677": {region: "SB", lengths: 1<<5 | 1<<7},
+	"678": {region: "VU", lengths: 1<<5 | 1<<7},
+	"679": {region: "FJ", lengths: 1<<7 | 1<<11},
+	"680": {region: "PW", lengths: 1 << 7},
+	"681": {region: "WF", lengths: 1<<6 | 1<<9},
+	"682": {region: "CK", lengths: 1 << 5},
+	"683": {region: "NU", lengths: 1<<4 | 1<<7},
+	"685": {region: "WS", lengths: 1<<5 | 1<<6 | 1<<7 | 1<<10},
+	"686": {region: "KI", lengths: 1<<5 | 1<<8, trunk0: true},
+	"687": {region: "NC", lengths: 1 << 6},
+	"688": {region: "TV", lengths: 1<<5 | 1<<6 | 1<<7},
+	"689": {region: "PF", lengths: 1<<6 | 1<<8 | 1<<9},
+	"690": {region: "TK", lengths: 1<<4 | 1<<5 | 1<<6 | 1<<7},
+	"691": {region: "FM", lengths: 1 << 7},
+	"692": {region: "MH", lengths: 1 << 7},
+	"800": {region: "001", lengths: 1 << 8},
+	"808": {region: "001", lengths: 1 << 8},
+	"850": {region: "KP", lengths: 1<<8 | 1<<10, trunk0: true},
+	"852": {region: "HK", lengths: 1<<5 | 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<11},
+	"853": {region: "MO", lengths: 1<<7 | 1<<8},
+	"855": {region: "KH", lengths: 1<<8 | 1<<9 | 1<<10, trunk0: true},
+	"856": {region: "LA", lengths: 1<<8 | 1<<9 | 1<<10, trunk0: true},
+	"870": {region: "001", lengths: 1<<9 | 1<<12},
+	"878": {region: "001", lengths: 1 << 12},
+	"880": {region: "BD", lengths: 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10, trunk0: true},
+	"881": {region: "001", lengths: 1<<9 | 1<<10},
+	"882": {region: "001", lengths: 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12},
+	"883": {region: "001", lengths: 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12},
+	"886": {region: "TW", lengths: 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11, trunk0: true},
+	"888": {region: "001", lengths: 1 << 11},
+	"960": {region: "MV", lengths: 1<<7 | 1<<10},
+	"961": {region: "LB", lengths: 1<<7 | 1<<8, trunk0: true},
+	"962": {region: "JO", lengths: 1<<8 | 1<<9, trunk0: true},
+	"963": {region: "SY", lengths: 1<<8 | 1<<9, trunk0: true},
+	"964": {region: "IQ", lengths: 1<<8 | 1<<9 | 1<<10, trunk0: true},
+	"965": {region: "KW", lengths: 1<<7 | 1<<8},
+	"966": {region: "SA", lengths: 1<<9 | 1<<10, trunk0: true},
+	"967": {region: "YE", lengths: 1<<7 | 1<<8 | 1<<9, trunk0: true},
+	"968": {region: "OM", lengths: 1<<7 | 1<<8 | 1<<9},
+	"970": {region: "PS", lengths: 1<<8 | 1<<9 | 1<<10, trunk0: true},
+	"971": {region: "AE", lengths: 1<<5 | 1<<6 | 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12, trunk0: true},
+	"972": {region: "IL", lengths: 1<<7 | 1<<8 | 1<<9 | 1<<10 | 1<<11 | 1<<12, trunk0: true},
+	"973": {region: "BH", lengths: 1 << 8},
+	"974": {region: "QA", lengths: 1<<7 | 1<<8 | 1<<9 | 1<<11},
+	"975": {region: "BT", lengths: 1<<7 | 1<<8},
+	"976": {region: "MN", lengths: 1<<8 | 1<<9 | 1<<10, trunk0: true},
+	"977": {region: "NP", lengths: 1<<8 | 1<<10 | 1<<11, trunk0: true},
+	"979": {region: "001", lengths: 1 << 9},
+	"992": {region: "TJ", lengths: 1 << 9},
+	"993": {region: "TM", lengths: 1 << 8},
+	"994": {region: "AZ", lengths: 1 << 9, trunk0: true},
+	"995": {region: "GE", lengths: 1 << 9, trunk0: true},
+	"996": {region: "KG", lengths: 1<<9 | 1<<10, trunk0: true},
+	"998": {region: "UZ", lengths: 1 << 9},
+}
+
+// e164CodeCount is the number of codes the generator wrote. TestE164CodesCount requires e164Codes to
+// hold exactly this many, so a hand edit that adds or drops a code, instead of regenerating, fails.
+const e164CodeCount = 215

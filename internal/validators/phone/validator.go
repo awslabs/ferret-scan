@@ -6,7 +6,6 @@ package phone
 import (
 	stdctx "context"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -123,9 +122,13 @@ var tollFreeAreaCodes = []string{"800", "833", "844", "855", "866", "877", "888"
 // variant stopped being deduplicated against it and surfaced at 100 HIGH in its
 // place. Everything a caller can add after the subscriber number has to be
 // removed before an end-anchored test means anything.
+//
+// A leading "00" is the international dialling prefix of the "001 415 555 0132" form, the same
+// number as "+1 415 555 0132", so it is stripped as the "+" is allowed for: before it was, that form
+// scored 85 where the "+1" one scored 15 (#889).
 func (v *Validator) isReservedFictionalNumber(phone string) bool {
 	trimmed := rePhoneExtensionSuffix.ReplaceAllString(phone, "")
-	return reFictional555.MatchString(v.cleanPhoneNumber(trimmed))
+	return reFictional555.MatchString(strings.TrimPrefix(v.cleanPhoneNumber(trimmed), "00"))
 }
 
 // Validator implements the detector.Validator interface for detecting
@@ -161,15 +164,19 @@ type Validator struct {
 	// Common test phone numbers
 	testPhoneNumbers []string
 
-	// Country calling codes for validation
-	countryCodeMap map[string]string
-
-	// Optimized country code lookup (sorted by length, longest first)
-	sortedCountryCodes []string
-
 	// Observability
 	observer observability.Observer
 }
+
+// Indexes into Validator.patterns of the patterns international.go reads in new contexts or scores
+// with. TestPatternIndexes pins them to the names, so reordering the table cannot silently point them
+// at another pattern.
+const (
+	patternUSStandard            = 0
+	patternUKStandard            = 6
+	patternUSWithExtension       = 10
+	patternUSTollFreeParentheses = 13
+)
 
 // phonePattern represents a phone number pattern with its format info
 type phonePattern struct {
@@ -277,11 +284,7 @@ func NewValidator() *Validator {
 			"444-444-4444", "555-555-5555", "666-666-6666", "777-777-7777",
 			"888-888-8888", "999-999-9999", "987-654-3210", "012-345-6789",
 		},
-		countryCodeMap: initCountryCodeMap(),
 	}
-
-	// Initialize sorted country codes for optimized lookup
-	v.sortedCountryCodes = initSortedCountryCodes(v.countryCodeMap)
 
 	// Precompute lowercased keyword lists and the longest keyword length so the
 	// per-match context analysis avoids repeated strings.ToLower(keyword) work and
@@ -450,6 +453,9 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	// never pays for it.
 	doc := &docScoring{content: content}
 
+	// Per-line buffers of the widest-span pass, reused across lines.
+	res := &lineResolver{}
+
 	// Process each pattern type
 	for lineNum, line := range lines {
 		// Cooperative cancellation (v2 Phase 3): bail promptly on deadline/cancel.
@@ -471,8 +477,10 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		//     no candidate pays for none of it and a match-dense line stays linear.
 		dedup := newLineDedup()
 		ls := &lineScoring{v: v, doc: doc, line: line, lineNum: lineNum}
+		res.reset()
+		base := len(matches)
 
-		for _, pattern := range v.patterns {
+		for pi, pattern := range v.patterns {
 			// FindAllStringIndex yields each match's byte offset within the line, so
 			// we no longer call strings.Index(line, match) per match (O(M*L) -> O(M))
 			// and we avoid the latent bug where strings.Index returns the FIRST
@@ -486,180 +494,42 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				// the real match.
 				match := strings.TrimLeft(rawMatch, " \t,;|\"'<>\r\n")
 				matchIndex := loc[0] + (len(rawMatch) - len(match))
-				matchEnd := matchIndex + len(match)
 
-				// Skip if this match was already found by another pattern on this
-				// line. Same containment semantics as isDuplicateMatch, evaluated in
-				// O(1)-amortized time against the per-line dedup index.
+				// A match main's checks set aside stays a candidate for the widest-span pass
+				// (international.go): a wider match first-pattern-wins dedup set aside is how
+				// "1-888-201-0055" keeps its "1-" (#889).
+				setAside := rawCand{start: matchIndex, end: matchIndex + len(match), pattern: pi}
+
 				// A match whose digit count is outside what this pattern's numbering plan allows.
 				// Checked here rather than in the regex because the digits are spread across optional
 				// groups; see phonePattern.minDigits.
 				if !pattern.lengthAllowed(match) {
+					res.raw = append(res.raw, setAside)
 					continue
 				}
 
+				// Skip if this match was already found by another pattern on this
+				// line. Same containment semantics as isDuplicateMatch, evaluated in
+				// O(1)-amortized time against the per-line dedup index.
 				cleanNew := v.cleanPhoneNumber(match)
 				if dedup.isDuplicate(cleanNew) {
+					res.raw = append(res.raw, setAside)
 					continue
 				}
 
 				// Skip if this phone number is embedded within an identifier or resource ID
 				if v.isEmbeddedInIdentifierAt(match, line, matchIndex) {
+					res.raw = append(res.raw, setAside)
 					continue
 				}
 
-				// Calculate confidence. emissionBase is the same value scored the way it was
-				// before #882 (the country check had two states); only the emission predicate
-				// reads it.
-				confidence, emissionBase, checks, country := v.calculateConfidence(match)
-
-				// Analyze phone structure
-				phoneInfo := v.AnalyzePhoneStructure(match, pattern)
-
-				// For preprocessed content, create a context info
-				contextInfo := detector.ContextInfo{
-					FullLine: line,
-				}
-
-				// Extract context around the match in the line using the known
-				// offset (no rescan).
-				start := matchIndex - 50
-				if start < 0 {
-					start = 0
-				}
-				end := matchEnd + 50
-				if end > len(line) {
-					end = len(line)
-				}
-				contextInfo.BeforeText = line[start:matchIndex]
-				contextInfo.AfterText = line[matchEnd:end]
-
-				// The structural gate: what sits immediately around the match (a resource ID's
-				// hyphen, an ARN's colons, a trailing letter). Both the emission predicate and
-				// the score start from it.
-				structureOK := v.hasPhoneStructureAt(match, line, matchIndex)
-
-				// EMISSION is decided exactly as it was before #882. Redaction rewrites only
-				// reported findings and ignores their confidence, so a change to which matches
-				// are reported changes the redacted bytes, while a change to how they score does
-				// not. This PR moves scores only: measured without this guard, the new
-				// arithmetic below dropped 102 Go-stdlib findings main reports (and flooring
-				// every non-vetoed match instead dropped 24 and added 129).
-				if !ls.emits(match, contextInfo, matchIndex, emissionBase, structureOK) {
+				m, corroborated, ok := v.scoreMatch(ls, match, matchIndex, pattern, cleanNew, originalPath, nil)
+				if !ok {
+					res.raw = append(res.raw, setAside)
 					continue
 				}
-
-				// SCORE: phone evidence only (#882). Whole-word phone keywords and phrases on the
-				// line outside the match, a phone label on the value, a phone column header, a
-				// formatted toll-free area code.
-				ev := ls.evidence(match, matchIndex, matchEnd, structureOK)
-				contextImpact := ev.impact
-
-				confidence += contextImpact
-
-				// Ensure confidence stays within bounds
-				if confidence > 100 {
-					confidence = 100
-				} else if confidence < 0 {
-					confidence = 0
-				}
-
-				// A match nothing corroborates scores 85 at most here, and publishes that bound so
-				// the document bridge's +20 for a CSV-typed document cannot lift it to HIGH. The
-				// "+" form is corroboration: nothing but a phone number is written that way.
-				ceiling := 0.0
-				if !ev.corroborated && !strings.HasPrefix(match, "+") {
-					ceiling = uncorroboratedCeiling
-					if confidence > ceiling {
-						confidence = ceiling
-					}
-				}
-
-				// Reserved-fictional ceiling, applied AFTER context.
-				//
-				// The -20 penalty in CalculateConfidence was already firing on
-				// these and was out-voted every time: measured before this, "Call
-				// the support desk on 415-555-0100 for help." scored 100 HIGH with
-				// `Not Test Number: false`, and --explain called it "likely_real"
-				// and advised "REVIEW BEFORE SUPPRESSING". A fixed penalty always
-				// loses eventually, because the penalty is a constant and the
-				// context budget is not — the same asymmetry as TM-11, mirrored.
-				// So the fix is a ceiling context cannot lift, not a bigger number.
-				// See #364.
-				//
-				// A ceiling rather than a drop, deliberately. Dropping would be
-				// defensible on the value alone (555-01xx is unassignable, so it
-				// reaches nobody), but it also takes the value out of the
-				// REDACTION path, since only reported findings are rewritten. A
-				// ceiling keeps the finding, so a fictional number in a document
-				// is still masked, while guaranteeing it can never present as
-				// MEDIUM or HIGH. This is the treatment creditcard already gives
-				// its known test cards (creditcard/validator.go:348), and it is
-				// why CREDIT_CARD measured 15 for 4111111111111111 while PHONE
-				// measured 100 for 555-0100.
-				//
-				// Written as a cap, never an assignment: capping can only lower a
-				// score, so it cannot resurrect a finding that context had already
-				// zeroed below. It is also PUBLISHED (#882): unpublished, the
-				// document bridge's +20 took 415-555-0123 in a CSV to 35.
-				// cleanNew is already computed for dedup, so the substring probe is
-				// free and keeps the regex work off the hot path. It is sound as a
-				// pre-filter: isReservedFictionalNumber strips only a trailing
-				// extension, so the digits it tests are a PREFIX of cleanNew, and
-				// reFictional555 requires "55501" inside that prefix. Every match it
-				// can accept therefore has "55501" somewhere in cleanNew. Without
-				// this, every phone match on the line would pay a regex replace, a
-				// second cleanPhoneNumber and a regex match — per-match line work is
-				// how this validator family became quadratic before.
-				if strings.Contains(cleanNew, "55501") && v.isReservedFictionalNumber(match) {
-					ceiling = reservedFictionalCeiling
-					if confidence > reservedFictionalCeiling {
-						confidence = reservedFictionalCeiling
-						checks["not_test_number"] = false
-					}
-				}
-
-				// The emission predicate reported this match, so it is reported with a positive
-				// score even where the new arithmetic would take it to 0: a demotion, never a
-				// removal.
-				if confidence < 1 {
-					confidence = 1
-				}
-
-				contextInfo.PositiveKeywords = ev.positive
-				contextInfo.NegativeKeywords = ev.negative
-				contextInfo.ConfidenceImpact = contextImpact
-
-				// A NANP-impossible value (area code 0XX/1XX/N11, exchange 0XX/1XX) is not a
-				// US/Canada number whatever its shape, so it does not carry that label.
-				if country == countryImpossible && phoneInfo["country"] == "US/CA" {
-					phoneInfo["country"] = "Unknown"
-				}
-
-				metadata := map[string]any{
-					"country":           phoneInfo["country"],
-					"format":            phoneInfo["format"],
-					"pattern_name":      phoneInfo["pattern_name"],
-					"clean_number":      phoneInfo["clean_number"],
-					"validation_checks": checks,
-					"context_impact":    contextInfo.ConfidenceImpact,
-					"source":            "preprocessed_content",
-					"original_file":     originalPath,
-				}
-				if ceiling > 0 {
-					metadata[confidenceCeilingKey] = ceiling
-				}
-
-				matches = append(matches, detector.Match{
-					Text:       match,
-					LineNumber: lineNum + 1, // 1-based line numbering
-					Type:       "PHONE",
-					Confidence: confidence,
-					Filename:   originalPath,
-					Validator:  "phone",
-					Context:    contextInfo,
-					Metadata:   metadata,
-				})
+				matches = append(matches, m)
+				res.found = append(res.found, lineFinding{start: matchIndex, end: matchIndex + len(match), corroborated: corroborated, replacedBy: -1})
 				// Record the accepted match's cleaned digits for subsequent dedup
 				// on this line. Only matches that actually land in `matches`
 				// participate in dedup, exactly as before (isDuplicateMatch scanned
@@ -667,6 +537,10 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				dedup.add(cleanNew)
 			}
 		}
+
+		// The findings above are main's for this line. The E.164 gate judges the international
+		// ones, and a wider or new reading (international.go) replaces or joins them.
+		matches = v.resolve(ls, res, originalPath, matches, base)
 	}
 
 	if finishTiming != nil {
@@ -678,6 +552,228 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 	}
 
 	return matches, nil
+}
+
+// scoreOpts are the departures a wide reading (international.go) takes from main's per-match
+// pipeline. A nil *scoreOpts is main's pipeline exactly.
+type scoreOpts struct {
+	// pattern scores the match with this pattern; nil scores it with the first pattern whose regex
+	// matches the text, as main always has.
+	pattern *phonePattern
+	// floor is the best confidence among the findings the reading replaces, and floorCorroborated
+	// whether any of them was corroborated: the reading scores no lower and counts as corroborated.
+	floor             float64
+	floorCorroborated bool
+	// cap is an extra ceiling, published like the others (0: none). gateFailed and
+	// labelUnrecognised record why it applies.
+	cap               float64
+	gateFailed        bool
+	labelUnrecognised bool
+	// country replaces the pattern's country label when non-empty.
+	country string
+}
+
+// isPlusForm reports whether a match is written with a leading "+", alone or as "(+CC)": the
+// international format calculateConfidenceWithPattern credits.
+func isPlusForm(match string) bool {
+	return strings.HasPrefix(match, "+") || strings.HasPrefix(match, "(+")
+}
+
+// scoreMatch is the per-match pipeline after main's candidate checks (length, dedup, embedding):
+// confidence, structure, the emission predicate, evidence, ceilings and metadata. corroborated is
+// whether anything beyond the match's shape names it a phone. It reports ok=false when the emission
+// predicate does not report the match.
+func (v *Validator) scoreMatch(ls *lineScoring, match string, matchIndex int, pattern phonePattern, cleanNew, originalPath string, o *scoreOpts) (m detector.Match, corroborated, ok bool) {
+	line := ls.line
+	matchEnd := matchIndex + len(match)
+
+	// Calculate confidence. emissionBase is the same value scored the way it was
+	// before #882 (the country check had two states); only the emission predicate
+	// reads it.
+	var confidence, emissionBase float64
+	var checks map[string]bool
+	var country countryState
+	if o != nil && o.pattern != nil {
+		confidence, emissionBase, checks, country = v.calculateConfidenceWithPattern(match, *o.pattern)
+	} else {
+		confidence, emissionBase, checks, country = v.calculateConfidence(match)
+	}
+
+	// Analyze phone structure
+	phoneInfo := v.AnalyzePhoneStructure(match, pattern)
+
+	// For preprocessed content, create a context info
+	contextInfo := detector.ContextInfo{
+		FullLine: line,
+	}
+
+	// Extract context around the match in the line using the known
+	// offset (no rescan).
+	start := matchIndex - 50
+	if start < 0 {
+		start = 0
+	}
+	end := matchEnd + 50
+	if end > len(line) {
+		end = len(line)
+	}
+	contextInfo.BeforeText = line[start:matchIndex]
+	contextInfo.AfterText = line[matchEnd:end]
+
+	// The structural gate: what sits immediately around the match (a resource ID's
+	// hyphen, an ARN's colons, a trailing letter). Both the emission predicate and
+	// the score start from it.
+	structureOK := v.hasPhoneStructureAt(match, line, matchIndex)
+
+	// EMISSION is decided exactly as it was before #882. Redaction rewrites only
+	// reported findings and ignores their confidence, so a change to which matches
+	// are reported changes the redacted bytes, while a change to how they score does
+	// not. This PR moves scores only: measured without this guard, the new
+	// arithmetic below dropped 102 Go-stdlib findings main reports (and flooring
+	// every non-vetoed match instead dropped 24 and added 129).
+	if !ls.emits(match, contextInfo, matchIndex, emissionBase, structureOK) {
+		return detector.Match{}, false, false
+	}
+
+	// SCORE: phone evidence only (#882). Whole-word phone keywords and phrases on the
+	// line outside the match, a phone label on the value, a phone column header, a
+	// formatted toll-free area code.
+	ev := ls.evidence(match, matchIndex, matchEnd, structureOK)
+	contextImpact := ev.impact
+
+	confidence += contextImpact
+
+	// Ensure confidence stays within bounds
+	if confidence > 100 {
+		confidence = 100
+	} else if confidence < 0 {
+		confidence = 0
+	}
+
+	corroborated = ev.corroborated
+	if o != nil {
+		if o.floor > confidence {
+			confidence = o.floor
+		}
+		corroborated = corroborated || o.floorCorroborated
+	}
+
+	// A match nothing corroborates scores 85 at most here, and publishes that bound so
+	// the document bridge's +20 for a CSV-typed document cannot lift it to HIGH. The
+	// "+" form is corroboration: nothing but a phone number is written that way. The
+	// bracketed "(+45) ..." form is not: a signed parenthetical is written the same way.
+	ceiling := 0.0
+	if !corroborated && !strings.HasPrefix(match, "+") {
+		ceiling = uncorroboratedCeiling
+		if confidence > ceiling {
+			confidence = ceiling
+		}
+	}
+
+	// Reserved-fictional ceiling, applied AFTER context.
+	//
+	// The -20 penalty in CalculateConfidence was already firing on
+	// these and was out-voted every time: measured before this, "Call
+	// the support desk on 415-555-0100 for help." scored 100 HIGH with
+	// `Not Test Number: false`, and --explain called it "likely_real"
+	// and advised "REVIEW BEFORE SUPPRESSING". A fixed penalty always
+	// loses eventually, because the penalty is a constant and the
+	// context budget is not — the same asymmetry as TM-11, mirrored.
+	// So the fix is a ceiling context cannot lift, not a bigger number.
+	// See #364.
+	//
+	// A ceiling rather than a drop, deliberately. Dropping would be
+	// defensible on the value alone (555-01xx is unassignable, so it
+	// reaches nobody), but it also takes the value out of the
+	// REDACTION path, since only reported findings are rewritten. A
+	// ceiling keeps the finding, so a fictional number in a document
+	// is still masked, while guaranteeing it can never present as
+	// MEDIUM or HIGH. This is the treatment creditcard already gives
+	// its known test cards (creditcard/validator.go:348), and it is
+	// why CREDIT_CARD measured 15 for 4111111111111111 while PHONE
+	// measured 100 for 555-0100.
+	//
+	// Written as a cap, never an assignment: capping can only lower a
+	// score, so it cannot resurrect a finding that context had already
+	// zeroed below. It is also PUBLISHED (#882): unpublished, the
+	// document bridge's +20 took 415-555-0123 in a CSV to 35.
+	// cleanNew is already computed for dedup, so the substring probe is
+	// free and keeps the regex work off the hot path. It is sound as a
+	// pre-filter: isReservedFictionalNumber strips only a trailing
+	// extension and a leading "00", so the digits it tests are a SUBSTRING
+	// of cleanNew, and reFictional555 requires "55501" inside them. Every
+	// match it can accept therefore has "55501" somewhere in cleanNew. Without
+	// this, every phone match on the line would pay a regex replace, a
+	// second cleanPhoneNumber and a regex match — per-match line work is
+	// how this validator family became quadratic before.
+	if strings.Contains(cleanNew, "55501") && v.isReservedFictionalNumber(match) {
+		ceiling = reservedFictionalCeiling
+		if confidence > reservedFictionalCeiling {
+			confidence = reservedFictionalCeiling
+			checks["not_test_number"] = false
+		}
+	}
+
+	// The gate's and the boundary rule's ceiling (international.go), published the same way.
+	if o != nil && o.cap > 0 {
+		if ceiling == 0 || o.cap < ceiling {
+			ceiling = o.cap
+		}
+		if confidence > o.cap {
+			confidence = o.cap
+		}
+		if o.gateFailed {
+			checks["valid_country"] = false
+		}
+		if o.labelUnrecognised {
+			checks["phone_label_recognized"] = false
+		}
+	}
+
+	// The emission predicate reported this match, so it is reported with a positive
+	// score even where the new arithmetic would take it to 0: a demotion, never a
+	// removal.
+	if confidence < 1 {
+		confidence = 1
+	}
+
+	contextInfo.PositiveKeywords = ev.positive
+	contextInfo.NegativeKeywords = ev.negative
+	contextInfo.ConfidenceImpact = contextImpact
+
+	if o != nil && o.country != "" {
+		phoneInfo["country"] = o.country
+	}
+	// A NANP-impossible value (area code 0XX/1XX/N11, exchange 0XX/1XX) is not a
+	// US/Canada number whatever its shape, so it does not carry that label.
+	if country == countryImpossible && phoneInfo["country"] == "US/CA" {
+		phoneInfo["country"] = "Unknown"
+	}
+
+	metadata := map[string]any{
+		"country":           phoneInfo["country"],
+		"format":            phoneInfo["format"],
+		"pattern_name":      phoneInfo["pattern_name"],
+		"clean_number":      phoneInfo["clean_number"],
+		"validation_checks": checks,
+		"context_impact":    contextInfo.ConfidenceImpact,
+		"source":            "preprocessed_content",
+		"original_file":     originalPath,
+	}
+	if ceiling > 0 {
+		metadata[confidenceCeilingKey] = ceiling
+	}
+
+	return detector.Match{
+		Text:       match,
+		LineNumber: ls.lineNum + 1, // 1-based line numbering
+		Type:       "PHONE",
+		Confidence: confidence,
+		Filename:   originalPath,
+		Validator:  "phone",
+		Context:    contextInfo,
+		Metadata:   metadata,
+	}, corroborated, true
 }
 
 // dedupMaxCleanLen bounds the cleaned-digit length for which the substring index
@@ -1311,6 +1407,11 @@ func formattedTollFree(match string) bool {
 	if !strings.ContainsAny(match, "()-. ") && !strings.HasPrefix(match, "+") {
 		return false
 	}
+	// A number written with a country code is a NANP toll-free number only when that code is 1:
+	// "+86 6688 4965" is ten digits whose first three are 866, and it is a Chinese number (#889).
+	if isIntlText(match) && !strings.HasPrefix(strings.TrimLeft(match, "(+"), "1") {
+		return false
+	}
 	digits := make([]byte, 0, 11)
 	for i := 0; i < len(match); i++ {
 		if match[i] >= '0' && match[i] <= '9' {
@@ -1461,8 +1562,9 @@ func (v *Validator) calculateConfidenceWithPattern(match string, pattern phonePa
 		emissionBase += 5
 	}
 
-	// Boost confidence for well-formatted international numbers
-	if strings.HasPrefix(match, "+") && len(cleanMatch) >= 10 {
+	// Boost confidence for well-formatted international numbers. "(+44) 20 ..." is the same form with
+	// its code in brackets; no pattern of NewValidator produces a match starting "(+".
+	if isPlusForm(match) && len(cleanMatch) >= 10 {
 		confidence += 10
 		emissionBase += 10
 	}
@@ -1488,15 +1590,11 @@ func (v *Validator) AnalyzePhoneStructure(phone string, pattern phonePattern) ma
 		"original":     phone,
 	}
 
-	// Extract country code if present
-	if strings.HasPrefix(phone, "+") {
-		// Use optimized lookup with sorted codes (longest first)
-		for _, code := range v.sortedCountryCodes {
-			if strings.HasPrefix(cleanNumber[1:], code) { // Skip the '+' prefix
-				result["country_code"] = code
-				result["country_name"] = v.countryCodeMap[code]
-				break
-			}
+	// Extract country code if present, from the generated E.164 table (e164_codes.go).
+	if strings.HasPrefix(cleanNumber, "+") {
+		if code := longestAssignedPrefix(cleanNumber[1:]); code != "" {
+			result["country_code"] = code
+			result["country_name"] = e164Codes[code].region
 		}
 	}
 
@@ -1683,18 +1781,24 @@ func (v *Validator) countryFormat(phone string, pattern phonePattern) countrySta
 		}
 		return countryValid
 	case "UK":
-		// UK numbers vary but should follow basic format
-		if strings.HasPrefix(phone, "+44") || strings.HasPrefix(phone, "0") {
+		// UK numbers vary but should follow basic format. "(020) 7946 0372" is the national form
+		// with its area code in brackets (international.go); no pattern of NewValidator produces it.
+		if strings.HasPrefix(phone, "+44") || strings.HasPrefix(phone, "0") || strings.HasPrefix(phone, "(0") {
 			return countryValid
 		}
 		return countryNotChecked
 	case "International", "Europe", "Mobile":
-		// Basic international format validation
-		if strings.HasPrefix(phone, "+") || strings.HasPrefix(phone, "00") {
+		// Basic international format validation. Whether the code is assigned and the national
+		// number has a length its plan allows is the E.164 gate's question (international.go), not
+		// this one's; "(+44) ..." is the bracketed form of the "+" prefix.
+		if isIntlText(phone) {
 			return countryValid
 		}
 		return countryInvalid
 	}
+	// Only a pattern this switch has no case for gets here: NewValidator's patterns all have one
+	// (TestCountryFormatHandlesEveryPattern), so this is the "Unknown" pattern CalculateConfidence
+	// scores an arbitrary string with. It reports no check rather than a valid one.
 	return countryNotChecked
 }
 
@@ -1709,64 +1813,6 @@ func nanpPossible(d string) bool {
 		return false
 	}
 	return d[3] >= '2' && d[3] <= '9'
-}
-
-// initSortedCountryCodes creates a sorted slice of country codes (longest first) for optimized lookup
-func initSortedCountryCodes(countryCodeMap map[string]string) []string {
-	codes := make([]string, 0, len(countryCodeMap))
-	for code := range countryCodeMap {
-		codes = append(codes, code)
-	}
-
-	// Sort by length (longest first) to match longer codes before shorter ones
-	// This prevents "1" from matching before "1242" (Bahamas)
-	sort.Slice(codes, func(i, j int) bool {
-		return len(codes[i]) > len(codes[j])
-	})
-
-	return codes
-}
-
-// Initialize country code map
-func initCountryCodeMap() map[string]string {
-	return map[string]string{
-		"1":   "US/Canada",
-		"44":  "United Kingdom",
-		"33":  "France",
-		"49":  "Germany",
-		"39":  "Italy",
-		"34":  "Spain",
-		"31":  "Netherlands",
-		"32":  "Belgium",
-		"41":  "Switzerland",
-		"43":  "Austria",
-		"45":  "Denmark",
-		"46":  "Sweden",
-		"47":  "Norway",
-		"358": "Finland",
-		"7":   "Russia",
-		"86":  "China",
-		"81":  "Japan",
-		"82":  "South Korea",
-		"91":  "India",
-		"61":  "Australia",
-		"64":  "New Zealand",
-		"55":  "Brazil",
-		"52":  "Mexico",
-		"54":  "Argentina",
-		"56":  "Chile",
-		"57":  "Colombia",
-		"58":  "Venezuela",
-		"51":  "Peru",
-		"27":  "South Africa",
-		"20":  "Egypt",
-		"212": "Morocco",
-		"213": "Algeria",
-		"216": "Tunisia",
-		"218": "Libya",
-		"234": "Nigeria",
-		"254": "Kenya",
-	}
 }
 
 // looksLikeSSN checks if the pattern matches SSN format (XXX-XX-XXXX) instead of phone
