@@ -280,9 +280,9 @@ A potential secret, API key, password, or authentication token was detected in t
 
 **Medical Identifier Detected**
 
-A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
+A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, a UK NHS number, a Scottish CHI number, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
 
-*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
+*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA, the UK GDPR or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
 
 ## CLOUD_RESOURCE_ID
 
@@ -328,9 +328,9 @@ A date of birth was detected in the scanned content. A date of birth is a common
 
 **Medical Identifier Detected**
 
-A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
+A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, a UK NHS number, a Scottish CHI number, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
 
-*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
+*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA, the UK GDPR or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
 
 ## DEVICE_INFO
 
@@ -410,7 +410,7 @@ Sensitive metadata was detected in file properties. This may include author name
 
 A driver's license number was detected in the scanned content. A license number is a government-issued identity document number, and in many jurisdictions its format encodes personal details such as a date of birth or a name fragment.
 
-*What to do:* Remove the license number or replace it with a synthetic value. Because several jurisdictions derive the number from the holder's name and date of birth, the number itself can disclose those details even without them appearing in the text. Formats vary by jurisdiction, so verify a finding against the issuing state's pattern before dismissing it.
+*What to do:* Remove the license number or replace it with a synthetic value. Because several jurisdictions derive the number from the holder's name and date of birth, the number itself can disclose those details even without them appearing in the text. Formats vary by jurisdiction and several share one shape, so the finding's format property names the shape it matched, not the jurisdiction that issued it: NY_GA_9D is New York or Georgia, and a number from elsewhere with a US shape is reported under that shape's name (a contiguous Ontario number as NJ_1L14D, a contiguous Quebec number as FL_MI_1L12D). Check the value against every jurisdiction that uses its shape before dismissing it.
 
 ## EDUCATIONAL
 
@@ -552,9 +552,9 @@ Sensitive metadata was detected in file properties. This may include author name
 
 **Medical Identifier Detected**
 
-A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
+A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, a UK NHS number, a Scottish CHI number, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
 
-*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
+*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA, the UK GDPR or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
 
 ## INTELLECTUAL_PROPERTY
 
@@ -574,11 +574,11 @@ An IP address was detected in the scanned content. IP addresses can be considere
 
 ## ITIN
 
-**Social Security Number Detected**
+**Individual Taxpayer Identification Number Detected**
 
-A Social Security Number (SSN) pattern was detected in the scanned content. SSNs are highly sensitive personally identifiable information (PII) that must be protected under various regulations.
+An IRS Individual Taxpayer Identification Number (ITIN) was detected in the scanned content. The IRS issues an ITIN to a person who needs a US taxpayer identification number but is not eligible for a Social Security Number. It is written like an SSN, nine digits beginning with 9, and it identifies its holder to the IRS as an SSN does, so it is sensitive personal information in the same way.
 
-*What to do:* Social Security Numbers are protected under numerous regulations including GDPR, HIPAA, and various state privacy laws. SSNs should never be stored in source code, configuration files, or logs. Remove this SSN immediately and ensure it is stored in a secure, encrypted system with appropriate access controls. Consider implementing tokenization or other data protection mechanisms.
+*What to do:* Handle an ITIN as you would an SSN: remove it, or replace it with synthetic test data, and keep real values in a system with access controls rather than in source, configuration files or logs. An ITIN appears on tax returns, payroll and banking records, so check the surrounding record for the holder's name and other identifiers.
 
 ## JCB
 
@@ -640,9 +640,9 @@ A credit card number pattern was detected in the scanned content. Credit card nu
 
 **Medical Identifier Detected**
 
-A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
+A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, a UK NHS number, a Scottish CHI number, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
 
-*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
+*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA, the UK GDPR or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
 
 ## METADATA
 
@@ -664,25 +664,25 @@ An email address was detected in the scanned content. Email addresses can be con
 
 **Medical Identifier Detected**
 
-A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
+A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, a UK NHS number, a Scottish CHI number, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
 
-*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
+*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA, the UK GDPR or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
 
 ## NHS_NUMBER
 
 **Medical Identifier Detected**
 
-A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
+A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, a UK NHS number, a Scottish CHI number, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
 
-*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
+*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA, the UK GDPR or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
 
 ## NPI
 
 **Medical Identifier Detected**
 
-A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
+A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, a UK NHS number, a Scottish CHI number, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
 
-*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
+*What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA, the UK GDPR or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
 
 ## OCI_OCID
 

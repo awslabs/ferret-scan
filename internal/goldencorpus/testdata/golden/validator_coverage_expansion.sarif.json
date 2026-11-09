@@ -497,7 +497,7 @@
                 "text": "A driver's license number was detected in the scanned content. A license number is a government-issued identity document number, and in many jurisdictions its format encodes personal details such as a date of birth or a name fragment."
               },
               "help": {
-                "text": "Remove the license number or replace it with a synthetic value. Because several jurisdictions derive the number from the holder's name and date of birth, the number itself can disclose those details even without them appearing in the text. Formats vary by jurisdiction, so verify a finding against the issuing state's pattern before dismissing it."
+                "text": "Remove the license number or replace it with a synthetic value. Because several jurisdictions derive the number from the holder's name and date of birth, the number itself can disclose those details even without them appearing in the text. Formats vary by jurisdiction and several share one shape, so the finding's format property names the shape it matched, not the jurisdiction that issued it: NY_GA_9D is New York or Georgia, and a number from elsewhere with a US shape is reported under that shape's name (a contiguous Ontario number as NJ_1L14D, a contiguous Quebec number as FL_MI_1L12D). Check the value against every jurisdiction that uses its shape before dismissing it."
               },
               "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#drivers_license",
               "id": "DRIVERS_LICENSE",
