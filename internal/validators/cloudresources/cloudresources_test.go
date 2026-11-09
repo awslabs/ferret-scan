@@ -375,16 +375,7 @@ func TestCustomPattern(t *testing.T) {
 	}
 }
 
-func TestInvalidCustomPatternIgnored(t *testing.T) {
-	v := NewValidator()
-	// Must not panic or error on an invalid regex.
-	v.Configure(&config.Config{Validators: map[string]map[string]interface{}{
-		"cloud_resources": {"custom_patterns": []interface{}{`[unclosed`}},
-	}})
-	if _, err := v.ValidateContent("arn:aws:iam::123456789012:role/X", "t.txt"); err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
+// TestInvalidCustomPatternIgnored moved to config_warnings_test.go, where it also asserts the warning.
 
 // --- DoS guard: oversize input is skipped ---
 

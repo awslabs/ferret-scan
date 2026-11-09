@@ -234,6 +234,13 @@ func (ws *WebServer) Start() error {
 		ws.cachedConfig = config.LoadConfigOrDefault("")
 	}
 
+	// Configured values a validator could not use (#903), named once here, at
+	// load, rather than on every request. Every check, because a request may
+	// select any of them; the web UI applies no profile.
+	for _, w := range core.ConfigWarnings(core.BuildValidatorSet(core.ParseChecksToRun(nil), ws.cachedConfig, nil)) {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+	}
+
 	// Setup routes with error handling
 	if err := ws.setupRoutesWithValidation(); err != nil {
 		return fmt.Errorf("failed to setup web server routes: %w\n"+

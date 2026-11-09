@@ -130,6 +130,46 @@ type ScanResult struct {
 	// from the same answer the file path reads off its own validators (#887).
 	DisabledDetectionTypes    map[string][]string
 	UnrecognisedDisabledTypes map[string][]string
+
+	// ConfigWarnings are the configured values the validators this scan BUILT could not use (see
+	// ConfigWarnings): a regex RE2 rejects, an entry of the wrong type, a scalar where a list belongs.
+	// Each such value was dropped, so what it configured did not take effect (#903). One line each, no
+	// "Warning: " prefix; nil when every value was usable. Reported, not printed, so each caller writes
+	// them to its own channel: the CLI's --stdin path, which goes through ScanContent, has no validator
+	// set of its own to ask.
+	ConfigWarnings []string
+}
+
+// ConfigWarnings asks each validator in the set which configured values it could not use, and returns
+// them one per line in a fixed order: by check name, then in the order the validator met them, with exact
+// repeats dropped (the profile pass can repeat the global one). It asks the VALIDATORS rather than
+// re-reading config, for the reason DisabledDetectionTypes gives: only a validator's parser knows what it
+// did with a value. Only validators actually in the set report, so a bad pattern for a validator --checks
+// excluded is silent: it configured nothing because nothing ran.
+func ConfigWarnings(validators map[string]detector.Validator) []string {
+	names := make([]string, 0, len(validators))
+	for name := range validators {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var out []string
+	seen := make(map[string]bool)
+	for _, name := range names {
+		source, ok := validators[name].(config.ValueWarningSource)
+		if !ok {
+			continue
+		}
+		for _, w := range source.ConfigWarnings() {
+			line := w.String()
+			if seen[line] {
+				continue
+			}
+			seen[line] = true
+			out = append(out, line)
+		}
+	}
+	return out
 }
 
 // NotExaminedFile is one file that was not fully examined, with the cause its producer stated.
@@ -177,6 +217,7 @@ func ScanFileCtx(ctx context.Context, scanConfig ScanConfig) (*ScanResult, error
 	enabledChecks := ParseChecksToRun(scanConfig.Checks)
 	standardValidators := BuildValidatorSetWithOverrides(enabledChecks, scanConfig.Config, scanConfig.Profile, scanConfig.ValidatorOverrides)
 	disabledTypes, unrecognisedTypes := DisabledDetectionTypes(standardValidators)
+	configWarnings := ConfigWarnings(standardValidators)
 
 	// Set up the detection facade (dual-path: document body + metadata).
 	detectorFacade := validators.NewDetector(observer)
@@ -265,6 +306,7 @@ func ScanFileCtx(ctx context.Context, scanConfig ScanConfig) (*ScanResult, error
 		NotExamined:               collectNotExamined(stats),
 		DisabledDetectionTypes:    disabledTypes,
 		UnrecognisedDisabledTypes: unrecognisedTypes,
+		ConfigWarnings:            configWarnings,
 	}, nil
 }
 
@@ -441,6 +483,7 @@ func ScanContentCtx(ctx context.Context, content string, cfg ContentScanConfig) 
 	enabledChecks := ParseChecksToRun(cfg.Checks)
 	standardValidators := BuildValidatorSetWithOverrides(enabledChecks, cfg.Config, cfg.Profile, cfg.ValidatorOverrides)
 	disabledTypes, unrecognisedTypes := DisabledDetectionTypes(standardValidators)
+	configWarnings := ConfigWarnings(standardValidators)
 
 	// In-memory content cannot drive metadata extraction (no filesystem path
 	// for the metadata extractors to read), so omit the metadata validator.
@@ -554,6 +597,7 @@ func ScanContentCtx(ctx context.Context, content string, cfg ContentScanConfig) 
 		NotExamined:               notExamined,
 		DisabledDetectionTypes:    disabledTypes,
 		UnrecognisedDisabledTypes: unrecognisedTypes,
+		ConfigWarnings:            configWarnings,
 	}, nil
 }
 

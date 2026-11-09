@@ -74,6 +74,11 @@ type RedactResult struct {
 	Incomplete       bool
 	IncompleteReason string
 	NotExamined      []NotExaminedFile
+
+	// ConfigWarnings are the configured values the validators of this redaction could not use, as
+	// ScanResult.ConfigWarnings reports them (#903). Each was dropped, so a pattern meant to find a value
+	// found nothing, and nothing it would have found is masked. Nil when every value was usable.
+	ConfigWarnings []string
 }
 
 // ErrRedactionIncomplete is wrapped by the error RedactFile returns when the file was not fully
@@ -113,6 +118,7 @@ func RedactFileCtx(ctx context.Context, cfg RedactConfig) (*RedactResult, error)
 	// Build the filtered validator set + detection facade (same as ScanFile).
 	enabledChecks := ParseChecksToRun(cfg.Checks)
 	standardValidators := BuildValidatorSet(enabledChecks, cfg.Config, nil)
+	configWarnings := ConfigWarnings(standardValidators)
 	detectorFacade := validators.NewDetector(observer)
 	if err := detectorFacade.SetupValidators(standardValidators); err != nil {
 		return nil, fmt.Errorf("failed to set up validators: %w", err)
@@ -153,6 +159,7 @@ func RedactFileCtx(ctx context.Context, cfg RedactConfig) (*RedactResult, error)
 			Incomplete:       true,
 			IncompleteReason: coverage.CauseCutShort.String() + ": " + cfg.FilePath + ": " + cerr.Error(),
 			NotExamined:      ne,
+			ConfigWarnings:   configWarnings,
 		}, IncompleteRedactionError(ctx, ErrRedactionIncomplete, ne)
 	}
 
@@ -227,6 +234,7 @@ func RedactFileCtx(ctx context.Context, cfg RedactConfig) (*RedactResult, error)
 		RedactionCount:   len(matches),
 		Strategy:         strategy.String(),
 		Matches:          matches,
+		ConfigWarnings:   configWarnings,
 	}
 	if incomplete {
 		res.Incomplete = true

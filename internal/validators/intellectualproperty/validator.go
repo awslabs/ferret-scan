@@ -82,6 +82,9 @@ type Validator struct {
 	// Disabled IP sub-types (e.g., "copyright", "patent", "trademark", "trade_secret", "internal_url")
 	disabledTypes map[string]bool
 
+	// configWarnings are the configured values Configure could not use; see ConfigWarnings.
+	configWarnings []config.ValueWarning
+
 	// Legal notice reconstruction configuration
 	legalNoticeConfig LegalNoticeConfig
 
@@ -309,7 +312,15 @@ func (v *Validator) SetObserver(observer observability.Observer) {
 	v.observer = observer
 }
 
-// Configure configures the validator with custom settings from the configuration
+// Configure configures the validator with custom settings from the configuration.
+//
+// A value it cannot use is dropped, as it always was, and is now also recorded for ConfigWarnings
+// (#903): a scalar where a list or map belongs, a non-string entry, a pattern RE2 rejects, a pattern
+// name this validator does not read. Before, a partly invalid internal_urls list reached only the debug
+// channels, two cases wrote straight to os.Stderr (bypassing pkg/scan's LogWriter, and breaking the
+// findings document `--stdin --enable-redaction` writes to stderr), and the rest had no message at all.
+// Configure writes nothing to os.Stderr now; its details go to the debug observer when one is attached.
+// An absent key, or one present with no value, configures nothing and is not a defect.
 func (v *Validator) Configure(cfg *config.Config) {
 	// Check if we have validator-specific configuration
 	if cfg == nil || cfg.Validators == nil {
@@ -326,6 +337,8 @@ func (v *Validator) Configure(cfg *config.Config) {
 		return
 	}
 
+	urlsPath := config.ValidatorKeyPath("intellectual_property", "internal_urls")
+
 	// Update internal URL patterns if provided
 	if urls, ok := ipConfig["internal_urls"].([]any); ok {
 		// Set configuration flag to true when internal_urls section is present
@@ -341,38 +354,47 @@ func (v *Validator) Configure(cfg *config.Config) {
 
 		validPatterns := []string{}
 		invalidCount := 0
+		// Entries that cannot be used, recorded after the loop: only then is it known whether any
+		// pattern survived, which decides whether internal URL detection is still on.
+		var rejected []rejectedValue
 
 		// Validate each pattern before storing
-		for _, url := range urls {
-			if urlStr, ok := url.(string); ok {
-				// Add case-insensitive flag if not already present
-				processedPattern := v.ensureCaseInsensitive(urlStr)
-
-				// Validate regex pattern using regexp.Compile()
-				if _, err := regexp.Compile(processedPattern); err != nil {
-					// Log warning for invalid pattern but continue with valid ones
-					if v.observer != nil && v.observer.Debug() != nil {
-						v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Invalid internal URL pattern '%s': %v", urlStr, err))
-						// Log specific invalid patterns with error details in debug mode
-						v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Skipping invalid regex pattern: '%s' - Error: %v", urlStr, err))
-					}
-
-					// Also log to stderr in debug mode for comprehensive logging
-					if os.Getenv("FERRET_DEBUG") == "1" {
-						fmt.Fprintf(os.Stderr, "[DEBUG] Intellectual Property Validator: Invalid internal URL pattern\n")
-						fmt.Fprintf(os.Stderr, "[DEBUG]   Pattern: %s\n", urlStr)
-						fmt.Fprintf(os.Stderr, "[DEBUG]   Error: %v\n", err)
-						fmt.Fprintf(os.Stderr, "[DEBUG]   Action: Skipping pattern and continuing with valid patterns\n")
-					}
-					invalidCount++
-					continue
-				}
-				validPatterns = append(validPatterns, processedPattern)
+		for i, url := range urls {
+			path := config.ElementPath(urlsPath, i)
+			urlStr, ok := url.(string)
+			if !ok {
+				rejected = append(rejected, rejectedValue{path: path, problem: config.WrongType("a pattern string", url)})
+				continue
 			}
+			// Add case-insensitive flag if not already present
+			processedPattern := v.ensureCaseInsensitive(urlStr)
+
+			// Validate regex pattern using regexp.Compile(). The string checked is the one that is
+			// compiled for the scan, (?i) included.
+			if _, err := regexp.Compile(processedPattern); err != nil {
+				// Log warning for invalid pattern but continue with valid ones
+				if v.observer != nil && v.observer.Debug() != nil {
+					v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Invalid internal URL pattern '%s': %v", urlStr, err))
+					// Log specific invalid patterns with error details in debug mode
+					v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Skipping invalid regex pattern: '%s' - Error: %v", urlStr, err))
+				}
+				rejected = append(rejected, rejectedValue{path: path, problem: config.InvalidRegex(err)})
+				invalidCount++
+				continue
+			}
+			validPatterns = append(validPatterns, processedPattern)
 		}
 
 		// Store only valid patterns
 		v.internalURLPatterns = validPatterns
+
+		effect := "skipped"
+		if len(validPatterns) == 0 {
+			effect = "skipped; no valid internal URL pattern remains, so internal URL detection is off"
+		}
+		for _, r := range rejected {
+			v.warnValue(r.path, r.problem, effect)
+		}
 
 		// Log number of successfully loaded patterns in debug mode (requirement 7.2)
 		if v.observer != nil && v.observer.Debug() != nil {
@@ -391,17 +413,6 @@ func (v *Validator) Configure(cfg *config.Config) {
 			}
 		}
 
-		// Also log to stderr in debug mode for comprehensive logging
-		if os.Getenv("FERRET_DEBUG") == "1" {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Intellectual Property Validator: Loaded %d valid internal URL patterns (%d invalid patterns skipped)\n", len(validPatterns), invalidCount)
-			if len(validPatterns) > 0 {
-				fmt.Fprintf(os.Stderr, "[DEBUG] Active internal URL patterns:\n")
-				for i, pattern := range validPatterns {
-					fmt.Fprintf(os.Stderr, "[DEBUG]   %d: %s\n", i+1, pattern)
-				}
-			}
-		}
-
 		// Handle case where all configured patterns are invalid - log warning
 		if len(validPatterns) == 0 && len(urls) > 0 {
 			v.logNoInternalURLPatterns("all configured internal URL patterns are invalid")
@@ -410,62 +421,137 @@ func (v *Validator) Configure(cfg *config.Config) {
 		// Recompile patterns (only valid ones now)
 		v.compileInternalURLPatterns()
 	} else {
+		// A present value that is not a list configures nothing, like an absent key, but the
+		// operator wrote it: `internal_urls: 'https?://wiki\.corp'` (a scalar) was measured
+		// leaving internal URL detection off with nothing said.
+		if raw := ipConfig["internal_urls"]; raw != nil {
+			effect := "ignored"
+			if len(v.regexInternalURLs) == 0 {
+				effect = "ignored; internal URL detection is off"
+			}
+			v.warnValue(urlsPath, config.WrongType("a list of patterns", raw), effect)
+		}
 		// No internal_urls configuration provided - detect when no patterns are configured
 		// Set configuration flag appropriately based on config presence
 		if !v.internalURLPatternsConfigured {
 			v.logNoInternalURLPatterns("no internal URL patterns configured")
-
-			// Log to stderr in debug mode for comprehensive audit trail
-			if os.Getenv("FERRET_DEBUG") == "1" {
-				fmt.Fprintf(os.Stderr, "[INFO] Intellectual Property Validator: No internal URL patterns configured\n")
-				fmt.Fprintf(os.Stderr, "[INFO] Internal URL detection is disabled. Configure 'validators.intellectual_property.internal_urls' to enable.\n")
-			}
 		}
 	}
 
 	// Update IP patterns if provided.
 	//
 	// Each override compiles the user-supplied regex with regexp.Compile (not
-	// MustCompile) so a malformed pattern from config logs a warning and the
-	// built-in default stays in place — instead of panicking the whole scan.
-	// On success, debug observers see a one-line confirmation that the
-	// override took effect, which makes "is my config actually loaded?"
-	// answerable from --debug output alone.
-	if patterns, ok := ipConfig["intellectual_property_patterns"].(map[string]any); ok {
+	// MustCompile) so a malformed pattern from config is recorded as a config
+	// warning and the pattern in effect stays in place — instead of panicking
+	// the whole scan. On success, debug observers see a one-line confirmation
+	// that the override took effect, which makes "is my config actually
+	// loaded?" answerable from --debug output alone.
+	patternsPath := config.ValidatorKeyPath("intellectual_property", "intellectual_property_patterns")
+	switch patterns := ipConfig["intellectual_property_patterns"].(type) {
+	case nil:
+	case map[string]any:
 		v.applyIPPatternOverride(patterns, "patent", &v.patternPatent, &v.regexPatent)
 		v.applyIPPatternOverride(patterns, "trademark", &v.patternTrademark, &v.regexTrademark)
 		v.applyIPPatternOverride(patterns, "copyright", &v.patternCopyright, &v.regexCopyright)
 		//  pragma: allowlist nextline secret
 		v.applyIPPatternOverride(patterns, "trade_secret", &v.patternTradeSecret, &v.regexTradeSecret)
+
+		// Any other name overrides nothing: `patents:` for `patent:` was measured silent.
+		var unknown []string
+		for name := range patterns {
+			if !ipPatternNames[name] {
+				unknown = append(unknown, name)
+			}
+		}
+		sort.Strings(unknown)
+		for _, name := range unknown {
+			v.warnValue(patternsPath+"."+name,
+				"unknown pattern name (the names read are "+strings.Join(sortedIPPatternNames(), ", ")+")", "ignored")
+		}
+	default:
+		v.warnValue(patternsPath, config.WrongType("a map of pattern names to patterns", patterns),
+			"ignored; it overrides no pattern")
 	}
 
 	// Parse disabled_types to skip specific IP sub-type detections
 	// Valid values: "copyright", "patent", "trademark", "trade_secret", "internal_url"
-	if disabledTypes, ok := ipConfig["disabled_types"].([]any); ok {
+	//
+	// An entry naming no sub-type keeps its own disclosure (UnrecognisedDisabledSubTypes); what is
+	// recorded here is a value that cannot be a name at all. A scalar `disabled_types: internal_url`
+	// was measured disabling nothing, silently, where the list form disables it.
+	disabledPath := config.ValidatorKeyPath("intellectual_property", "disabled_types")
+	switch disabledTypes := ipConfig["disabled_types"].(type) {
+	case nil:
+	case []any:
 		v.disabledTypes = make(map[string]bool)
-		for _, dt := range disabledTypes {
-			if dtStr, ok := dt.(string); ok {
-				normalized := strings.ToLower(strings.TrimSpace(dtStr))
-				v.disabledTypes[normalized] = true
+		for i, dt := range disabledTypes {
+			dtStr, ok := dt.(string)
+			if !ok {
+				v.warnValue(config.ElementPath(disabledPath, i), config.WrongType("a sub-type name", dt),
+					"ignored; it disables nothing")
+				continue
+			}
+			normalized := strings.ToLower(strings.TrimSpace(dtStr))
+			v.disabledTypes[normalized] = true
 
-				if v.observer != nil && v.observer.Debug() != nil {
-					v.observer.Debug().LogDetail("intellectualproperty",
-						fmt.Sprintf("Disabled IP sub-type: %s", normalized))
-				}
+			if v.observer != nil && v.observer.Debug() != nil {
+				v.observer.Debug().LogDetail("intellectualproperty",
+					fmt.Sprintf("Disabled IP sub-type: %s", normalized))
 			}
 		}
-
-		if os.Getenv("FERRET_DEBUG") == "1" && len(v.disabledTypes) > 0 {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Intellectual Property Validator: Disabled types: %v\n", v.disabledTypes)
-		}
+	default:
+		v.warnValue(disabledPath, config.WrongType("a list of sub-type names", disabledTypes),
+			"ignored; it disables nothing")
 	}
+}
+
+// ConfigWarnings returns the configured values Configure could not use, in the order it met them,
+// across every Configure call (#903). It records them rather than printing: the caller that owns the
+// output prints them, so they reach every entry point and never write into a stream that carries a
+// findings document. The slice is a copy.
+func (v *Validator) ConfigWarnings() []config.ValueWarning {
+	return append([]config.ValueWarning(nil), v.configWarnings...)
+}
+
+func (v *Validator) warnValue(path, problem, effect string) {
+	v.configWarnings = append(v.configWarnings, config.NewValueWarning(path, problem, effect))
+}
+
+// rejectedValue is a configured entry Configure could not use, held until the effect of dropping it
+// is known.
+type rejectedValue struct {
+	path    string
+	problem string
+}
+
+// ipPatternNames are the keys intellectual_property_patterns is read for, one per built-in pattern.
+var ipPatternNames = map[string]bool{
+	"copyright":    true,
+	"patent":       true,
+	"trade_secret": true, // pragma: allowlist secret
+	"trademark":    true,
+}
+
+func sortedIPPatternNames() []string {
+	out := make([]string, 0, len(ipPatternNames))
+	for name := range ipPatternNames {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // applyIPPatternOverride attempts to override one of the four built-in IP
 // patterns (patent, trademark, copyright, trade_secret) from the user-supplied
 // config map. The pattern is compiled with regexp.Compile (not MustCompile)
-// so a malformed regex from config logs a warning and the built-in default
-// stays in place — invalid user input must not panic the scan.
+// so a malformed regex from config is recorded as a config warning and the
+// pattern in effect stays in place — invalid user input must not panic the
+// scan.
+//
+// The warning used to be written straight to os.Stderr, two lines with the
+// raw pattern, which bypassed pkg/scan's LogWriter and, under
+// `--stdin --enable-redaction`, made the findings document on stderr
+// unparseable (#903). It is now a ValueWarning the caller prints.
 //
 // On success, a debug-level log line records the override so operators can
 // answer "did my config actually load?" from --debug output without needing
@@ -480,29 +566,33 @@ func (v *Validator) applyIPPatternOverride(
 	patternStore *string,
 	regexStore **regexp.Regexp,
 ) {
+	path := config.ValidatorKeyPath("intellectual_property", "intellectual_property_patterns") + "." + patternKey
+	unchanged := "ignored; the " + patternKey + " pattern in effect is unchanged"
+
 	raw, ok := patterns[patternKey].(string)
-	if !ok || raw == "" {
+	if !ok {
+		// Absent, or present with no value, overrides nothing. Anything else is a value the
+		// operator wrote that cannot be a pattern.
+		if value := patterns[patternKey]; value != nil {
+			v.warnValue(path, config.WrongType("a pattern string", value), unchanged)
+		}
+		return
+	}
+	if raw == "" {
 		return
 	}
 
 	processed := v.ensureCaseInsensitive(raw)
 	compiled, err := regexp.Compile(processed)
 	if err != nil {
-		// Invalid regex from config: log and keep the built-in default.
-		// Mirror the internal_urls override path (see validator.go ~L297) so
-		// behavior is consistent across all configurable IP regex fields.
+		// Invalid regex from config: record it and keep the pattern in effect.
+		// Mirror the internal_urls override path so behavior is consistent
+		// across all configurable IP regex fields.
 		if v.observer != nil && v.observer.Debug() != nil {
 			v.observer.Debug().LogDetail("intellectualproperty",
 				fmt.Sprintf("Invalid %s pattern %q: %v — keeping built-in default", patternKey, raw, err))
 		}
-		fmt.Fprintf(os.Stderr,
-			"Warning: invalid intellectual_property_patterns.%s regex %q: %v — built-in default retained.\n",
-			patternKey, raw, err)
-		fmt.Fprintf(os.Stderr,
-			"Hint: regex values in YAML need single-quoted or unquoted scalars; "+
-				"double-quoted strings process \\b, \\s, etc. as escape sequences. "+
-				"To skip a built-in IP sub-type entirely, use disabled_types: "+
-				"[%q] under validators.intellectual_property.\n", patternKey)
+		v.warnValue(path, config.InvalidRegex(err), unchanged)
 		return
 	}
 
@@ -531,8 +621,15 @@ func (v *Validator) ensureCaseInsensitive(pattern string) string {
 	return "(?i)" + pattern
 }
 
-// logNoInternalURLPatterns logs informational messages when no internal URL patterns are active
-// Implements requirements 6.1, 6.2, 6.3, 6.4, 6.5 for configuration status tracking and logging
+// logNoInternalURLPatterns logs, to the debug observer, why no internal URL pattern is active.
+// Implements requirements 6.1, 6.2, 6.3, 6.4 for configuration status tracking and logging.
+//
+// It used to write to os.Stderr as well: [INFO] lines under FERRET_DEBUG, and for "all configured
+// internal URL patterns are invalid" an unconditional "Warning: Internal URL detection disabled: …"
+// that named neither the pattern nor the error, bypassed pkg/scan's LogWriter, and landed inside the
+// findings document `--stdin --enable-redaction` writes to stderr (#903). Each invalid pattern is now a
+// config warning of its own, with its path and RE2's error, which the caller prints in every mode,
+// --quiet included (requirement 6.5); the detail below stays on the debug channel.
 func (v *Validator) logNoInternalURLPatterns(reason string) {
 	message := "Internal URL detection disabled: " + reason + ". Configure 'validators.intellectual_property.internal_urls' to enable internal URL detection."
 
@@ -555,45 +652,6 @@ func (v *Validator) logNoInternalURLPatterns(reason string) {
 			"  Azure: \"http[s]?:\\\\/\\\\/.*\\\\.azurewebsites\\\\.net\", \"http[s]?:\\\\/\\\\/.*\\\\.blob\\\\.core\\\\.windows\\\\.net\"\n" +
 			"  GCP: \"http[s]?:\\\\/\\\\/.*\\\\.googleapis\\\\.com\", \"http[s]?:\\\\/\\\\/.*\\\\.appspot\\\\.com\""
 		v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Configuration guidance for internal URL patterns:\n%s", guidance))
-
-		// Also log configuration guidance to stderr in verbose/debug mode
-		if os.Getenv("FERRET_DEBUG") == "1" {
-			fmt.Fprintf(os.Stderr, "[INFO] Configuration guidance for internal URL patterns:\n")
-			fmt.Fprintf(os.Stderr, "%s\n", guidance)
-		}
-	}
-
-	// Handle different logging scenarios based on reason
-	switch reason {
-	case "all configured internal URL patterns are invalid":
-		// Requirement 6.3: Warning logging when all configured patterns are invalid
-		// Requirement 6.5: Warnings appear even in quiet mode as it's important configuration information
-		fmt.Fprintf(os.Stderr, "Warning: %s\n", message)
-		// Also include configuration guidance in the warning for quiet mode
-		fmt.Fprintf(os.Stderr, "Configure valid regex patterns in 'validators.intellectual_property.internal_urls' to enable internal URL detection.\n")
-
-	case "empty internal_urls array configured":
-		// Requirement 6.2: Informational logging when patterns array is empty
-		if os.Getenv("FERRET_DEBUG") == "1" {
-			fmt.Fprintf(os.Stderr, "[INFO] %s\n", message)
-		}
-
-	case "no internal URL patterns configured":
-		// Requirement 6.1: Informational logging when no internal URL patterns are configured
-		if os.Getenv("FERRET_DEBUG") == "1" {
-			fmt.Fprintf(os.Stderr, "[INFO] %s\n", message)
-		}
-
-	case "all internal URL patterns failed to compile during regex compilation":
-		// Additional case for compilation failures - treat as warning
-		fmt.Fprintf(os.Stderr, "Warning: %s\n", message)
-		fmt.Fprintf(os.Stderr, "Check regex syntax in 'validators.intellectual_property.internal_urls' configuration.\n")
-
-	default:
-		// Default case - log as informational in debug mode
-		if os.Getenv("FERRET_DEBUG") == "1" {
-			fmt.Fprintf(os.Stderr, "[INFO] %s\n", message)
-		}
 	}
 }
 
@@ -621,9 +679,6 @@ func (v *Validator) compileInternalURLPatterns() {
 			if v.observer != nil && v.observer.Debug() != nil {
 				v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Skipping empty internal URL pattern at index %d", i+1))
 			}
-			if os.Getenv("FERRET_DEBUG") == "1" {
-				fmt.Fprintf(os.Stderr, "[WARNING] Intellectual Property Validator: Empty internal URL pattern at index %d - skipping\n", i+1)
-			}
 			continue
 		}
 
@@ -639,20 +694,6 @@ func (v *Validator) compileInternalURLPatterns() {
 				// Provide additional context about the error type
 				if strings.Contains(err.Error(), "invalid") {
 					v.observer.Debug().LogDetail("intellectualproperty", fmt.Sprintf("Pattern %d contains invalid regex syntax - check for unescaped special characters", i+1))
-				}
-			}
-
-			// Also log to stderr in debug mode for comprehensive error tracking
-			if os.Getenv("FERRET_DEBUG") == "1" {
-				fmt.Fprintf(os.Stderr, "[ERROR] Intellectual Property Validator: Failed to compile internal URL pattern\n")
-				fmt.Fprintf(os.Stderr, "[ERROR]   Pattern %d: %s\n", i+1, pattern)
-				fmt.Fprintf(os.Stderr, "[ERROR]   Error: %v\n", err)
-				fmt.Fprintf(os.Stderr, "[ERROR]   Action: Skipping pattern and continuing with remaining patterns\n")
-				// Provide helpful context for common regex errors
-				if strings.Contains(err.Error(), "missing closing") {
-					fmt.Fprintf(os.Stderr, "[ERROR]   Hint: Check for unmatched brackets or parentheses in the pattern\n")
-				} else if strings.Contains(err.Error(), "invalid") {
-					fmt.Fprintf(os.Stderr, "[ERROR]   Hint: Check for unescaped special regex characters\n")
 				}
 			}
 			continue
@@ -671,16 +712,8 @@ func (v *Validator) compileInternalURLPatterns() {
 		}
 	}
 
-	// Also log to stderr in debug mode for comprehensive audit trail
-	if os.Getenv("FERRET_DEBUG") == "1" {
-		fmt.Fprintf(os.Stderr, "[DEBUG] Intellectual Property Validator: Pattern compilation summary\n")
-		fmt.Fprintf(os.Stderr, "[DEBUG]   Total patterns: %d\n", len(v.internalURLPatterns))
-		fmt.Fprintf(os.Stderr, "[DEBUG]   Successfully compiled: %d\n", compiledCount)
-		fmt.Fprintf(os.Stderr, "[DEBUG]   Failed to compile: %d\n", failedCount)
-		fmt.Fprintf(os.Stderr, "[DEBUG]   Active regex patterns: %d\n", len(v.regexInternalURLs))
-	}
-
-	// If all patterns failed to compile, log a warning
+	// If all patterns failed to compile, log it (debug observer only: Configure has already
+	// recorded each pattern RE2 rejected as a config warning, and nothing here writes to os.Stderr)
 	if compiledCount == 0 && len(v.internalURLPatterns) > 0 {
 		v.logNoInternalURLPatterns("all internal URL patterns failed to compile during regex compilation")
 	}
