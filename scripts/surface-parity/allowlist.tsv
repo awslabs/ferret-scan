@@ -1,0 +1,15 @@
+# Differences scripts/surface-parity.sh accepts between the CLI and the web UI (#907).
+#
+# One entry per line: pair<TAB>pattern<TAB>reason
+#
+#   pair     cli-web, the only pair with an allowlist. It covers both host cli vs host web and
+#            container-cli vs container-web. cli == container-cli and web == container-web must hold
+#            byte for byte and cannot be allowlisted.
+#   pattern  a Go regular expression matched against the difference as
+#            <path relative to the set root><TAB><type><TAB><line><TAB><confidence>; write the tab
+#            between fields as the escape \t, since a literal tab ends the field
+#   reason   the mechanism, verified in the code, and an issue reference (#NNN). An entry without
+#            an issue reference is refused, and "differs today" is not a reason.
+#
+# Empty by default: on the golden inputs the CLI and the web UI report the same findings.
+# docs/testing/SURFACE_PARITY.md says how to add an entry.
