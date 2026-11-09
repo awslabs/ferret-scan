@@ -243,7 +243,36 @@ Exit codes follow `--pre-commit-mode` semantics when set: non-zero on findings a
 - **`--list-profiles`**: lists the profiles and exits without reading stdin.
 - **`--debug`** (and `FERRET_DEBUG` in the environment): exports `FERRET_DEBUG`, so the validators print their own `[DEBUG]`/`[INFO]` lines.
 
-The disclosures `--file` prints on stderr are printed here too: `Note: config disabled N … sub-type(s)`, the warning for a `disabled_types` name that matches nothing, and `WARNING: N finding(s) are reported because their suppression rule has EXPIRED`. Like the project-config note they are **withheld when stderr carries the findings document** (`--enable-redaction` with no `--output`), and the stdin JSON document does not carry `stats.disabled_detection_types` yet, so in that shape narrowed detection is not disclosed. Pass `--output <file>` to get the disclosures on stderr.
+The disclosures `--file` prints on stderr are printed here too: `Note: config disabled N … sub-type(s)`, the warning for a `disabled_types` name that matches nothing, and `WARNING: N finding(s) are reported because their suppression rule has EXPIRED`. Like the project-config note they are **withheld when stderr carries the findings document** (`--enable-redaction` with no `--output`). In that shape the document itself discloses narrowed detection: `stats.disabled_detection_types` names the switched-off sub-types, and a narrowed run carries the `scan` block described below. Pass `--output <file>` to get the disclosures on stderr as well.
+
+## What a report says about the run
+
+The findings report on this path carries what `--file`'s carries ([#904](https://github.com/awslabs/ferret-scan/issues/904)); before, the JSON document was `{"results": [...]}` whatever happened.
+
+- **`stats`**, in every format but text: the file path's block for one virtual file (`total_files: 1`), with the severity counts, `suppressed`, `files_not_examined` for a cut-short scan and `disabled_detection_types`. Text output is unchanged; it has never printed the `Scan Summary` block `--file` prints.
+- **`scan`**, only when the run was **narrowed**: a check did not run, a confidence band is hidden, or a detection sub-type was disabled. It names the checks that ran and did not, the confidence levels shown, the profile and what selected it, the kind of config, and the build. `METADATA` is listed under `checks_not_applicable`, because piped content has no file for the metadata extractors to read. A run that ran in full has no `scan` block. junit, sarif, gitlab-sast and text carry the same facts in their own slots; csv has none.
+
+```bash
+printf 'Contact: jane.example@example.com\n' | ferret-scan --stdin --checks SSN --format json
+```
+
+```json
+{
+  "stats": { "total_files": 1, "files_processed": 1, "files_skipped": 0, "total_findings": 0, "...": "..." },
+  "scan": {
+    "tool": { "name": "ferret-scan", "version": "2.6.0", "commit": "5fecf59c1dec" },
+    "checks_run": ["SSN"],
+    "checks_not_run": ["BANK_ACCOUNT", "CLOUD_RESOURCES", "...", "VIN"],
+    "checks_not_applicable": ["METADATA"],
+    "confidence_levels": ["high", "medium", "low"],
+    "config": { "source": "built-in" },
+    "suppressions": { "rules_enabled": 0 }
+  },
+  "results": []
+}
+```
+
+`--stdin --pre-commit-mode --output <file>` writes the document even on clean input, as `--file` does; it used to write 0 bytes.
 
 ## Limitations
 
@@ -279,7 +308,7 @@ Stdin mode follows the same exit-code semantics as file mode:
 - **Pre-commit mode** (`--pre-commit-mode`): exits non-zero on findings at or above the configured confidence threshold. The redacted content is still emitted on stdout — a CI gateway can both produce clean output AND signal upstream that something was matched.
 - **`--fail-on-incomplete`**: exits `3` when the scan's coverage was cut short (a `--validator-budget` fired, a validator declined the input — `CLOUD_RESOURCES` refuses more than 5 MiB — or a validator panicked), unless a findings verdict already made the exit non-zero. This holds **with and without `--enable-redaction`**: before [#770](https://github.com/awslabs/ferret-scan/issues/770) the redaction gateway exited `0` here whatever the flag said.
 
-A cut-short scan is always disclosed on stderr: the `WARNING: scan coverage incomplete` block, or in pre-commit mode the one line `ferret-scan: <stdin> NOT fully examined (coverage cut short) — findings may be missing.`, which pre-commit mode used to drop. The gateway still emits its stream, with whatever the scan did find masked — the same rule as `--file`, which writes its partial copy — so a value the scan did not reach can be in that stream in clear. **A gateway that must never pass such a stream on runs with `--fail-on-incomplete` and discards stdout on exit `3`.** The `--format json` document on this path does not yet carry the `stats` block file mode writes (`stats.files_not_examined`); stderr and the exit code are the signal until it does.
+A cut-short scan is always disclosed on stderr: the `WARNING: scan coverage incomplete` block, or in pre-commit mode the one line `ferret-scan: <stdin> NOT fully examined (coverage cut short) — findings may be missing.`, which pre-commit mode used to drop. The gateway still emits its stream, with whatever the scan did find masked — the same rule as `--file`, which writes its partial copy — so a value the scan did not reach can be in that stream in clear. **A gateway that must never pass such a stream on runs with `--fail-on-incomplete` and discards stdout on exit `3`.** The findings document says so as well: `stats.files_not_examined: 1` in json and yaml, and the not-examined entry junit, sarif and gitlab-sast carry for `--file`.
 
 ## See also
 

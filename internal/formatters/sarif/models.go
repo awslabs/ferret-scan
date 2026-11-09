@@ -64,6 +64,10 @@ type SARIFDriver struct {
 	// uniqueItems is true on this array in the schema, so a descriptor must be
 	// emitted at most once no matter how many notifications cite it.
 	Notifications []SARIFRule `json:"notifications,omitempty"`
+
+	// Properties is the toolComponent property bag. It carries ferretScanCommit on a narrowed run
+	// (#904); omitempty, so every other report keeps every byte.
+	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 
 // SARIFInvocation describes the tool run itself.
