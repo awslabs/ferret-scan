@@ -320,12 +320,19 @@ setup-team:
 	else \
 		echo "✓ GitHub Actions workflow already exists"; \
 	fi
+	@# The workflow runs scripts/self-scan.sh with .ferret-scan/selfscan.yaml and the ledger that profile
+	@# names (#927); a copy of the workflow alone exits 2 on its first run. Existing files are kept.
+	@mkdir -p scripts .ferret-scan
+	@if [ ! -f "scripts/self-scan.sh" ]; then cp scripts/self-scan.sh scripts/ 2>/dev/null || echo "⚠️  scripts/self-scan.sh not found; the workflow needs it."; fi
+	@if [ ! -f ".ferret-scan/selfscan.yaml" ]; then cp .ferret-scan/selfscan.yaml .ferret-scan/ 2>/dev/null || echo "⚠️  .ferret-scan/selfscan.yaml not found; the workflow needs a profile."; fi
+	@echo "   Edit .ferret-scan/selfscan.yaml (excludes, suppressions.file) for this repository and create"
+	@echo "   the ledger it names (scripts/self-scan.sh --regenerate <file>); see docs/testing/SELF_SCAN.md."
 	@echo ""
 	@echo "🎉 Team setup complete!"
 	@echo ""
 	@echo "📋 Next steps:"
 	@echo "  1. Review and commit the configuration files:"
-	@echo "     git add .ferret-scan.yaml .pre-commit-config.yaml .github/workflows/ferret-scan.yml"
+	@echo "     git add .ferret-scan.yaml .pre-commit-config.yaml .github/workflows/ferret-scan.yml scripts/self-scan.sh .ferret-scan/selfscan.yaml"
 	@echo "     git commit -m 'Add Ferret Scan team security configuration'"
 	@echo ""
 	@echo "  2. Team members should run: make setup-developer"
@@ -777,6 +784,14 @@ version:
 # Check Go version consistency across project
 check-tlds: ## Compare the embedded IANA TLD snapshot against the live root zone (warns, never fails)
 	@scripts/check-tlds.sh check
+
+# The repository self-scan (#927), exactly as CI runs it: .ferret-scan/selfscan.yaml and the reviewed
+# suppression ledger, shippable files with every check and *_test.go with SECRETS, HIGH blocks.
+# SELF_SCAN_ARGS passes options: SELF_SCAN_ARGS='--base origin/main' adds the new / lost / changed
+# findings against main (TEST_PLAN dimension 15). docs/testing/SELF_SCAN.md is the guide.
+.PHONY: self-scan
+self-scan: ## Scan this repository as CI does; HIGH findings fail unless the ledger records a decision
+	@./scripts/self-scan.sh $(SELF_SCAN_ARGS)
 
 check-go-version:
 	@echo "🔍 Checking Go version consistency..."

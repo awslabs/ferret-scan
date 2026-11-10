@@ -18,12 +18,16 @@ cd your-repository
 ./scripts/setup-pre-commit.sh
 # Choose: 1=Strict, 2=Balanced, 3=Advisory, 4=Secrets, 5=Custom
 
-# Set up GitHub Actions
-mkdir -p .github/workflows
+# Set up GitHub Actions. The workflow runs scripts/self-scan.sh with the profile in
+# .ferret-scan/selfscan.yaml, so copy those two as well and edit the profile's excludes
+# and suppressions.file for your repository (docs/testing/SELF_SCAN.md explains both).
+mkdir -p .github/workflows scripts .ferret-scan
 cp .github/workflows/ferret-scan.yml .github/workflows/
+cp scripts/self-scan.sh scripts/
+cp .ferret-scan/selfscan.yaml .ferret-scan/
 
 # Commit team configuration
-git add .ferret-scan.yaml .pre-commit-config.yaml .github/workflows/ferret-scan.yml
+git add .ferret-scan.yaml .pre-commit-config.yaml .github/workflows/ferret-scan.yml scripts/self-scan.sh .ferret-scan/selfscan.yaml
 git commit -m "Add Ferret Scan team security configuration"
 git push
 ```
@@ -157,44 +161,57 @@ stands.
 
 ### Workflow Configuration
 
-The GitHub Actions workflow:
-- Scans only changed files in PRs (performance optimization), and the whole repository on a push to `main`/`master`
-- Counts HIGH and MEDIUM findings from each report's `stats` block, which `--limit` does not cap
-- Posts the counts as a PR comment and job summary that name the gate mode. "No sensitive data detected" appears only when ferret-scan exited 0, every file was fully examined, at least one file was scanned and both counts are 0
-- Uploads the JSON reports and ferret-scan's stderr as the `ferret-scan-results` build artifact (findings are not published to the GitHub Security tab)
-- Ends with a gate step whose handling of HIGH findings is set by `GATE_MODE` (below)
-- Uses your team's `.ferret-scan.yaml` configuration
+The GitHub Actions workflow runs `scripts/self-scan.sh` ([docs/testing/SELF_SCAN.md](testing/SELF_SCAN.md)):
+- On a pull request it scans the files the PR changes, whatever their extension; on a push to `main`
+  and on a manual run with `scan_scope: full-repository` it scans the whole tree
+- The script reads the committed profile `.ferret-scan/selfscan.yaml` (excludes, each with a reason;
+  the suppression ledger it applies) and runs two gates: shippable files with every check, and
+  `*_test.go` with `SECRETS` only, both at HIGH. Counts come from each report's `stats`, which
+  `--limit` does not cap, and `stats.suppressed` is printed beside them so a suppression is visible
+- Excluded paths still get a report-only MEDIUM+ pass, so drift there stays visible in the log
+- The PR comment and the job summary show HIGH, suppressed and not-examined counts and the mode, and
+  say that a new HIGH is one of three decisions (a real value is removed, a detector false positive
+  gets an issue and a `detector FP: #NNN` rule meanwhile, a fixture takes a reserved value or a
+  `fixture:` rule)
+- The script's reports are uploaded as the `ferret-scan-results` build artifact; the matched text is in
+  none of them (findings are not published to the GitHub Security tab)
+- The last step gates on the script's `summary.env` and fails closed
+
+A copy of the workflow in another repository needs `scripts/self-scan.sh`, a `.ferret-scan/selfscan.yaml`
+with that repository's excludes and the path of its ledger, and the ledger file itself (the script exits 2
+without it; an empty ledger is the header, `version: "1.0"` and `rules:`). It also needs
+`.github/workflows/build-shared.yml`, which builds the binary the scan runs.
 
 ### Gate mode (`GATE_MODE`)
 
-The last step, **Gate on scan result and high confidence findings**, runs whenever a scan ran and
-fails closed in both modes: it fails the check when a count is missing or not an integer, when
-ferret-scan exited non-zero (the scans pass `--fail-on-incomplete`, so a file it could not fully
-examine exits 3), or when `GATE_MODE` is anything but `block` or `report`. Only HIGH findings depend
-on the mode:
+The last step, **Gate on scan result and high confidence findings**, runs whenever a scan was due and
+fails closed in both modes: when the scan did not run or wrote no readable `summary.env`, when a count
+is missing or not a number, when the script exited 2 (a scan failed or a file could not be fully
+examined), when the recorded mode is not the one requested, or when `GATE_MODE` is anything but `block`
+or `report`. Only HIGH findings depend on the mode:
 
-| `GATE_MODE` | HIGH findings > 0 |
+| `GATE_MODE` | unsuppressed HIGH findings > 0 |
 |---|---|
-| `block` (template default) | fail the check |
+| `block` (the default, and what this repository runs) | fail the check |
 | `report` | are counted and shown in the log, PR comment and job summary; the check passes |
 
 The workflow sets it at the top:
 
 ```yaml
 env:
-  GATE_MODE: ${{ github.repository == 'awslabs/ferret-scan' && 'report' || 'block' }}
+  GATE_MODE: block
 ```
 
-so a copy in any other repository runs `block`. Replace the expression with `report` to adopt the
-workflow without failing on findings your repository already carries, then switch to `block`.
+To adopt the workflow without failing on findings your repository already carries, set `report`,
+build your ledger with `scripts/self-scan.sh --regenerate <candidate>` and review it (every rule gets a
+reason; see the ledger section of `docs/testing/SELF_SCAN.md`), then switch to `block`.
 
-ferret-scan's own repository runs `report`, for its PR scan and its post-merge push scan. Its source
-and test corpora carry deliberate HIGH findings, so `block` would fail most of its runs (40 of the 56
-PR runs that scanned files from 2026-09-14 to 2026-10-13, 27 of 56 even with
-`internal/goldencorpus/`, `internal/scorecorpus/` and `testdata/` excluded), and its committed
-suppression baseline has expired ([#696](https://github.com/awslabs/ferret-scan/issues/696)). The
-push scan runs after the merge, so in `block` mode it turns the merged commit's check red rather than
-stopping anything.
+ferret-scan's own repository blocks since [#927](https://github.com/awslabs/ferret-scan/issues/927):
+its source, tests and documentation carry deliberate HIGH findings (fixtures, help examples, release
+notes quoting values), and the committed ledger `.ferret-scan-suppressions.yaml` names each one with
+its reason. Before that it ran `report`, because the earlier 245-rule baseline had expired
+([#696](https://github.com/awslabs/ferret-scan/issues/696)) and a blocking gate would have failed most
+runs.
 
 > **Copies of this workflow made before [#767](https://github.com/awslabs/ferret-scan/issues/767)
 > never blocked anything.** They compared each finding's `confidence` with the string `"HIGH"`, but

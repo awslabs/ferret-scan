@@ -1,0 +1,46 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# The repository self-scan profile (#927): what ferret-scan's scan of its OWN tree leaves out, and
+# which suppression ledger it reads. scripts/self-scan.sh (`make self-scan`) passes it with --config;
+# docs/testing/SELF_SCAN.md explains the gates and the ledger.
+#
+# This is not a user config. config.yaml at the root is the shipped example users copy and stays one.
+# No validator setting is changed here on purpose: the gate sees what a user with no config would see.
+#
+# scripts/self-scan.sh splits the files this profile keeps into two gates, both at --confidence high
+# with --fail-on-incomplete and --limit 0:
+#   shippable  every file that is not excluded below and is not *_test.go: every check;
+#   tests      every *_test.go that is not excluded below: --checks SECRETS only. Synthetic PII in a
+#              test is the test's job; a real credential is never a fixture.
+# Excluded is not unscanned: the script's third pass, report-only, scans every path excluded here at
+# MEDIUM and above and prints the counts by path, so drift in the corpora stays visible.
+#
+# Counts quoted below: HIGH findings on main @ 5fecf59 (2026-11-07), --config /dev/null --confidence
+# high, before any exclude or suppression.
+
+defaults:
+  # A pattern containing "/" is matched against the path relative to the scan root, and "**" is zero
+  # or more directories (cmd/exclude_matcher.go). Every entry says why its paths are sensitive by
+  # construction. An entry added here needs a measured reason in the same form, here and in its PR.
+  exclude_patterns:
+    # Version-control metadata, not part of the tree: the commit authors' addresses in the reflogs
+    # read as e-mail (210 HIGH, all BUSINESS, in the .git/ of the checkout #927 was measured in).
+    - ".git/**"
+    # Build output written by `make build`; generated and untracked.
+    - "build/**"
+    # Golden snapshots: the recorded output of every golden case, deliberate findings by design
+    # (1,832 HIGH).
+    - "internal/goldencorpus/testdata/**"
+    # The golden case inputs, in Go source: values chosen to be found (91 HIGH).
+    - "internal/goldencorpus/corpus.go"
+    # The labelled score corpus: its positive cases are realistic values by design (543 HIGH).
+    - "internal/scorecorpus/**"
+    # Fixture files under any other testdata/ directory (92 HIGH).
+    - "**/testdata/**"
+  fail_on_incomplete: true
+
+suppressions:
+  # The reviewed ledger. Every rule in it is enabled, has no expiry, and gives one of two reasons:
+  # `fixture: <why the value must look real>` or `detector FP: #NNN` (the issue that fixes the detector).
+  file: .ferret-scan-suppressions.yaml
