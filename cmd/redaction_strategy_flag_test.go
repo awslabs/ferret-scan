@@ -396,9 +396,11 @@ func TestEveryEnumValuedInputRejectsAnOutOfDomainValue(t *testing.T) {
 // matched; they describe a syntax, not a closed set of names.
 var valueList = regexp.MustCompile(`: ?(?:[a-z][a-z_-]*, ?){2,}[a-z][a-z_-]*`)
 
-// flagsWhoseUsageListsValues parses the flag.String registrations in file and returns the names
-// whose usage text enumerates values. A usage built with strings.Join over a name list counts: the
-// join IS a value list (that is how --checks is registered).
+// flagsWhoseUsageListsValues parses the flag.String and flag.Func registrations in file and returns
+// the names whose usage text enumerates values. A usage built with strings.Join over a name list
+// counts: the join IS a value list (that is how --checks is registered). flag.Func is read too because
+// the comma-list flags are registered with it so a repeat appends (#943); its usage is the second
+// argument rather than the third.
 func flagsWhoseUsageListsValues(t *testing.T, file string) []string {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -413,7 +415,15 @@ func flagsWhoseUsageListsValues(t *testing.T, file string) []string {
 			return true
 		}
 		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok || sel.Sel.Name != "String" {
+		if !ok {
+			return true
+		}
+		usageArg := 2
+		switch sel.Sel.Name {
+		case "String":
+		case "Func":
+			usageArg = 1
+		default:
 			return true
 		}
 		if pkg, ok := sel.X.(*ast.Ident); !ok || pkg.Name != "flag" {
@@ -424,7 +434,7 @@ func flagsWhoseUsageListsValues(t *testing.T, file string) []string {
 			return true
 		}
 		name := strings.Trim(nameLit.Value, `"`)
-		usage, hasJoin := renderUsage(call.Args[2])
+		usage, hasJoin := renderUsage(call.Args[usageArg])
 		if hasJoin || valueList.MatchString(usage) {
 			out = append(out, name)
 		}

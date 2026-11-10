@@ -59,7 +59,13 @@ ferret-scan --file . --recursive --exclude ".git"
 
 # Multiple exclusions (comma-separated)
 ferret-scan --file . --recursive --exclude ".git,*.log,node_modules"
+
+# The same, with the flag repeated: each --exclude adds to the list
+ferret-scan --file . --recursive --exclude ".git" --exclude "*.log" --exclude "node_modules"
 ```
+
+`--checks`, `--confidence`, `--disable-ip-types` and `--validator-budget` take a comma-separated list
+the same way, and a repeat of any of them adds to the list too.
 
 ### Configuration File (Defaults)
 ```yaml

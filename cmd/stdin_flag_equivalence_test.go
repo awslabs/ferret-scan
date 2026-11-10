@@ -176,7 +176,8 @@ func stdinParityRows() []parityRow {
 	with := func(extra ...string) []string { return append(append([]string{}, common...), extra...) }
 	return []parityRow{
 		{name: "checks", flag: "checks", fixture: "pii.txt", args: with("--checks", "SSN"), base: with(), project: projectReport},
-		{name: "confidence", flag: "confidence", fixture: "pii.txt", args: with("--confidence", "high"), base: with(), project: projectReport},
+		// Not with(): common already passes --confidence all, and a repeated --confidence appends (#943).
+		{name: "confidence", flag: "confidence", fixture: "pii.txt", args: []string{"--format", "json", "--confidence", "high", "--limit", "0"}, base: with(), project: projectReport},
 		{name: "limit", flag: "limit", fixture: "pii.txt", args: with("--limit", "1"), base: with(), project: projectReport},
 		{name: "show-match", flag: "show-match", fixture: "pii.txt", args: with("--show-match"), base: with(), project: projectReport},
 		{name: "explain", flag: "explain", fixture: "pii.txt", args: with("--explain"), base: with(), project: projectReport},
