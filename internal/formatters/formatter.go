@@ -256,6 +256,14 @@ type ScanStats struct {
 	Low           int     `json:"low" yaml:"low"`
 	Suppressed    int     `json:"suppressed" yaml:"suppressed"`
 	Duration      float64 `json:"duration_seconds" yaml:"duration_seconds"`
+
+	// SuppressionRulesUnmatched counts the enabled, unexpired suppression rules for files this run
+	// examined in full that matched no finding (#885): the finding moved, changed or was removed, so the
+	// rule no longer does what it was written for. The stderr note names them. A rule for a file the run
+	// did not read is not counted, nor, in a run narrowed by --checks, a profile or disabled_types, one of
+	// a type the run reported no finding of. omitempty, so a run whose rules all matched, or that has
+	// none, stays byte-identical in JSON and YAML.
+	SuppressionRulesUnmatched int `json:"suppression_rules_unmatched,omitempty" yaml:"suppression_rules_unmatched,omitempty"`
 }
 
 // Formatter interface defines methods that all output formatters must implement

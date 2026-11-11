@@ -2370,6 +2370,14 @@ func main() {
 		}
 	}
 
+	// Which enabled rules matched none of the findings above (#885): asked here, before generation can
+	// rewrite a rule, and again once it has; see unmatchedRulesAccount.
+	unmatchedRules := newUnmatchedRulesAccount(suppressionManager,
+		fileRunScope(supportedFiles, scanMalfunction, unscannedEntries, standardValidators, disabledDetectionTypes))
+	if finalConfig.generateSuppressions {
+		unmatchedRules.beforeGeneration()
+	}
+
 	// Generate suppression rules if requested
 	if finalConfig.generateSuppressions {
 		if len(allMatches) > 0 {
@@ -2570,6 +2578,14 @@ func main() {
 	// anchor is a merge conflict for no reason.
 	expiredSkips, oldestExpiry := suppressionManager.ExpiredSkips()
 	writeExpiredRulesWarning(os.Stderr, expiredSkips, oldestExpiry)
+
+	// And for an enabled rule that matched no finding in the files this run examined in full (#885): its
+	// finding moved, changed or was removed, and nothing said so. A note, not a warning, and the exit code
+	// does not change: a rule that matched nothing hides nothing. Ungated, like the warning above, because
+	// pre-commit mode is where a finding that only moved re-blocks a commit. The stats block counts them.
+	unmatched := unmatchedRules.report()
+	suppressions.WriteUnmatchedRulesNote(os.Stderr, unmatched)
+	formatterOptions.Stats.SuppressionRulesUnmatched = unmatched.Count()
 
 	precommitDecision := precommit.Resolve(unsuppressedMatches, precommitConfig)
 	formatterOptions.PrecommitBlockMessage = precommitDecision.Message
