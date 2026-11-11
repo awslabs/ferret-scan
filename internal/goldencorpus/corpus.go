@@ -1045,6 +1045,31 @@ var Cases = []Case{
 			"policy identification for terraform module: MODULEVERSION123\n",
 	},
 	{
+		Name: "intellectualproperty_definition_decoys",
+		Description: "Source code and markup that contain IP marker words but are not notices (#934): " +
+			"the trade_secret regex in Go and in YAML (every keyword an alternative between | and " +
+			"( ) or glued to \\s+), a Go keyword table and a comment quoting markers as a string " +
+			"list, a description string and a comment about trademarks, a comment quoting example " +
+			"notices, the QuickTime ©xyz atom name, a lone ™ in prose and a call argument named r. " +
+			"Before the fix each line read INTELLECTUAL_PROPERTY (10 at 90-98, the two (r) lines at " +
+			"80); a notice needs " +
+			"an owner or a year, so this case must stay empty. Positive controls with their exact " +
+			"confidences are in the intellectualproperty notice_shape tests.",
+		Checks: []string{"INTELLECTUAL_PROPERTY"},
+		Input: "patternTradeSecret: `(?i)\\b(Confidential|Trade\\s+Secret|Proprietary|Company\\s+Confidential|Internal\\s+Use\\s+Only|Restricted|Classified)\\b`,\n" +
+			"      trade_secret: \"\\\\b(Confidential|Trade\\\\s+Secret|Proprietary|Company\\\\s+Confidential|Internal\\\\s+Use\\\\s+Only|Restricted|Classified)\\\\b\"\n" +
+			"          trade_secret: \"\\\\b(Company\\\\s+Confidential|Internal\\\\s+Use\\\\s+Only|Restricted\\\\s+Access|Classified\\\\s+Information|Proprietary\\\\s+to\\\\s+Company|Company\\\\s+Proprietary|Confidential\\\\s+and\\\\s+Proprietary)\\\\b\"\n" +
+			"\texplicitMarkers := []string{\"Company Confidential\", \"Trade Secret\", \"Internal Use Only\", \"Confidential\", \"Privileged\"}\n" +
+			"// confidentiality statements (e.g. \"Trade Secret\", \"Internal Use Only\") and earn\n" +
+			"\t\tdescription = \"Copyright notice with trademark indicators\"\n" +
+			"// Pattern 3: Copyright + Trademark (copyright notice with trademark)\n" +
+			"// (\"© 2024\", \"© 2024 — Acme\", \"© 2024 (Acme)\", \"© Acme Corporation\",\n" +
+			"// a fixture holding each: zeroing only ©xyz left loci decoding to 37.7749,-122.4194\n" +
+			"// file. A short line with a ™ (3 bytes) or an em-dash, counted in runes\n" +
+			"self._by_base = {os.path.basename(r): r for r in self.files}\n" +
+			"rows = [r for r in pending if pub_key(r) not in pub]\n",
+	},
+	{
 		Name: "swift_word_on_banking_line",
 		Description: "All-caps English words whose 5th and 6th letters spell a country code, on " +
 			"lines that carry a generic banking word. Any 8- or 11-letter uppercase word of that " +

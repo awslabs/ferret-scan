@@ -1,0 +1,14 @@
+=== REDACTED ===
+patternTradeSecret: `(?i)\b(Confidential|Trade\s+Secret|Proprietary|Company\s+Confidential|Internal\s+Use\s+Only|Restricted|Classified)\b`,
+      trade_secret: "\\b(Confidential|Trade\\s+Secret|Proprietary|Company\\s+Confidential|Internal\\s+Use\\s+Only|Restricted|Classified)\\b"
+          trade_secret: "\\b(Company\\s+Confidential|Internal\\s+Use\\s+Only|Restricted\\s+Access|Classified\\s+Information|Proprietary\\s+to\\s+Company|Company\\s+Proprietary|Confidential\\s+and\\s+Proprietary)\\b"
+	explicitMarkers := []string{"Company Confidential", "Trade Secret", "Internal Use Only", "Confidential", "Privileged"}
+// confidentiality statements (e.g. "Trade Secret", "Internal Use Only") and earn
+		description = "Copyright notice with trademark indicators"
+// Pattern 3: Copyright + Trademark (copyright notice with trademark)
+// ("© 2024", "© 2024 — Acme", "© 2024 (Acme)", "© Acme Corporation",
+// a fixture holding each: zeroing only ©xyz left loci decoding to 37.7749,-122.4194
+// file. A short line with a ™ (3 bytes) or an em-dash, counted in runes
+self._by_base = {os.path.basename(r): r for r in self.files}
+rows = [r for r in pending if pub_key(r) not in pub]
+=== FINDINGS (sorted) ===

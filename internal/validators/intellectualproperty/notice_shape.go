@@ -70,11 +70,17 @@ func isQuotedListElement(line string, start, end int) bool {
 // basename(r); the registered mark is written "(R)"). The "Registered
 // Trademark" form is kept whatever precedes it ("is a registered trademark
 // of ..." is the canonical notice).
-func isNonNoticeTrademark(match string) bool {
+func isNonNoticeTrademark(match, after string) bool {
 	if strings.HasSuffix(match, "(r)") {
 		return true
 	}
 	if strings.Contains(strings.ToLower(match), "registered") {
+		return false
+	}
+	// "... is a trademark of <Owner>" is the canonical notice: it names the
+	// owner, so the function word before it does not make it prose.
+	if rest := strings.TrimLeft(after, " \t"); len(rest) != len(after) && len(rest) >= 2 &&
+		strings.EqualFold(rest[:2], "of") && (len(rest) == 2 || !isWordByte(rest[2])) {
 		return false
 	}
 	// A capitalised "Trademark" is a label in a notice ("Amazon Confidential
@@ -121,7 +127,7 @@ func isNonNoticeMatch(ipType, line string, start, end int) bool {
 	match := line[start:end]
 	switch ipType {
 	case "trademark":
-		if isNonNoticeTrademark(match) {
+		if isNonNoticeTrademark(match, line[end:]) {
 			return true
 		}
 	case "copyright":
@@ -154,4 +160,8 @@ func dropQuotedListMatches(lineMatches map[int][]detector.Match, lineNum int, id
 		return
 	}
 	lineMatches[lineNum] = kept
+}
+
+func isWordByte(b byte) bool {
+	return b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
 }
