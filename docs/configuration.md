@@ -318,10 +318,14 @@ The machine-readable form is in the report itself, for a CI job that never sees 
 |---|---|
 | `json`, `yaml` | `stats.disabled_detection_types`, keyed by check name |
 | `sarif` | `runs[].invocations[].toolExecutionNotifications[]`, descriptor `ferret-scan/detection-disabled-by-config` |
-| `csv`, `text`, `junit`, `gitlab-sast` | stderr only — these formats carry no scan-statistics block |
+| `junit` | the `ferret-scan.disabled_detection_types` property of the `security-scan` suite |
+| `gitlab-sast` | a `warn` entry in `scan.messages[]` |
+| `text` | `disabled sub-types: CHECK:sub-type` in the `Scope:` line at the end of the report |
+| `csv` | stderr only — the format has no slot for anything but findings |
 
-Both keys are omitted entirely when nothing was disabled, so an ordinary scan's output is
-byte-identical to before.
+None of them appears when nothing was disabled, so an ordinary scan's output is byte-identical to
+before. A disabled sub-type also makes the run narrowed, so the report names the run's scope as
+well: see [A narrowed run says what it ran](COVERAGE_DISCLOSURE.md#a-narrowed-run-says-what-it-ran).
 
 Unlike the sub-type list, this reflects what the **validator** actually did rather than what the
 config file said. A `disabled_types` block under a validator that does not read it — every validator
@@ -509,15 +513,26 @@ validators:
 
 ##### Pattern Validation
 
-The validator automatically validates all configured patterns at startup to ensure they are valid regular expressions:
+The validator compiles every configured pattern when it is configured, with RE2, Go's regex engine,
+which has no lookaround (`(?=`, `(?!`, `(?<=`, `(?<!`) and no backreferences:
 
-- **Invalid patterns**: Logged as warnings with specific error details, but don't prevent startup
+- **Invalid patterns**: each one prints a warning on stderr that names its position and the problem,
+  never the pattern itself, and is skipped. The scan runs and the exit code does not change:
+  `Warning: config value validators.intellectual_property.internal_urls[1]: not a valid RE2 regular expression: invalid or unsupported Perl syntax ("(?!" is a PCRE negative lookahead; RE2, Go's regex engine, has no lookaround) — skipped`
 - **Valid patterns**: Compiled and used for internal URL detection
-- **No valid patterns**: Internal URL detection is disabled with informational logging
-- **Mixed valid/invalid**: Only valid patterns are used, invalid ones are skipped with warnings
-- **Debug logging**: When enabled, shows the number of successfully loaded patterns
+- **No valid patterns**: each warning ends `— skipped; no valid internal URL pattern remains, so
+  internal URL detection is off`
+- **Mixed valid/invalid**: Only valid patterns are used; each invalid one has its warning
 
-This validation approach ensures robust operation even with configuration errors, while providing clear feedback about any issues.
+The warning is not silenced by `--quiet` or pre-commit mode, but only a validator the run uses
+reports one: under `--checks EMAIL`, or the built-in pre-commit profile, which does not run
+INTELLECTUAL_PROPERTY, a bad `internal_urls` entry prints nothing. `--stdin` prints the same lines
+([#903](https://github.com/awslabs/ferret-scan/issues/903)). The json and yaml reports carry them in
+`stats.config_warnings`, in the order the lines print, and SARIF in
+`runs[].invocations[].toolConfigurationNotifications[]` with the descriptor
+`ferret-scan/config-value-unusable`; text, csv, junit and gitlab-sast carry them on stderr only. With
+a usable configuration the key and the notification are absent. `--debug` shows none of the
+validator's configure-time detail.
 
 ##### Configuration Examples by Organization Type
 
@@ -705,7 +720,11 @@ validators:
 
 **Behavior notes:**
 - If `enabled_providers` is not specified, all providers are enabled by default
-- If an invalid provider name is configured, it is logged as a warning and ignored
+- A provider name the validator does not know, or one in the wrong case, prints a warning and is
+  ignored: `Warning: config value validators.cloud_resources.enabled_providers.AWS: unknown provider (names are lower case: "aws") — ignored`
+- A value that is not `true` or `false` is ignored with a warning, and the provider stays on. YAML
+  1.2 reads `yes`, `no`, `on` and `off` as text, and a quoted `"false"` is text too:
+  `Warning: config value validators.cloud_resources.enabled_providers.aws: expected true or false, got the string "off" (YAML 1.2 reads it as text, not a boolean; write true or false) — ignored; aws detection stays on`
 - Disabled providers contribute zero overhead to scan time
 
 #### Custom Pattern Configuration

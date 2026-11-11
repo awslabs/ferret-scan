@@ -32,8 +32,8 @@
 //
 // # Design goals
 //
-//   - Reusable Engine. Validators, the enhanced manager, and dual-path
-//     state are constructed once via NewEngine and reused for every
+//   - Reusable Engine. Validators, the Detector facade and its dual-path
+//     bridge are constructed once via NewEngine and reused for every
 //     subsequent Redact call. Per-request setup cost is zero on warm
 //     paths; constructing an Engine on every call (the way the CLI's
 //     stdin path does today) is roughly an order of magnitude slower
@@ -62,14 +62,15 @@
 // # Thread safety
 //
 // An Engine is safe for concurrent use by multiple goroutines. Validators
-// are stateless after construction. Two pieces of shared internal state
-// serialize across goroutines: the cross-validator signal processor and
-// the confidence calibrator (see internal/validators/enhanced_integration.go
-// where both take sync.Mutex.Lock on the validation hot path). Workloads
-// with high request concurrency should pool engines (one per worker,
-// sized to runtime.GOMAXPROCS()) rather than sharing a single engine
-// across all goroutines. Lock-stripping that would unlock true parallelism
-// is tracked as a future optimization.
+// are stateless after construction. The shared internal state is the
+// dual-path bridge's metrics: every Redact call updates its counters and
+// timings under the bridge's mutexes (DualPathMetrics and
+// DocumentValidationMetrics in internal/validators/dual_path_bridge.go),
+// so those short updates serialize across goroutines; the registered
+// validators are read under a read lock. Workloads with high request
+// concurrency should pool engines (one per worker, sized to
+// runtime.GOMAXPROCS()) rather than sharing a single engine across all
+// goroutines.
 //
 // AWS Lambda receives at most one in-flight request per execution
 // environment by default, so contention never materializes for that

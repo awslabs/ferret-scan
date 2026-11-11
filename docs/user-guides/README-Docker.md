@@ -64,22 +64,26 @@ browser `Origin` names a port other than the one it listens on.
 
 ```bash
 # Run CLI with a file from host system (with colored output)
-docker run --rm -t -v $(pwd):/data ferret-scan ferret-scan --file /data/sample.txt
+docker run --rm -t -v $(pwd):/data ferret-scan --file /data/sample.txt
 
 # With persistent config and suppressions
-docker run --rm -t -v $(pwd):/data -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan ferret-scan --file /data/sample.txt
+docker run --rm -t -v $(pwd):/data -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan --file /data/sample.txt
 
 # Run with debug output
-docker run --rm -t -v $(pwd):/data -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan ferret-scan --file /data/sample.txt --debug
+docker run --rm -t -v $(pwd):/data -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan --file /data/sample.txt --debug
 
 # Scan multiple files (quote the glob pattern)
-docker run --rm -t -v $(pwd):/data -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan ferret-scan --file "/data/*.pdf"
+docker run --rm -t -v $(pwd):/data -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan --file "/data/*.pdf"
 
 # Scan directory recursively
-docker run --rm -t -v $(pwd):/data -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan ferret-scan --file /data --recursive
+docker run --rm -t -v $(pwd):/data -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan --file /data --recursive
 ```
 
 **Notes**:
+- The image's entrypoint is `/ferret-scan`, so everything after the image name is an argument to
+  it: do not repeat `ferret-scan` there. `docker run ... ferret-scan ferret-scan --file ...` reads
+  the second `ferret-scan` and every argument after it as input paths, and exits 1 with an error
+  that names `--file` as an input path that does not exist.
 - When using glob patterns (like `*.pdf`), always quote them to prevent shell expansion
 
 ## Usage Examples
@@ -105,7 +109,7 @@ docker run --rm -t -v $(pwd):/data -v ~/.ferret-scan:/home/ferret/.ferret-scan f
 
 ### CLI Features
 - **Batch Processing**: Scan multiple files with quoted glob patterns
-- **Output Formats**: Text, JSON, CSV, YAML, JUnit XML, or GitLab SAST report output
+- **Output Formats**: Text, JSON, CSV, YAML, JUnit XML, GitLab SAST or SARIF 2.1.0 report output
 - **Configuration**: YAML config files and profiles
 - **Directory Scanning**: Recursive directory processing
 - **Colored Output**: Use `-t` flag for colored terminal output
@@ -127,9 +131,13 @@ docker run --rm -t -v $(pwd):/data -v ~/.ferret-scan:/home/ferret/.ferret-scan f
 ```
 
 ### Environment Variables
-- `FERRET_CONFIG_DIR` - Config directory location (set to `/home/ferret/.ferret-scan` in container)
+- `FERRET_CONFIG_DIR` - Config directory location. The image does not set it (nor
+  `XDG_CONFIG_HOME`), so the config directory is `$HOME/.ferret-scan`: `/home/ferret/.ferret-scan`
+  for the image's user `ferret`, the directory the examples above mount. Pass
+  `-e FERRET_CONFIG_DIR=<dir>` to read another one.
 - `FERRET_CONTAINER_MODE` - Set to `true` in the image. It makes the web UI bind
   `0.0.0.0` instead of `127.0.0.1`, so the port publish works; `--bind` overrides it.
+- `TMPDIR` - Set to `/home/ferret/tmp` in the image, a directory user `ferret` owns.
 
 The web UI port is a flag, not an environment variable — `--web --port 8080`, as in
 `docker-compose.yml`. There is no `PORT` variable: it is read nowhere, and with
@@ -163,16 +171,21 @@ If suppressed findings aren't working in the container:
 
 3. **Verify volume mounting works**:
    ```bash
-   # Test if container can see your suppression file
-   docker run --rm -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan cat /home/ferret/.ferret-scan/suppressions.yaml
+   # Print the suppression file as the container sees it (the image has no shell and no cat)
+   docker run --rm -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan --file /home/ferret/.ferret-scan/suppressions.yaml --preprocess-only
    ```
+   `Error: Input path does not exist` means nothing is mounted at that path. `warning: cannot read
+   suppression file … permission denied` means user `ferret` (UID 1000) cannot read it: see
+   [Permission Issues](#permission-issues).
 
-4. **Check config directory environment variable**:
+4. **Check which config file the container reads**:
    ```bash
-   # Verify the container is using the correct config directory
-   docker run --rm -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan env | grep FERRET_CONFIG_DIR
-   # Should show: FERRET_CONFIG_DIR=/home/ferret/.ferret-scan
+   # The image does not set FERRET_CONFIG_DIR; --debug names the config file a scan read
+   docker run --rm -v ~/.ferret-scan:/home/ferret/.ferret-scan -v $(pwd):/data ferret-scan --file /data/sample.txt --debug 2>&1 | grep 'settings come from'
    ```
+   With a `config.yaml` in the mounted directory and no profile, the line ends
+   `settings come from /home/ferret/.ferret-scan/config.yaml (auto-discovered) and the flags`;
+   without one, `settings come from the built-in configuration and the flags`.
 
 
 
@@ -210,7 +223,9 @@ If you encounter permission issues:
 
 ## Image Details
 
-- **Base Image**: Amazon Linux 2023
+- **Base Image**: `scratch`, which is empty: no shell, no package manager, no CA certificates.
+  The image holds the static binary (`/ferret-scan`), `/etc/passwd` and `/etc/group` for user
+  `ferret`, `/tmp`, and `/home/ferret` with its `.ferret-scan` and `tmp` directories
 - **Multi-stage build**: Builder stage with Go toolchain, minimal runtime stage
 - **User**: Runs as non-root user `ferret` (UID 1000)
 - **Size**: Optimized with cache cleanup

@@ -41,7 +41,7 @@ Base 100, then:
 | `+` form with 10 or more digits | +10 |
 | Timestamp-shaped bare run | -60 |
 | SSN shape / card fragment / invalid (`0000...`, mostly zeros, under 7 digits) | -50 / -60 / -70 |
-| Known test number / fewer than 7 or more than 15 digits / non-phone characters | -20 / -15 / -10 |
+| Known test number / fewer than 7 or more than 15 digits (a leading `+` counts as one) / non-phone characters | -20 / -15 / -10 |
 | Sequential / repeating digits | -15 / -15 |
 
 Words count only as whole words, in any case, outside the match: `string` is not `ring`, `hotel`
@@ -57,10 +57,19 @@ Unix-timestamp range (1000000000 to 2147483647) takes -60 from its base first, s
 `{"phone": "2022872112"}` is not reported. Unquoted, `Phone: 2022872112` reports at 60, and
 `Phone: 202-287-2112`, which is not a bare run, at 100.
 
-Two ceilings apply after everything else and are published as `confidence_ceiling`, so the
-document-level +20 a CSV receives cannot lift them: 85 for a match nothing corroborates (no
-evidence above and not written in the `+` form), 15 for a reserved fictional number
-(555-0100 to 555-0199).
+Ceilings apply after everything else and are published as `confidence_ceiling`, so the
+document-level +20 a CSV receives cannot lift them:
+
+- 85 for a match nothing corroborates (no evidence above and not written in the `+` form);
+- 15 for a reserved fictional number (555-0100 to 555-0199);
+- 15 for a number in the `+`, `00` or `(+` form that the E.164 gate refuses, with
+  `valid_country=false`: its country code is unassigned, it has more than 15 digits, it writes a
+  `(0)` its code's plan does not use, or its national length is not one the plan allows. Phone
+  evidence on the line outweighs the last of these alone, never the others. The gate adds no
+  finding: a number it refuses is reported, at 15, only when one of the validator's patterns
+  reports it anyway;
+- 15 for a number after `:` or `=` that follows a word that is not a phone label, with
+  `validation_checks.phone_label_recognized=false`.
 
 ## Usage
 

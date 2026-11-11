@@ -44,7 +44,7 @@ Confidence comes from phone evidence on the match's line: each phone word (phone
 
 		ConfidenceFactors: []help.ConfidenceFactor{
 			{Name: "Valid Format", Description: "Must match recognized phone patterns", Weight: 18},
-			{Name: "Reasonable Length", Description: "Must be 7-15 digits", Weight: 14},
+			{Name: "Reasonable Length", Description: "7-15 digits, a leading + counted as one (-15 otherwise); a + or 00 number is also held to E.164 and capped at 15 when its country code is unassigned or it has more than 15 digits, or when its national length is not one its code's plan allows and no phone evidence is on its line", Weight: 14},
 			{Name: "Not Test Number", Description: "Must not match known test patterns", Weight: 18},
 			{Name: "Valid Digits", Description: "Must contain valid phone characters", Weight: 9},
 			{Name: "Not Sequential", Description: "Must not be sequential digits", Weight: 14},

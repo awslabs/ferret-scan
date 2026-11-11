@@ -95,7 +95,7 @@ Every HIGH finding the gate reports is one of three things, and each has one act
 
 `--base origin/main` lists exactly the findings your branch added. A finding that is new in a file you
 did not touch comes from a validator change: CI's changed-files scan cannot see it, which is why the
-test plan asks for this run (dimension 15, below).
+test plan asks for this run ([dimension 15](TEST_PLAN.md#15-self-scan-always)).
 
 ## Reserved and published example values
 
@@ -195,40 +195,10 @@ suppressed and not-examined counts and point here; `cmd/self_scan_workflow_test.
 and runs the workflow's steps against a checkout with a HIGH fixture in each mode. A copy of the
 workflow in another repository needs the script and a profile of its own (`docs/TEAM_SETUP_GUIDE.md`).
 
-## Proposed TEST_PLAN.md text
+## In the test plan
 
-Ready to paste into `docs/testing/TEST_PLAN.md`: the dimension after the existing ones, and the
-Applicability table with 15 in every row.
-
-```markdown
-### 15. Self-scan (always)
-
-The repository's own scan blocks on HIGH (`docs/testing/SELF_SCAN.md`). CI scans the files a pull
-request changes, so it cannot see a validator change that newly flags a file the pull request did not
-touch. Before opening the pull request:
-
-- `make self-scan SELF_SCAN_ARGS='--base origin/main'` on the branch, green. It prints the HIGH findings
-  that are new, lost and changed against main by file class; a lost finding in a shippable file is a
-  dimension 9 question as well.
-- Every new HIGH is a decision, recorded in the pull request body: a real value removed; a detector false
-  positive fixed, or ruled `detector FP: #NNN` with the issue filed; a fixture moved to a reserved value,
-  or ruled `fixture: <why>`.
-- A finding that moved under its rule: `scripts/self-scan.sh --regenerate <file>`, review the candidate,
-  commit the re-anchored rules.
-- Body line: `15 RAN: scripts/self-scan.sh --base origin/main -> HIGH 0, suppressed N; new X, lost Y,
-  changed Z`.
-```
-
-```markdown
-| Change kind | Always | Add |
-|---|---|---|
-| Validator confidence / keyword logic | 1,2,3,5,6,9,10,15 | 4 if loops over line/match; 11 if ranking |
-| Extraction / preprocessing | 1,2,4,5,9,11,12,15 | 3 only if corpus has that format; 13 if concurrent |
-| Formatter / output schema | 1,2,3,7,15 | 8 if web-facing |
-| Web / template / assets | 1,2,7,8,15 | — |
-| Dead-code removal | 1,2,3,10,15 | (lands alone) |
-| Pure docs | 1,15 | — |
-```
+Dimension 15 of [TEST_PLAN.md](TEST_PLAN.md#15-self-scan-always) asks for this run before every pull
+request, and its Applicability table lists 15 in every row, docs included.
 
 ## Known limits
 
