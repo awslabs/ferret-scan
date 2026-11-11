@@ -1977,16 +1977,16 @@ type dedupKey struct {
 // Two rules, applied per line:
 //
 //   - Exact duplicates (same line + same text) collapse to ONE finding, keeping the
-//     highest-confidence copy and the first-seen position. "John Smith ... John Smith"
+//     highest-confidence copy and the first-seen position. "Jane Doe ... Jane Doe"
 //     is one finding; the redactors' completeness sweep masks every copy of a reported value.
 //   - A match whose SPAN lies inside a strictly longer match's span on the same line is
-//     dropped: "John Smith" inside "Dr. John Smith" is the same occurrence, and the longer
+//     dropped: "Jane Doe" inside "Dr. Jane Doe" is the same occurrence, and the longer
 //     finding already covers its bytes.
 //
 // The second rule used to compare TEXTS ("another match on this line contains my text"),
 // which also dropped a separate occurrence elsewhere on the line: in
-// "Signed by John Smith, witnessed by Dr. John Smith." the bare "John Smith" was dropped
-// because "Dr. John Smith" contains the string, so only the second occurrence was reported
+// "Signed by Jane Doe, witnessed by Dr. Jane Doe." the bare "Jane Doe" was dropped
+// because "Dr. Jane Doe" contains the string, so only the second occurrence was reported
 // and the first survived redaction in clear (#966). A (line, text) group is therefore kept
 // when ANY of its occurrences is outside every longer span, and its representative is the
 // highest-confidence such occurrence. A group none of whose members is contained is
