@@ -443,6 +443,10 @@ type lineContext struct {
 	// tracking/invoice/sku/serial/account/phone/zip; it simply never got to read
 	// the header. Nothing here adds a new suppression mechanism.
 	columnHeader string
+
+	// passportLabel is set when the line, or a field label on the line above it, names its
+	// values as passport numbers (#939, namesAPassport).
+	passportLabel bool
 }
 
 // newLineContext precomputes the per-line-global analysis values once. Every map
@@ -583,14 +587,24 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		// labelsTheIdentifier.
 		var urlPath map[string]bool
 
+		// notQuantity[txt] is true when at least one occurrence of txt on this line is NOT
+		// followed by a byte unit (#939, isByteQuantityAt). Reduced per text for the reason
+		// standalone is: the context window is the first occurrence's, so a value is held to
+		// quantityCeiling only when every place it appears is a byte count.
+		var notQuantity map[string]bool
+
 		if len(idxMatches) > 0 {
 			firstIndex = make(map[string]int)
 			standalone = make(map[string]bool, len(idxMatches))
+			notQuantity = make(map[string]bool, len(idxMatches))
 			urls := newURLPathScanner(line) // nil unless the line holds "://"
 			for _, loc := range idxMatches {
 				txt := line[loc[0]:loc[1]]
 				if _, seen := firstIndex[txt]; !seen {
 					firstIndex[txt] = loc[0]
+				}
+				if !isByteQuantityAt(line, loc[1]) {
+					notQuantity[txt] = true
 				}
 				switch {
 				case kwmatch.IsDecimalFractionTail(line, loc[0]):
@@ -624,6 +638,9 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 		var lc *lineContext
 		if len(foundMatches) > 0 {
 			lc = v.newLineContext(line)
+			// Whether this line's values are labelled as passport numbers, on the line or by a
+			// field label on the line above (#939, namesAPassport).
+			lc.passportLabel = namesAPassport(line, lineNum, lines)
 		}
 
 		// Field offsets for THIS line, computed once and reused for every match on
@@ -846,6 +863,22 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				continue
 			}
 
+			// A bare nine-digit run followed by a byte unit is a quantity, and a value labelled
+			// as a passport number with no SSN label on its line is the passport's (#939). Both
+			// are applied last so neither a keyword nor the tabular boost lifts them back. See
+			// other_meaning.go for why the first publishes its ceiling whenever it applies and
+			// the second only when it lowered the value.
+			byteQuantity := notQuantity != nil && ms.start >= 0 && !notQuantity[match] &&
+				isBareNineDigits(match)
+			if byteQuantity && confidence > otherMeaningCeiling {
+				confidence = otherMeaningCeiling
+			}
+			cappedByPassportLabel := lc.passportLabel && len(contextInfo.PositiveKeywords) == 0 &&
+				confidence > otherMeaningCeiling
+			if cappedByPassportLabel {
+				confidence = otherMeaningCeiling
+			}
+
 			// Ensure confidence stays within bounds
 			if confidence > 100 {
 				confidence = 100
@@ -866,7 +899,8 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				Filename:   originalPath,
 				Validator:  "ssn",
 				Context:    contextInfo,
-				Metadata:   buildSSNMetadata(checks, contextImpact, originalPath, capByHeader),
+				Metadata: buildSSNMetadata(checks, contextImpact, originalPath,
+					capByHeader || byteQuantity || cappedByPassportLabel),
 			}
 			if itin {
 				// Its own type, from this validator, as CREDIT_CARD reports VISA. A 9xx value
