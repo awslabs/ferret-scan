@@ -104,15 +104,15 @@ var tollFreeAreaCodes = []string{"800", "833", "844", "855", "866", "877", "888"
 // the number itself, which is what justifies dropping the finding outright
 // rather than scoring it down. See #364.
 //
-// Currently one range:
+// Two families of range:
 //
 //	NANP 555-0100..555-0199 -- withheld by NANPA/ATIS for fictional use in
 //	film, television and documentation. Never assignable, so a value here is
 //	not a means of contacting anyone.
 //
-// Non-NANP fictional ranges (UK Ofcom 07700 900xxx, AU 0491 570 xxx, etc.) are
-// the same class and belong here too; they are simply not implemented yet, and
-// listing that gap is more useful than implying the check is exhaustive.
+// Ofcom's drama blocks, the London, no-area and mobile ones (ofcom_drama.go, #930). AU 0491 570 xxx
+// and the rest are the same class and belong here too; they are not implemented yet, and listing
+// that gap is more useful than implying the check is exhaustive.
 //
 // An extension is stripped first because reFictional555 is end-anchored while
 // cleanPhoneNumber folds the extension's digits into the number: "(212) 555-0187
@@ -128,7 +128,7 @@ var tollFreeAreaCodes = []string{"800", "833", "844", "855", "866", "877", "888"
 // scored 85 where the "+1" one scored 15 (#889).
 func (v *Validator) isReservedFictionalNumber(phone string) bool {
 	trimmed := rePhoneExtensionSuffix.ReplaceAllString(phone, "")
-	return reFictional555.MatchString(strings.TrimPrefix(v.cleanPhoneNumber(trimmed), "00"))
+	return isReservedFictionalDigits(v.cleanPhoneNumber(trimmed))
 }
 
 // Validator implements the detector.Validator interface for detecting
@@ -701,12 +701,12 @@ func (v *Validator) scoreMatch(ls *lineScoring, match string, matchIndex int, pa
 	// free and keeps the regex work off the hot path. It is sound as a
 	// pre-filter: isReservedFictionalNumber strips only a trailing
 	// extension and a leading "00", so the digits it tests are a SUBSTRING
-	// of cleanNew, and reFictional555 requires "55501" inside them. Every
-	// match it can accept therefore has "55501" somewhere in cleanNew. Without
+	// of cleanNew, and reFictional555 requires "55501" inside them (Ofcom's
+	// drama ranges one of ofcomDramaPrefixes: mayBeReservedFictional). Without
 	// this, every phone match on the line would pay a regex replace, a
 	// second cleanPhoneNumber and a regex match — per-match line work is
 	// how this validator family became quadratic before.
-	if strings.Contains(cleanNew, "55501") && v.isReservedFictionalNumber(match) {
+	if mayBeReservedFictional(cleanNew) && v.isReservedFictionalNumber(match) {
 		ceiling = reservedFictionalCeiling
 		if confidence > reservedFictionalCeiling {
 			confidence = reservedFictionalCeiling
