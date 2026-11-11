@@ -205,14 +205,15 @@ func TestNoDigitOfAPhoneValueIsLeftUncovered(t *testing.T) {
 
 // TestZeroZeroFormIsBounded: main reported "00" followed by 5 to 21 digits, "00" then "0" included.
 // No calling code starts with 0, E.164 allows 15 digits after the prefix, and "421 337" leaves a
-// Slovak number three digits long. Each is still reported, at LOW, so it is still redacted.
+// Slovak number three digits long. Each is still reported, at LOW, so it is still redacted. A "00"
+// decimal ("total 000104.66 EUR") was here too; since #938 it is not reported at all
+// (TestCoordinateAndDecimalAreNotPhoneNumbers).
 func TestZeroZeroFormIsBounded(t *testing.T) {
 	for _, c := range [][2]string{
 		{"row,00421337,active", "00421337"},
 		{"Mon Jan _2 15:04:05,000 2006", "000 2006"},
 		{"Order 00493682185944899873 shipped", "00493682185944899873"},
 		{"Order 0001234 shipped", "0001234"},
-		{"total 000104.66 EUR", "000104.66"},
 		{"Order 00512345678901234567 shipped", "00512345678901234567"},
 		{"Order 0091234567890123456 shipped", "0091234567890123456"},
 	} {

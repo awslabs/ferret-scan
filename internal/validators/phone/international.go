@@ -527,16 +527,24 @@ func nanpPossibleText(text string) bool {
 //   - a '.' beside a '-' or '/' between the national groups is a coordinate or a range:
 //     "+49.78461-159.03771/" is ISO 6709.
 //
-// Applied only to new grammar readings; nothing main reports is touched by it.
+// A "00"-led text is read the same way, its first group the prefix and the code: "00125.37" and
+// "00074.56695-7" are decimals (#938). It refuses new grammar readings in both forms; main's findings
+// go through decimalNotPhone, which keeps the EPP form.
 func decimalShaped(text string) bool {
-	if !strings.HasPrefix(text, "+") || strings.IndexByte(text, '.') < 0 {
+	first := 1
+	if strings.HasPrefix(text, "00") {
+		first = 0
+	} else if !strings.HasPrefix(text, "+") {
+		return false
+	}
+	if strings.IndexByte(text, '.') < 0 {
 		return false
 	}
 	// The separators after the first group: a space straight after the code is how every
 	// international number is written, so it does not count as mixing.
 	seps := make([]byte, 0, 8)
 	groups := 0
-	for i := 1; i < len(text); {
+	for i := first; i < len(text); {
 		if !isDigitByte(text[i]) {
 			if groups > 0 && !(groups == 1 && text[i] == ' ') {
 				seps = append(seps, text[i])
@@ -562,6 +570,132 @@ func decimalShaped(text string) bool {
 		}
 	}
 	return dots > 0 && others > 0
+}
+
+// decimalNotPhone reports whether one of main's findings is a decimal rather than a number (#938):
+// a "00"-led one decimalShaped reads as one ("00125.37", "00074.56695-7"), or a "+"-led one whose
+// first run, longer than any calling code, ends in the decimal point ("+9252.619193895"). A "+"
+// reading whose '.' follows a code of 1-3 digits is how EPP (RFC 5733) writes a number,
+// "+1.7035550123", and is kept.
+func decimalNotPhone(text string) bool {
+	if strings.HasPrefix(text, "00") {
+		return decimalShaped(text)
+	}
+	if !strings.HasPrefix(text, "+") || !decimalShaped(text) {
+		return false
+	}
+	i := 1
+	for i < len(text) && isDigitByte(text[i]) {
+		i++
+	}
+	return i-1 > 3 && i < len(text) && text[i] == '.'
+}
+
+// integerPartOfDecimal reports whether an unseparated match (digits, after an optional '+') is the
+// integer part of a decimal: a '.' and a digit straight after it, "0000000001" of "0000000001.1" or
+// "+1234567891011" of "+1234567891011.234" (#938). A match with separators is left alone: a number
+// written with dots continues with dots, and main's patterns take it whole.
+func integerPartOfDecimal(match, line string, end int) bool {
+	if end+1 >= len(line) || line[end] != '.' || !isDigitByte(line[end+1]) {
+		return false
+	}
+	for i := 0; i < len(match); i++ {
+		if !isDigitByte(match[i]) && !(i == 0 && match[i] == '+') {
+			return false
+		}
+	}
+	return true
+}
+
+// iso6709MaxLen bounds an ISO 6709 point string: "+DDMMSS.SSSS-DDDMMSS.SSSS+AAAAA.AAACRSWGS_84/" is
+// under 50 bytes. It bounds the walk back from a candidate and the parse forward, so the check costs
+// a constant per match whatever the line.
+const iso6709MaxLen = 80
+
+// inISO6709Point reports whether [s, e) of line lies inside an ISO 6709 point string (#938), the form
+// the QuickTime "xyz" location atom, com.apple.quicktime.location.ISO6709 and XMP GPS fields write a
+// position in. Its token starts at the sign of the latitude: the run of digits, '.', '+' and '-' that
+// s sits in, which a point string is written apart from.
+func inISO6709Point(line string, s, e int) bool {
+	q := s
+	for q > 0 && s-q < iso6709MaxLen {
+		c := line[q-1]
+		if !isDigitByte(c) && c != '.' && c != '+' && c != '-' {
+			break
+		}
+		q--
+	}
+	if q < len(line) && (line[q] == '+' || line[q] == '-') {
+		if end := iso6709End(line, q); end >= e {
+			return true
+		}
+	}
+	return false
+}
+
+// iso6709End returns the end of the ISO 6709 point string starting at s (Annex H: latitude, longitude,
+// an optional altitude and CRS, and the terminating '/'), or -1. Latitude has 2, 4 or 6 integer digits
+// (DD, DDMM, DDMMSS), longitude 3, 5 or 7, each with an optional fraction. To leave a phone number
+// written with '/' after the area code ("+49-911/1234567", "+49-911/ 1234567") alone, the '/' must not
+// be followed by a digit, and a point with neither a fraction nor more than degrees is not taken.
+func iso6709End(line string, s int) int {
+	lim := min(len(line), s+iso6709MaxLen)
+	p, latInt, latFrac, ok := iso6709Number(line, s, lim)
+	if !ok || (latInt != 2 && latInt != 4 && latInt != 6) {
+		return -1
+	}
+	p, lonInt, lonFrac, ok := iso6709Number(line, p, lim)
+	if !ok || (lonInt != 3 && lonInt != 5 && lonInt != 7) {
+		return -1
+	}
+	if p < lim && (line[p] == '+' || line[p] == '-') {
+		if p, _, _, ok = iso6709Number(line, p, lim); !ok {
+			return -1
+		}
+	}
+	if p+3 <= lim && line[p:p+3] == "CRS" {
+		d := p + 3
+		for p = d; p < lim && isWordByteASCII(line[p]); p++ {
+		}
+		if p == d {
+			return -1
+		}
+	}
+	if p >= lim || line[p] != '/' || (p+1 < len(line) && isDigitByte(line[p+1])) {
+		return -1
+	}
+	if !latFrac && !lonFrac && latInt < 4 {
+		return -1
+	}
+	return p + 1
+}
+
+// iso6709Number reads a sign, an integer part and an optional fraction starting at p, before lim. It
+// returns where the number ends, how many integer digits it has and whether it has a fraction; a '.'
+// with no digit after it is not a number.
+func iso6709Number(line string, p, lim int) (end, intDigits int, frac, ok bool) {
+	if p >= lim || (line[p] != '+' && line[p] != '-') {
+		return p, 0, false, false
+	}
+	p++
+	d := p
+	for p < lim && isDigitByte(line[p]) {
+		p++
+	}
+	intDigits = p - d
+	if intDigits == 0 {
+		return p, 0, false, false
+	}
+	if p < lim && line[p] == '.' {
+		f := p + 1
+		for p = f; p < lim && isDigitByte(line[p]); p++ {
+		}
+		if p == f {
+			return p, 0, false, false
+		}
+		frac = true
+	}
+	return p, intDigits, frac, true
 }
 
 // intlGrammarPattern is the pattern a grammar reading is scored and reported with.
