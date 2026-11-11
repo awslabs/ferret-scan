@@ -180,6 +180,15 @@ func applyLegacyProperties(streamBytes []byte, metadata *Metadata) {
 		if v == "" {
 			continue
 		}
+		if isRedactionMask(v) {
+			// A value that is nothing but '*' is what a redacted copy holds where a value was: the
+			// same-length redactors overwrite in place with that byte. It discloses nothing but its
+			// length, and reporting it made a re-scan of every redacted .doc report a finding per
+			// masked field, "Author: *****************" as AUTHOR_INFO among them: a field name
+			// with no value, measured as six of the seven findings on the redacted copy of the
+			// public govdocs1--000696.doc (#915).
+			continue
+		}
 		switch p.Name {
 		// The mapped fields below are the KNOWN properties. Anything else with a
 		// name is a user-defined (custom) property and is collected verbatim by the
@@ -248,6 +257,20 @@ func applyLegacyProperties(streamBytes []byte, metadata *Metadata) {
 			}
 		}
 	}
+}
+
+// isRedactionMask reports whether v is nothing but the '*' a same-length redactor writes over a
+// value: a redacted property, not one carrying content.
+func isRedactionMask(v string) bool {
+	if v == "" {
+		return false
+	}
+	for i := 0; i < len(v); i++ {
+		if v[i] != '*' {
+			return false
+		}
+	}
+	return true
 }
 
 // legacyStructuralProperties are the property names that carry no free text worth

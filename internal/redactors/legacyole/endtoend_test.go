@@ -226,18 +226,23 @@ func TestRedaction_ReportsWhatItActuallyChanged(t *testing.T) {
 			"the redactor could not find must not be reported as redacted", len(res.RedactionMap))
 	}
 
-	// A value that is NOT in the document must not appear in the map.
+	// A value that is NOT in the document must not appear in the map, and the copy must not be
+	// written as redacted either. A reported value the redactor finds in no stream, in no encoding
+	// and in no typed property is one it cannot reach, so wherever it really is the copy would keep
+	// it; it used to be skipped with a log line while the file was written at exit 0 (#915).
 	out2 := filepath.Join(t.TempDir(), "redacted2.doc")
 	res2, err := r.RedactDocument(src, out2, matchesFor(map[string]string{
 		"555-66-7777": "SSN", // absent from the fixture
 	}), redactors.RedactionFormatPreserving)
-	if err != nil {
-		t.Fatalf("RedactDocument: %v", err)
+	if err == nil {
+		t.Fatalf("a reported value absent from every stream was accepted (%d mapping(s)); claiming a "+
+			"redaction that did not happen is how a leak gets reported as handled", len(res2.RedactionMap))
 	}
-	if len(res2.RedactionMap) != 0 {
-		t.Errorf("a value absent from the document produced %d mapping(s); claiming a "+
-			"redaction that did not happen is how a leak gets reported as handled",
-			len(res2.RedactionMap))
+	if !strings.Contains(err.Error(), "not found in any stream") || strings.Contains(err.Error(), "555-66-7777") {
+		t.Errorf("refusal = %q: want the not-found cause, by type, without the value", err)
+	}
+	if _, statErr := os.Stat(out2); !os.IsNotExist(statErr) {
+		t.Errorf("a refused file was written anyway (stat: %v)", statErr)
 	}
 }
 

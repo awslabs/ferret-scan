@@ -202,6 +202,25 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 	// reported on another line cannot carve a longer one before the longer one is written (#773).
 	units := legacyWriteUnits(matches, strategy)
 
+	// The typed scalars of the property sets, read once from the original bytes. A reported number,
+	// date or flag has no text in any stream, so it is located here by its decoded text and
+	// overwritten with zeros (typedprops.go, #915).
+	typed := typedPropertyValues(layout, logical)
+
+	// The streams as they were before any write, read only if a value is not located: whether it
+	// was in the file at all decides whether "not located" is a miss or an earlier unit's redaction.
+	var original [][]byte
+	inOriginal := func(value string) bool {
+		if original == nil {
+			original = make([][]byte, len(layout.streams))
+			for i, s := range layout.streams {
+				original[i] = s.readLogical(raw)
+			}
+		}
+		return presentIn(original, typed, value)
+	}
+	var notFound []unrewrittenValue
+
 	for _, u := range units {
 		m := u.match
 		if m.Text == "" {
@@ -214,7 +233,8 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 			n += nn + wn
 			narrowN += nn
 		}
-		if n == 0 {
+		zeroed, zeroText := zeroTypedValues(modified, layout, logical, typed, m.Text)
+		if n+zeroed == 0 {
 			if u.group.IsGroup() {
 				// A group is several reported values sharing bytes. Leaving it is not a disclosed
 				// limitation of one value, it is a partial redaction of several, so the file is refused.
@@ -222,16 +242,28 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 				return nil, fmt.Errorf("refusing to write %s: an overlapping group of %d findings (types %s) was not found verbatim in any stream",
 					filepath.Base(outputPath), len(u.group.Members), strings.Join(u.group.MemberTypes(matches), ", "))
 			}
-			// The extractor recovers body text through a pass that normalises runs,
-			// so a reported match need not appear verbatim in any stream. Say so
-			// rather than claim a redaction that did not happen.
 			r.logEvent("legacy_match_not_located", false, map[string]interface{}{
 				"match_type":   m.Type,
 				"match_length": len(m.Text),
 			})
+			// The same value reported on another line, or a longer value holding it, was overwritten
+			// by an earlier unit, so finding nothing here is that redaction. A value that was in none
+			// of the original bytes is one this redactor cannot reach at all, and the copy would keep
+			// it wherever it really is: it used to be skipped with only the log line above.
+			//
+			// Only for a value reported in THIS file. A container hands an embedded part every match
+			// it found (office/embedded.go), so its body's values are in none of the part's streams by
+			// construction, and they carry the container's name rather than this file's.
+			if reportedIn(m, originalPath) && !inOriginal(m.Text) {
+				notFound = append(notFound, unrewrittenValue{types: []string{m.Type}})
+			}
 			continue
 		}
 		text := writtenText(m.Text, repl, narrowN)
+		method := "ole_logical_stream_overwrite"
+		if n == 0 {
+			text, method = zeroText, "ole_typed_property_zeroed"
+		}
 		mapping := redactors.RedactionMapping{
 			RedactedText: text,
 			Position:     redactors.TextPosition{Line: m.LineNumber},
@@ -240,8 +272,8 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 			Masked:       tagmeta.WrittenAsMask(m.Text, m.Type, text, strategy),
 			Confidence:   m.Confidence,
 			Metadata: map[string]interface{}{
-				"occurrences":     n,
-				"position_method": "ole_logical_stream_overwrite",
+				"occurrences":     n + zeroed,
+				"position_method": method,
 			},
 		}
 		if u.group.IsGroup() {
@@ -249,6 +281,14 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 			mapping.Metadata[redactors.OverlapMemberTypesKey] = u.group.MemberTypes(matches)
 		}
 		mappings = append(mappings, mapping)
+	}
+
+	// Relocate every value in what is about to be written (relocate.go). A value still readable in
+	// it, or one that was never in the file's bytes, is a value this copy would keep, and writing it
+	// as "redacted" is the silent survivor #915 measured; refuse instead, as for a group above.
+	if err := refuseUnrewritten(outputPath, notFound,
+		stillPresent(units, matches, logical, typedPropertyValues(layout, logical))); err != nil {
+		return nil, err
 	}
 
 	if len(modified) != len(raw) {

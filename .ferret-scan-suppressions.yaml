@@ -1461,27 +1461,27 @@ rules:
         finding_type: PERSON_NAME
         line_number: "197"
     - id: SUP-00000174
-      hash: d78de11ddd24d2c9a37d7cca7aee2edb978e0c1f22caa101c80d1fb1138f4386 # pragma: allowlist secret
+      hash: 0e607c1bf3aa40c618244e499663d0b1b89fbbf4ca4a02eb40738ae827451bee # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T15:00:52.721371921Z
       metadata:
         confidence: "92.00"
         filename: redactor.go
         finding_type: PERSON_NAME
-        line_number: "411"
+        line_number: "451"
     - id: SUP-00000175
-      hash: 873c029f4a8d8ec26ba77696cf779f8739b5d5ef07c3fa78cad992b9d7e4c74d # pragma: allowlist secret
+      hash: fcc5e945d18ca8fbb63922626d7c25a4154a3f3780289d2fe5060c4082b5b9a5 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T15:00:52.721371921Z
       metadata:
         confidence: "100.00"
         filename: redactor.go
         finding_type: PERSON_NAME
-        line_number: "459"
+        line_number: "499"
     - id: SUP-00000176
       hash: b31e6cb6b1e8368a301d80f09b3e30403aef4176b79f5a6036e136dbd8bcadf7 # pragma: allowlist secret
       reason: "detector FP: #934"

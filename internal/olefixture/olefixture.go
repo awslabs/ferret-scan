@@ -904,3 +904,226 @@ func LegacyDoc(body string, props map[uint32]string) []byte {
 	}
 	return MustBuild(streams)
 }
+
+// --- Typed (non-string) property values -------------------------------------
+//
+// Office stores a custom property of type Number as VT_I4 (or VT_R8 when it is not an integer), Date
+// as VT_FILETIME and Yes/No as VT_BOOL. None of those has a text form in the stream: a VT_I4 is four
+// little-endian bytes, and the decimal digits a reader reports exist only after decoding. A redactor
+// that searches for the reported text finds nothing there, which is the leak #915 measured, so a
+// fixture has to be able to write them.
+
+// TypedValue is a property value that is not a string. Bytes is the value as the type stores it,
+// little-endian, at the type's own width; VT is the [MS-OLEPS] type, written as a scalar.
+type TypedValue struct {
+	VT    uint16
+	Bytes []byte
+}
+
+// The scalar types the constructors below write.
+const (
+	VTI2       = 0x0002
+	VTI4       = 0x0003
+	VTR8       = 0x0005
+	VTBool     = 0x000B
+	VTDecimal  = 0x000E
+	VTUI4      = 0x0013
+	VTI8       = 0x0014
+	VTFileTime = 0x0040
+)
+
+// Int32 is a VT_I4 value: what Office writes for a custom Number that is an integer.
+func Int32(v int32) TypedValue {
+	b := make([]byte, 4)
+	binary.LittleEndian.PutUint32(b, uint32(v))
+	return TypedValue{VT: VTI4, Bytes: b}
+}
+
+// Uint32 is a VT_UI4 value.
+func Uint32(v uint32) TypedValue {
+	b := make([]byte, 4)
+	binary.LittleEndian.PutUint32(b, v)
+	return TypedValue{VT: VTUI4, Bytes: b}
+}
+
+// Int64 is a VT_I8 value.
+func Int64(v int64) TypedValue {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, uint64(v))
+	return TypedValue{VT: VTI8, Bytes: b}
+}
+
+// Float64Bits is a VT_R8 value holding these IEEE-754 bits: what Office writes for a custom Number
+// that is not an integer.
+func Float64Bits(bits uint64) TypedValue {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, bits)
+	return TypedValue{VT: VTR8, Bytes: b}
+}
+
+// FileTimeValue is a VT_FILETIME value (see FileTime): what Office writes for a custom Date.
+func FileTimeValue(ft uint64) TypedValue {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, ft)
+	return TypedValue{VT: VTFileTime, Bytes: b}
+}
+
+// Bool is a VT_BOOL value: what Office writes for a custom Yes/No.
+func Bool(v bool) TypedValue {
+	b := []byte{0x00, 0x00}
+	if v {
+		b = []byte{0xFF, 0xFF}
+	}
+	return TypedValue{VT: VTBool, Bytes: b}
+}
+
+// typedEntry encodes a typed value: its 2-byte type, 2 bytes of padding, then its bytes padded to 4.
+func typedEntry(tv TypedValue) []byte {
+	v := make([]byte, 4, 4+len(tv.Bytes)+3)
+	binary.LittleEndian.PutUint16(v[0:], tv.VT)
+	v = append(v, tv.Bytes...)
+	for len(v)%4 != 0 {
+		v = append(v, 0)
+	}
+	return v
+}
+
+// lpstrEntry encodes a VT_LPSTR value: 2-byte type, 2 bytes padding, 4-byte length INCLUDING the
+// null terminator, then the bytes padded to a 4-byte boundary.
+func lpstrEntry(s string) []byte {
+	body := append([]byte(s), 0)
+	for len(body)%4 != 0 {
+		body = append(body, 0)
+	}
+	v := make([]byte, 8+len(body))
+	binary.LittleEndian.PutUint16(v[0:], 0x001E)
+	binary.LittleEndian.PutUint32(v[4:], uint32(len(s)+1))
+	copy(v[8:], body)
+	return v
+}
+
+// setEntry is one (property id, encoded value) of a property set.
+type setEntry struct {
+	id  uint32
+	val []byte
+}
+
+// encodeSet lays out one property set: its byte size, its property count, the (id, offset) table
+// with offsets relative to the set's start, then the values in table order.
+func encodeSet(entries []setEntry) []byte {
+	offsets := make([]uint32, len(entries))
+	cursor := uint32(8 + len(entries)*8)
+	for i, e := range entries {
+		offsets[i] = cursor
+		cursor += uint32(len(e.val))
+	}
+	set := new(bytes.Buffer)
+	_ = binary.Write(set, binary.LittleEndian, cursor)
+	_ = binary.Write(set, binary.LittleEndian, uint32(len(entries)))
+	for i, e := range entries {
+		_ = binary.Write(set, binary.LittleEndian, e.id)
+		_ = binary.Write(set, binary.LittleEndian, offsets[i])
+	}
+	for _, e := range entries {
+		set.Write(e.val)
+	}
+	return set.Bytes()
+}
+
+// userDefinedSet encodes the user-defined property set: a dictionary at id 0 naming ids 2 and up, a
+// code page at id 1, then each property, string and typed alike, in name order so the bytes are
+// stable across calls.
+func userDefinedSet(strs map[string]string, typed map[string]TypedValue) []byte {
+	names := make([]string, 0, len(strs)+len(typed))
+	for n := range strs {
+		names = append(names, n)
+	}
+	for n := range typed {
+		if _, dup := strs[n]; !dup {
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names)
+
+	dict := new(bytes.Buffer)
+	_ = binary.Write(dict, binary.LittleEndian, uint32(len(names)))
+	for i, n := range names {
+		_ = binary.Write(dict, binary.LittleEndian, uint32(firstCustomPropID+i))
+		nb := append([]byte(n), 0)
+		_ = binary.Write(dict, binary.LittleEndian, uint32(len(nb)))
+		dict.Write(nb)
+	}
+	for dict.Len()%4 != 0 {
+		dict.WriteByte(0)
+	}
+	codePage := make([]byte, 8)
+	binary.LittleEndian.PutUint16(codePage[0:], VTI2)
+	binary.LittleEndian.PutUint16(codePage[4:], 1252) // Windows-1252
+
+	entries := []setEntry{{id: 0, val: dict.Bytes()}, {id: 1, val: codePage}}
+	for i, n := range names {
+		var v []byte
+		if s, ok := strs[n]; ok {
+			v = lpstrEntry(s)
+		} else {
+			v = typedEntry(typed[n])
+		}
+		entries = append(entries, setEntry{id: uint32(firstCustomPropID + i), val: v})
+	}
+	return encodeSet(entries)
+}
+
+// propertySetStream wraps one or two encoded sets in the 48- or 68-byte stream header that names each
+// by FMTID and gives its offset in the stream.
+func propertySetStream(fmtids [][]byte, sets [][]byte) []byte {
+	hdrLen := 28 + 20*len(sets)
+	hdr := make([]byte, hdrLen)
+	binary.LittleEndian.PutUint16(hdr[0:], 0xFFFE)
+	binary.LittleEndian.PutUint32(hdr[4:], 0x00020006)
+	binary.LittleEndian.PutUint32(hdr[24:], uint32(len(sets)))
+	at := uint32(hdrLen)
+	for i, s := range sets {
+		copy(hdr[28+20*i:44+20*i], fmtids[i])
+		binary.LittleEndian.PutUint32(hdr[44+20*i:], at)
+		at += uint32(len(s))
+	}
+	out := hdr
+	for _, s := range sets {
+		out = append(out, s...)
+	}
+	return out
+}
+
+// UserDefinedPropertiesTyped is UserDefinedProperties plus typed custom properties: the stream holds
+// the user-defined set alone.
+func UserDefinedPropertiesTyped(strs map[string]string, typed map[string]TypedValue) []byte {
+	return propertySetStream([][]byte{fmtidUserDefined}, [][]byte{userDefinedSet(strs, typed)})
+}
+
+// DocSummaryInformationWithCustom encodes a DocumentSummaryInformation stream the way Office writes
+// one for a document that has custom properties: TWO property sets in the one stream, the well-known
+// set first and the user-defined set second, each with its own FMTID and offset in the header. A
+// reader that walks only the first set never sees a custom property at all.
+func DocSummaryInformationWithCustom(props map[uint32]string, custom map[string]string, typed map[string]TypedValue) []byte {
+	ids := make([]uint32, 0, len(props))
+	for id := range props {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	known := make([]setEntry, 0, len(ids))
+	for _, id := range ids {
+		known = append(known, setEntry{id: id, val: lpstrEntry(props[id])})
+	}
+	return propertySetStream(
+		[][]byte{fmtidDocSummaryInformation, fmtidUserDefinedSection},
+		[][]byte{encodeSet(known), userDefinedSet(custom, typed)},
+	)
+}
+
+// fmtidUserDefinedSection is {D5CDD505-2E9C-101B-9397-08002B2CF9AE}, FMTID_UserDefinedProperties:
+// the FMTID Office writes for the second section of DocumentSummaryInformation. It is in no
+// reader's name table, so its property names come from the section's own dictionary.
+var fmtidUserDefinedSection = []byte{
+	0x05, 0xD5, 0xCD, 0xD5, 0x9C, 0x2E, 0x1B, 0x10,
+	0x93, 0x97, 0x08, 0x00, 0x2B, 0x2C, 0xF9, 0xAE,
+}
