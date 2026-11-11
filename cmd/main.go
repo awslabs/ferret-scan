@@ -1454,10 +1454,9 @@ func main() {
 	// Configured values these validators could not use (#903): a regex RE2 rejects, an entry of the wrong
 	// type. Each was dropped, so what it configured did not happen. Ungated, like the disclosure above and
 	// for the same reason, and unlike the unknown-key warning: --quiet and pre-commit mode are where a
-	// pattern that silently stopped detecting matters most.
-	for _, w := range core.ConfigWarnings(standardValidators) {
-		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
-	}
+	// pattern that silently stopped detecting matters most. The report's stats block carries the same lines.
+	configWarnings := core.ConfigWarnings(standardValidators)
+	writeConfigValueWarnings(os.Stderr, configWarnings)
 
 	// Set up dual path validation integration
 	var dualPathObserver *observability.StandardObserver
@@ -2518,6 +2517,7 @@ func main() {
 		// terminal; a CI job consuming `"results": []` never sees stderr, and that is the reader
 		// most at risk of taking a narrowed scan for a clean one.
 		DisabledDetectionTypes: disabledDetectionTypes,
+		ConfigWarnings:         configWarnings, // printed above as warnings (#903)
 		FilesNotRedacted:       len(unredactedDisclosure),
 		ValuesNotRedacted:      formatters.UnredactedValueCount(unredactedDisclosure),
 		TotalFindings:          len(unsuppressedMatches),
