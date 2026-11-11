@@ -1275,9 +1275,11 @@ var Cases = []Case{
 			"of one city plus the next as Surname, Given at 99. Line 7 holds the region names " +
 			"measured on the public corpus. main @ 2fb4719 reports 10 findings here, 4 HIGH; the " +
 			"fix reports none. Lines 1 and 2 keep the words PERSON_NAME and person: they are the " +
-			"positive context (+24) that lifted the repository's copies to HIGH. Street names " +
-			"(\"77 August Lane\") are not in this case: overlap_groups_render_once uses them as " +
-			"crossing fixtures.",
+			"positive context (+24) that lifted the repository's copies to HIGH. Lines 8-9 are " +
+			"street names (#935's second half): the words between a house number and a street type, " +
+			"and a street type plus the town after it read as `Surname, Given`. main @ 3aa380e " +
+			"reports `August Lane` 92, `Lane, Boise` 67 and `Martin Luther King` 93 there; the fix " +
+			"reports none, and the address validator still reports both streets when it runs.",
 		Checks: []string{"PERSON_NAME"},
 		Input: "\"Hong Kong\" and \"Middle East\" as PERSON_NAME at confidence 92-100, read from workbook labels\n" +
 			"PERSON_NAME \"Flushing Meadows<ENDASH>Corona\" is a park; so is Flushing Meadows-Corona\n" +
@@ -1285,7 +1287,9 @@ var Cases = []Case{
 			"a false positive (NEM MIN, EI LUO) the old path produced by mis-decoding escapes\n" +
 			"Iberian and Latin American: San Francisco, Santa Clara, Sao Paulo, Puerto Vallarta,\n" +
 			"Ciudad Juarez, Villa Nueva, Bahia Blanca, Isla Mujeres, Monte Plata.\n" +
-			"Customer region: North East; shipping desk: Russian Far East\n",
+			"Customer region: North East; shipping desk: Russian Far East\n" +
+			"Residence: 77 August Lane, Boise ID 83702\n" +
+			"Located at 100 Martin Luther King Blvd\n",
 	},
 	{
 		Name: "medical_hex_member_ids",
