@@ -439,7 +439,7 @@ func NewValidator() *Validator {
 			"api", "key", "secret", "token", "password", "passwd", "pass", "pwd",
 			"passphrase", "auth", "credential", "private", "access", "session",
 			"bearer", "oauth", "jwt", "signature", "salt", "nonce", "seed",
-			"entropy", "connectionstring",
+			"entropy", "connectionstring", "authorization",
 		},
 
 		negativeKeywords: []string{
@@ -867,6 +867,18 @@ func (v *Validator) validateContentCtx(ctx stdctx.Context, content string, origi
 				continue
 			}
 			cands = append(cands, scopedCandidate{candidate: c, method: "keyword_pattern", threshold: 60})
+		}
+
+		// #902 Part A: HTTP authentication credential carriers (Basic/Proxy/Bearer headers, the
+		// npmrc _auth line, the .netrc password field, curl -u). Structural like the URI user-info
+		// source (#766): position in a known grammar is the corroboration, so each carries the
+		// exemption from the M24 55-cap and the entropy path's threshold of 50, and a test/dev marker
+		// demotes rather than drops. Never gateable (#753): a header or record is a literal, not an
+		// expression. Appended to cands before dedupeScopedBySpan, so a span a provider literal or a
+		// quoted pattern already claims (a `Bearer ghp_...` run is both this and a GITHUB_TOKEN) keeps
+		// that path's method and type and only a genuinely new span is added. See http_auth.go.
+		for _, c := range v.findHTTPAuthCredentials(line, originalPath) {
+			cands = append(cands, scopedCandidate{candidate: c.candidate, method: c.method, threshold: httpAuthThreshold, structural: true})
 		}
 
 		// #746 shape (c), continued. Order matters: the state is advanced AFTER this line is

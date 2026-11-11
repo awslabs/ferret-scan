@@ -374,6 +374,34 @@ var Cases = []Case{
 			"api_key: SecretStr\n",
 	},
 	{
+		Name: "secrets_structural_carrier_decoys",
+		Description: "The #902 structural carrier detectors (HTTP authentication, and in later parts " +
+			"of the stream private-key containers and password hashes) must not fire on the framing " +
+			"WITHOUT a credential. Every line here is a header, challenge, directive or template that " +
+			"names a scheme but carries no secret, and the fix reports NOTHING for all of them: a " +
+			"`WWW-Authenticate` challenge and an `AuthType Basic` directive name the scheme with no " +
+			"value; `Basic ${ORDERS_BASIC_AUTH}`, `Bearer $ORDERS_TOKEN` and `Bearer {{ORDERS_TOKEN}}` " +
+			"are variable and mustache references, excluded by the Bearer token charset and by the " +
+			"Basic decode step (a reference is not base64 `user:pass`); `Basic " +
+			"<base64-encoded-credentials>` and `Basic base64(username:password)` are documentation " +
+			"placeholders; and `Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==` is RFC 7617's worked example, which " +
+			"decodes to `Aladdin:open sesame` and is dropped by the negative keyword `open` even " +
+			"though its space defeats the all-lowercase plausibility rule. If a change makes any " +
+			"snapshot here non-empty, a carrier detector has started reporting its own placeholder " +
+			"framing, which is a false positive and not a fix. Positive recall for these carriers is " +
+			"pinned in http_auth_test.go, not here (a decoy case only locks the negatives).",
+		Checks: []string{"SECRETS"},
+		Input: "WWW-Authenticate: Basic realm=\"orders\"\n" +
+			"AuthType Basic\n" +
+			"Authorization: Basic ${ORDERS_BASIC_AUTH}\n" +
+			"Authorization: Bearer $ORDERS_TOKEN\n" +
+			"Authorization: Bearer {{ORDERS_TOKEN}}\n" +
+			"Authorization: Basic <base64-encoded-credentials>\n" +
+			"Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==\n" +
+			"Proxy-Authorization: Bearer <token>\n" +
+			"Basic base64(username:password)\n",
+	},
+	{
 		Name: "secrets_file_wide_marker_hostname",
 		Description: "The #785 shape with a marker that IS a whole word: a comment naming a " +
 			"wiki.example.com URL two lines above a credential. detectEnvironmentType still " +
