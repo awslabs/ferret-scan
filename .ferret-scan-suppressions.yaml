@@ -680,16 +680,16 @@ rules:
         finding_type: SSN
         line_number: "1630"
     - id: SUP-00000061
-      hash: 43dc2918417fb0f772c614132dd3745b8f2c34552f41df2c301b7a38bbfed04e # pragma: allowlist secret
+      hash: 2ebd72c1ca85a71cfbc60b074a50170505f9cd8a8eb0d181ec328b27bb3789e3 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-10T17:06:18.884321-05:00
+      last_seen_at: 2026-11-11T14:02:52.307311577Z
       metadata:
         confidence: "100.00"
         filename: main.go
         finding_type: SSN
-        line_number: "3342"
+        line_number: "3358"
     - id: SUP-00000062
       hash: 55d55f2f0c7471ba4ba5e0eca1a8ed4c5c78e32fd33421cc6334871d280f2b47 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
