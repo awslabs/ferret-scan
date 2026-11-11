@@ -4,6 +4,8 @@
 package goldencorpus
 
 import (
+	"math"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -384,6 +386,13 @@ type sparseQuadraticValidator struct {
 	// rescans counts how many times the quadratic path actually ran, so the test below can prove
 	// the fixture is quadratic rather than assuming it.
 	rescans *int
+
+	// copyOnRescan makes the quadratic step materialise a copy of the input before counting it, so
+	// the rescan costs allocated bytes in proportion to the input as well as CPU. That is the unit
+	// TestGrowthRatioMissesASparseQuadratic measures in (#929); without it the rescan allocates
+	// nothing and an allocated-bytes ratio could not see the quadratic term at all. Off for the
+	// timed instrument in complexity_spread_instrumentation_test.go, which keeps its shipped shape.
+	copyOnRescan bool
 }
 
 func (v sparseQuadraticValidator) ValidateContent(content, _ string) ([]detector.Match, error) {
@@ -401,7 +410,11 @@ func (v sparseQuadraticValidator) ValidateContent(content, _ string) ([]detector
 		confidence := 50.0
 		if seen%v.every == 0 {
 			// The quadratic step, on a sparse subset of the matches.
-			confidence = float64(50 + strings.Count(content, "a")%2)
+			scanned := content
+			if v.copyOnRescan {
+				scanned = strings.Clone(content)
+			}
+			confidence = float64(50 + strings.Count(scanned, "a")%2)
 			*v.rescans++
 		}
 		out = append(out, detector.Match{
@@ -421,8 +434,10 @@ func (v sparseQuadraticValidator) ValidateContent(content, _ string) ([]detector
 // It asserts the CURRENT, WRONG behaviour: a genuinely O(n^2) validator goes undetected. That is
 // intentional. The limit is real, it is arithmetic rather than a tuning mistake, and a test that
 // pins it is the only thing that stops it being rediscovered a fourth time (#509, #546, #579, #599
-// are all retunings of this one threshold). A change that closes the gap must INVERT this
-// assertion in the same commit, with the linear control still passing — do not delete it.
+// are all retunings of this one threshold). A change that closes the gap -- a third input size, a
+// larger step, a different statistic -- must revisit this test in the same commit (its arithmetic
+// assumes two sizes 4x apart judged against maxGrowthRatio), with the linear control still
+// passing. Do not delete it.
 //
 // The arithmetic. For a 4x input step the measured ratio is
 //
@@ -431,7 +446,7 @@ func (v sparseQuadraticValidator) ValidateContent(content, _ string) ([]detector
 // so ratio > 8.0 requires f > 1/3. An O(n^2) term that is less than a third of the base reading is
 // invisible to this guard at any threshold it could safely carry. f grows with n, so whether a
 // given regression is caught depends on the FIXTURE SIZE as much as on the code -- measured on
-// darwin/arm64, ratio by (rescan density, reps):
+// darwin/arm64 on the CPU clock, ratio by (rescan density, reps):
 //
 //	rescan every    reps 3000   reps 12000   reps 48000
 //	  1 match          14.62x      —            —
@@ -444,77 +459,155 @@ func (v sparseQuadraticValidator) ValidateContent(content, _ string) ([]detector
 // (see maxGrowthRatio), so a bound between them would have 1.10x margin against the repo's 1.5x
 // rule. Closing this needs a third input size to fit a curve, or a larger step -- not a retune.
 //
-// Under -race the boundary moves the wrong way (the instrumented emit dilutes further): a 1-in-16
-// rescan reads 8.37x plain and 5.85x under -race. The guard runs without -race, which is what
-// keeps the operative column the plain one.
+// WHY THIS PIN IS NOT TIMED (#929). It used to assert the guard's own CPU-clock reading of this
+// fixture stayed below 8.0. That reading is not a property of the code: f is the quadratic share of
+// the base READING, and contention moves it. The rescan is a memory-bandwidth-bound strings.Count
+// over 1 MB (base) or 4 MB (big) while the linear term is per-match allocation, so load inflates the
+// big term more than the base -- 10.42x (base 9.412ms, big 98.114ms) in a wave-7 full-suite run,
+// red in every busy run of that wave and passing whenever run alone. Measured on linux/amd64 (16
+// CPUs) before this change, the test run on its own: load 10-12, 5.47x-6.38x; load 14-15 with two
+// package suites looping, 5.38x-5.81x; load 32-41 with 32 CPU/memory burners added, 4.66x-6.79x;
+// load 133, 5.37x-5.90x (five runs each, all passing, per-pair samples up to 13.52x). Run after the
+// other GrowthRatio controls in the same process, as a full suite runs it, at load 131-146: 8 of 10
+// runs FAILED, 7.45x-10.96x, with the base unmoved (9.9-11.0ms) and the big term at 74-115ms. A
+// negative pin whose failure direction is "the guard got better" can never catch a regression, so a
+// clock reading only made it a source of red.
+//
+// So the limit is now asserted STRUCTURALLY, in a unit no scheduler can move: allocated bytes
+// (runtime.MemStats.TotalAlloc across one ValidateContent call). The fixture's rescan copies the
+// input before counting it (copyOnRescan), so its quadratic term costs R*n bytes, and the linear
+// term is the production-shaped emit (append to a nil slice, a Context, a Metadata map per match).
+// The test measures the linear term on its own (no rescans), takes the quadratic term as the
+// difference, and asserts, all computed rather than timed:
+//
+//  1. the quadratic term really is O(n^2): it grows >= 15x for the 4x step (16x ideal; R is a
+//     floor division, 11 -> 46 rescans), and the linear term grows <= 5x;
+//  2. the fixture's quadratic share f of the base sits below the detection floor
+//     f* = (maxGrowthRatio - rL) / (rQ - rL), the generalisation of 1/3 to the measured linear and
+//     quadratic growth rL and rQ, and the two-point ratio is therefore at or below maxGrowthRatio;
+//  3. the same measurement at 1 rescan per 256 matches reads ABOVE maxGrowthRatio, so the unit is
+//     not blind to the quadratic and assertion 2 could fail if the arithmetic changed.
+//
+// Readings, linux/amd64, Go 1.27.3, reps 48000. Measured identical to 4 significant figures under
+// -race, so this pin needs no race/!race split; repeated readings differ by under 7 KB, 1e-4 of the
+// 69 MB base, under any load (25 runs at load 119-146 gave the same three ratios):
+//
+//	                         base            big              ratio
+//	linear only (no rescan)  68,646,832 B    330,112,864 B    4.81x   (rL; append doubling, not 4.00)
+//	1 per 4096 (this pin)    79,820,608 B    515,891,232 B    6.46x   f = 0.140, floor f* = 0.270
+//	1 per 256 (control)      258,602,704 B   3,359,105,056 B  12.99x
+//
+// Margins, both recorded because the issue asks for them: threshold / pinned reading =
+// 8.0 / 6.46 = 1.24x, and control reading / threshold = 12.99 / 8.0 = 1.62x. The first is under the
+// repo's 1.5x noise rule by design and is safe because this unit has no noise to absorb (1e-4): the
+// rule exists for clock readings, and a deterministic reading cannot drift across 8.0 under load.
+// It moves only if the code or the Go allocator changes, which is a real change to review, not a
+// flake. The pin's "regressed" direction is the improving one: a reading above 8.0 here means the
+// arithmetic no longer hides this shape.
 func TestGrowthRatioMissesASparseQuadratic(t *testing.T) {
-	rescans := 0
-	newV := func() validatorUnderTest { return sparseQuadraticValidator{every: 4096, rescans: &rescans} }
-
-	// 48000 reps because the LINEAR term has to be large enough to measure: at reps=3000 this
-	// shape's base is 254µs-330µs, under perfguard.MinMeasurableCPU, and the ratio would be an
-	// artefact rather than a reading. Base lands at 5.1ms-6.9ms here.
 	const reps = 48000
 	base := buildComplexityInput(quadraticUnit(0), nil, reps)
 	big := buildComplexityInput(quadraticUnit(0), nil, reps*4)
 
-	g := growthRatio(t, newV, base, big)
-	t.Logf("sparse quadratic (1 rescan per 4096 matches): %.2fx on the %s clock "+
-		"(min base=%v big=%v, per-pair %s) — recorded as MISSED at the %.1f threshold",
-		g.Ratio, g.Clock, g.BaseMin, g.BigMin, perfguard.FormatRatios(g.Samples), maxGrowthRatio)
-
-	// Non-vacuity, and the part that matters most here. An assertion that something is NOT
-	// detected passes trivially against a fixture that does no quadratic work at all, which would
-	// turn this test into decoration. Prove the quadratic path ran.
-	if rescans == 0 {
-		t.Fatalf("the quadratic path never ran: this fixture is not O(n^2) and the assertion below "+
-			"would hold for a purely linear validator. base=%d big=%d matches",
-			g.baseMatches, g.bigMatches)
+	type reading struct {
+		base, big          uint64
+		rescansBase        int
+		rescansBig         int
+		baseN, bigN        int
+		ratio              float64
+		matchesB, matchesG int
 	}
-	if g.baseMatches == 0 || g.bigMatches <= g.baseMatches {
-		t.Fatalf("fixture is not scaling: base=%d big=%d matches", g.baseMatches, g.bigMatches)
+	measure := func(every, calls int) reading {
+		rescans := 0
+		v := sparseQuadraticValidator{every: every, rescans: &rescans, copyOnRescan: true}
+		var r reading
+		r.base, r.matchesB, r.rescansBase = minAllocatedBytes(t, v, base, &rescans, calls)
+		r.big, r.matchesG, r.rescansBig = minAllocatedBytes(t, v, big, &rescans, calls)
+		r.ratio = float64(r.big) / float64(r.base)
+		return r
 	}
 
-	// No perfguard.ReportMargin here, deliberately. This test's margin is set by arithmetic, not by
-	// tuning: its fixture reads ~5.0-5.3x by construction (ratio = 4*(1+3f)), so it sits at about the
-	// 1.5x rule at its median and a canary would warn on roughly half of all runs — noise that would
-	// teach people to ignore the warnings that matter. Its readings are logged above regardless.
-	if note := thresholdNotAssertableUnderRace(); note != "" {
-		t.Logf("sparse quadratic control NOT asserted — %s", note)
-	} else if _, resolvable := g.Ticks(); !resolvable {
-		t.Logf("sparse quadratic control NOT asserted — %s", g.ResolutionNote())
-	} else if g.Ratio > maxGrowthRatio {
-		t.Errorf("a sparse O(n^2) validator measured %.2fx on the %s clock, ABOVE the %.1f "+
-			"threshold — the guard now catches this shape, which is BETTER than what this test "+
-			"records. Do not silence it: invert the assertion, state the new detection floor in "+
-			"maxGrowthRatio's comment, and check the linear control still passes. "+
-			"min base=%v big=%v, per-pair %s",
-			g.Ratio, g.Clock, maxGrowthRatio, g.BaseMin, g.BigMin, perfguard.FormatRatios(g.Samples))
+	// Three calls per size for the two readings the pin is computed from; one for the control, which
+	// allocates 3.4 GB at its big size and needs no minimum to sit 1.6x clear of the threshold.
+	linear := measure(math.MaxInt, 3)
+	sparse := measure(4096, 3)
+	control := measure(256, 1)
+
+	// Non-vacuity, and the part that matters most here. An assertion that something is NOT detected
+	// passes trivially against a fixture that does no quadratic work at all. Prove the quadratic path
+	// ran, at both sizes, and that the linear reference took none of it.
+	if sparse.rescansBase == 0 || sparse.rescansBig <= sparse.rescansBase {
+		t.Fatalf("the quadratic path did not run and scale: %d rescans at base, %d at big",
+			sparse.rescansBase, sparse.rescansBig)
+	}
+	if linear.rescansBase != 0 || linear.rescansBig != 0 {
+		t.Fatalf("the linear reference ran the quadratic path (%d/%d rescans)", linear.rescansBase, linear.rescansBig)
+	}
+	if sparse.matchesB == 0 || sparse.matchesG <= sparse.matchesB {
+		t.Fatalf("fixture is not scaling: base=%d big=%d matches", sparse.matchesB, sparse.matchesG)
+	}
+	if sparse.base <= linear.base || sparse.big <= linear.big {
+		t.Fatalf("the rescan allocated nothing (sparse %d/%d B, linear %d/%d B): copyOnRescan is not "+
+			"reaching the quadratic step, so this unit cannot see it", sparse.base, sparse.big, linear.base, linear.big)
+	}
+
+	rL := float64(linear.big) / float64(linear.base)
+	qBase, qBig := float64(sparse.base-linear.base), float64(sparse.big-linear.big)
+	rQ := qBig / qBase
+	f := qBase / float64(sparse.base)
+	floor := (maxGrowthRatio - rL) / (rQ - rL)
+	t.Logf("allocated bytes, reps %d: linear %d -> %d B (rL %.2fx); 1 rescan per 4096: %d -> %d B "+
+		"(%.2fx, %d -> %d rescans, quadratic term %.2fx, f=%.3f, detection floor f*=%.3f); "+
+		"1 per 256: %d -> %d B (%.2fx); threshold %.1f; margins %.2fx below, %.2fx above",
+		reps, linear.base, linear.big, rL, sparse.base, sparse.big, sparse.ratio,
+		sparse.rescansBase, sparse.rescansBig, rQ, f, floor,
+		control.base, control.big, control.ratio, maxGrowthRatio,
+		maxGrowthRatio/sparse.ratio, control.ratio/maxGrowthRatio)
+
+	// 1. The terms are what they claim to be.
+	if rQ < 15 {
+		t.Errorf("the quadratic term grew only %.2fx for a 4x step (want >= 15x, 16x ideal): the "+
+			"fixture is not O(n^2) in this unit and the pin below would be decoration", rQ)
+	}
+	if rL > 5 {
+		t.Errorf("the linear reference grew %.2fx for a 4x step (want <= 5x): the base is not "+
+			"linear, so f and the floor below are not the quantities the arithmetic is about", rL)
+	}
+
+	// 2. The pin. Computed, not timed: the quadratic share is below the floor, so the ratio is too.
+	if f >= floor || sparse.ratio > maxGrowthRatio {
+		t.Errorf("a sparse O(n^2) validator's quadratic share f=%.3f is no longer below the detection "+
+			"floor f*=%.3f (ratio %.2fx against the %.1f threshold) — the two-point 4x ratio now "+
+			"exposes this shape, which is BETTER than what this test records. Do not silence it: "+
+			"invert the assertion, state the new detection floor in maxGrowthRatio's comment, and "+
+			"check the linear control still passes", f, floor, sparse.ratio, maxGrowthRatio)
+	}
+
+	// 3. The unit can see a quadratic: a denser rescan in the same measurement crosses the threshold.
+	if control.ratio <= maxGrowthRatio {
+		t.Errorf("1 rescan per 256 matches read %.2fx, at or below the %.1f threshold: this unit no "+
+			"longer exposes a quadratic it should, so assertion 2 passing proves nothing",
+			control.ratio, maxGrowthRatio)
 	}
 }
 
-// TestTheRaceGateIsNotTakenWithoutRace pins the POLARITY of thresholdNotAssertableUnderRace.
-//
-// That one function now decides whether four controls in this file assert anything. If it ever returned
-// a non-empty note unconditionally -- an inverted condition, a debugging line left in, a refactor that
-// dropped the raceDetectorEnabled check -- all four would pass while asserting NOTHING, and the suite
-// would go green with the guard switched off. That is the exact failure #619 documents for windows, and
-// it is worth one test to make it impossible.
-//
-// Runs in both modes and asserts opposite things in each, so neither build tag can hide a mistake.
-func TestTheRaceGateIsNotTakenWithoutRace(t *testing.T) {
-	note := thresholdNotAssertableUnderRace()
-
-	if raceDetectorEnabled {
-		if note == "" {
-			t.Error("the race detector IS active but the gate reports the threshold assertable — the " +
-				"four maxGrowthRatio controls would compare an instrumented ratio against a bound that " +
-				"describes un-instrumented code, which is how #620 and #643 failed")
+// minAllocatedBytes returns the fewest heap bytes one ValidateContent call allocated over calls
+// calls, with that call's match count and rescan count (*rescans is reset before each call).
+// TotalAlloc is cumulative and never decreases with GC, so it is a count of work done rather than a
+// reading of a clock; the minimum discards the few KB another goroutine (the test runner's own) may
+// allocate concurrently.
+func minAllocatedBytes(t *testing.T, v validatorUnderTest, content string, rescans *int, calls int) (best uint64, matches, rescanned int) {
+	t.Helper()
+	for i := 0; i < calls; i++ {
+		var before, after runtime.MemStats
+		*rescans = 0
+		runtime.ReadMemStats(&before)
+		matches = validateOnce(t, v, content)
+		runtime.ReadMemStats(&after)
+		if d := after.TotalAlloc - before.TotalAlloc; i == 0 || d < best {
+			best = d
 		}
-		return
+		rescanned = *rescans
 	}
-	if note != "" {
-		t.Errorf("this is a NON-race run, yet the gate is skipping the maxGrowthRatio assertions: %q. "+
-			"All four controls in this file would pass while asserting nothing.", note)
-	}
+	return best, matches, rescanned
 }
