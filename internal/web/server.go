@@ -259,8 +259,8 @@ func (ws *WebServer) Start() error {
 		// listen, close, and let ListenAndServe bind the port again, so the probe could pass and the
 		// real bind then fail if the port was taken in between; only the real listener's own error
 		// cannot race (#926). The address is joined with net.JoinHostPort: concatenated, an IPv6
-		// bind such as --bind ::1 read "::1:8080", which net.Listen refuses ("too many colons"), so
-		// it never started.
+		// bind such as --bind ::1 left the host unbracketed, which net.Listen refuses ("too many
+		// colons"), so it never started.
 		listener, err := net.Listen("tcp", net.JoinHostPort(ws.bindAddr, currentPort))
 		if err != nil {
 			lastError = err

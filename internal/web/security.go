@@ -166,7 +166,8 @@ func sameOriginHostSet(bindAddr, port string) map[string]struct{} {
 	set := map[string]struct{}{}
 	add := func(host string) {
 		// Joined as a URL authority is written, so an IPv6 bind reads "[::1]:8080", which is what
-		// url.Parse returns as the Host of the browser's Origin; "::1:8080" matched no request (#926).
+		// url.Parse returns as the Host of the browser's Origin; the unbracketed form this used to
+		// build matched no request (#926).
 		set[strings.ToLower(net.JoinHostPort(host, port))] = struct{}{}
 	}
 	add(bindAddr)
