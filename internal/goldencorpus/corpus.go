@@ -1208,6 +1208,33 @@ var Cases = []Case{
 			"member idx column: W3213213210\n",
 	},
 	{
+		Name: "personname_place_and_list_decoys",
+		Description: "#935: places and garbled fragments that PERSON_NAME reported as people, every " +
+			"line taken from this repository's own files, where the self-scan carried a detector-FP " +
+			"rule for each. The patterns match Title-Case shape and the surname gate asks only " +
+			"whether the last word is a surname, so a place ending in one read as a person: the " +
+			"Chinese city at 100 (both words are in the name data), the Middle East at 91, the " +
+			"Queens park at 90 in its hyphenated form, the Bolivian capital at 79. Line 4 is two " +
+			"all-caps syllable pairs recovered from a binary format, admitted because a short " +
+			"syllable hits the surname list by chance. Lines 5-6 are place LISTS: the comma " +
+			"pattern starts at the second word of the first city (leftmost non-overlapping " +
+			"matching, so the toponym prefix in front of it was never examined) and read the tail " +
+			"of one city plus the next as Surname, Given at 99. Line 7 holds the region names " +
+			"measured on the public corpus. main @ 2fb4719 reports 10 findings here, 4 HIGH; the " +
+			"fix reports none. Lines 1 and 2 keep the words PERSON_NAME and person: they are the " +
+			"positive context (+24) that lifted the repository's copies to HIGH. Street names " +
+			"(\"77 August Lane\") are not in this case: overlap_groups_render_once uses them as " +
+			"crossing fixtures.",
+		Checks: []string{"PERSON_NAME"},
+		Input: "\"Hong Kong\" and \"Middle East\" as PERSON_NAME at confidence 92-100, read from workbook labels\n" +
+			"PERSON_NAME \"Flushing Meadows<ENDASH>Corona\" is a park; so is Flushing Meadows-Corona\n" +
+			"La Paz is a capital city, not a person named La Paz\n" +
+			"a false positive (NEM MIN, EI LUO) the old path produced by mis-decoding escapes\n" +
+			"Iberian and Latin American: San Francisco, Santa Clara, Sao Paulo, Puerto Vallarta,\n" +
+			"Ciudad Juarez, Villa Nueva, Bahia Blanca, Isla Mujeres, Monte Plata.\n" +
+			"Customer region: North East; shipping desk: Russian Far East\n",
+	},
+	{
 		Name: "medical_hex_member_ids",
 		Description: "Insurance member IDs whose characters happen to all be hex digits, beside " +
 			"hex decoys that must stay suppressed. The all-hex shape gate used to fire before " +

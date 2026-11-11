@@ -1,0 +1,9 @@
+=== REDACTED ===
+"Hong Kong" and "Middle East" as PERSON_NAME at confidence 92-100, read from workbook labels
+PERSON_NAME "Flushing Meadows<ENDASH>Corona" is a park; so is Flushing Meadows-Corona
+La Paz is a capital city, not a person named La Paz
+a false positive (NEM MIN, EI LUO) the old path produced by mis-decoding escapes
+Iberian and Latin American: San Francisco, Santa Clara, Sao Paulo, Puerto Vallarta,
+Ciudad Juarez, Villa Nueva, Bahia Blanca, Isla Mujeres, Monte Plata.
+Customer region: North East; shipping desk: Russian Far East
+=== FINDINGS (sorted) ===
