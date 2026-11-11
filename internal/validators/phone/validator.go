@@ -1962,10 +1962,11 @@ func (v *Validator) isEmbeddedInIdentifierAt(match, line string, matchIndex int)
 	}
 
 	// Not a phone number at all, whatever its neighbours (#938): a match inside an ISO 6709 point
-	// string ("+4012.22-07500.25/", the QuickTime ©xyz form, read as "+4012.22-07500" at 95), and a
-	// decimal written after "00" ("00125.37", "00074.56695-7"). Checked here because this is the veto
-	// main's patterns and the widest-span readings (evaluateWide) both run.
-	if inISO6709Point(line, matchIndex, matchIndex+len(match)) || (strings.HasPrefix(match, "00") && decimalShaped(match)) {
+	// string ("+4012.22-07500.25/", the QuickTime location form, which International_Plus read up to
+	// its fraction at 95), and a decimal (decimalNotPhone: "00125.37", a '+' before a run longer than
+	// a calling code and its fraction). Checked here because this is the veto main's patterns and the
+	// widest-span readings (evaluateWide) both run.
+	if inISO6709Point(line, matchIndex, matchIndex+len(match)) || decimalNotPhone(match) {
 		return true
 	}
 

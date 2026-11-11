@@ -243,7 +243,9 @@ var Cases = []Case{
 			"writes (\"+4012.22-07500\" was International_Plus at 95); line 3 the decimal-degrees form " +
 			"whose wider E.164 reading (DE) replaced a capped finding at 95; lines 4-6 the decimal form " +
 			"with an altitude, a CRS and the degrees-minutes-seconds form (LOW 15 on main); lines 7-8 " +
-			"decimals after the \"00\" prefix (LOW 15 on main). Controls with their scores (the EPP " +
+			"decimals after the \"00\" prefix (LOW 15 on main); line 9 a '+' before a run longer than " +
+			"any calling code and its fraction, time.Time's monotonic reading (MEDIUM 60 on main). " +
+			"Controls with their scores (the EPP " +
 			"\"+1.7035550123\", the German \"+49-911/1234567\") are unit tests in " +
 			"internal/validators/phone, so this case adds no finding to the census. The Ofcom drama " +
 			"ranges of #930 are held at LOW, not dropped, so they are reported and are not decoys here.",
@@ -255,7 +257,8 @@ var Cases = []Case{
 			"pos +51.5007-000.1246CRSWGS_84/\n" +
 			"location +401213.1-0750015.1/\n" +
 			"ids \"00125.37\" and \"00074.56695-7\"\n" +
-			"total 000104.66 EUR\n",
+			"total 000104.66 EUR\n" +
+			"// reading time.Time prints as \"+9252.619193895\", as\n",
 	},
 	{
 		Name:        "secrets_aws",

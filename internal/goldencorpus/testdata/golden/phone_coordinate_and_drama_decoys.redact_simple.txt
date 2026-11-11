@@ -7,4 +7,5 @@ pos +51.5007-000.1246CRSWGS_84/
 location +401213.1-0750015.1/
 ids "00125.37" and "00074.56695-7"
 total 000104.66 EUR
+// reading time.Time prints as "+9252.619193895", as
 === FINDINGS (sorted) ===

@@ -30,6 +30,9 @@ func TestCoordinateAndDecimalAreNotPhoneNumbers(t *testing.T) {
 		// or a '.' beside a '-'.
 		`ids "00125.37" and "00074.56695-7"`,
 		`total 000104.66 EUR`,
+		// A '+' before a run longer than any calling code, then a fraction: time.Time's monotonic
+		// clock reading, quoted.
+		`reading time.Time prints as "+9252.619193895", as isDecimalFractionTail reasons`,
 		`matching coordinates like ` + "`00074.56695-7`" + ` — to none.`,
 	} {
 		ms, err := v.ValidateContent(line, "geo.go")
@@ -145,6 +148,27 @@ func TestDecimalShapedZeroZero(t *testing.T) {
 	} {
 		if got := decimalShaped(text); got != want {
 			t.Errorf("decimalShaped(%q) = %t, want %t", text, got, want)
+		}
+	}
+}
+
+func TestDecimalNotPhone(t *testing.T) {
+	for text, want := range map[string]bool{
+		"00125.37":          true,
+		"00074.56695-7":     true,
+		"+9252.619193895":   true,
+		"+4012.22-07500":    true,
+		"+1.7035550123":     false, // EPP: the '.' follows the calling code
+		"+44.2079460958":    false,
+		"+123.4567890":      false,
+		"+44.20.7946.0958":  false,
+		"+44 20 7946 0958":  false,
+		"0044 20 7946 0958": false,
+		"0011874":           false,
+		"415.555.0132":      false,
+	} {
+		if got := decimalNotPhone(text); got != want {
+			t.Errorf("decimalNotPhone(%q) = %t, want %t", text, got, want)
 		}
 	}
 }
