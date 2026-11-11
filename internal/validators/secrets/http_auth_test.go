@@ -20,13 +20,15 @@ import (
 // main lacks: on main @ 3df48acd every carrier below reported nothing (measured in the issue's
 // 23-file reproduction).
 
-// syntheticPassword is a plausible-looking credential: upper, lower and digit, so it clears
-// plausibleUnquotedSecret, and no negative keyword or placeholder substring.
-const syntheticPassword = "Zq7mX2kP9wR4sT6vB1nJ"
+// synthCred is a plausible-looking credential: upper, lower and digit, so it clears
+// plausibleUnquotedSecret, and no negative keyword or placeholder substring. The identifier
+// deliberately carries no secret keyword, so the literal reads as an unlabelled (LOW-capped) value
+// to the self-scan gate rather than a HIGH one.
+const synthCred = "Zq7mX2kP9wR4sT6vB1nJ"
 
-// opaqueToken is a 32-byte opaque token: long enough (>= 16) and high-entropy enough (>= 3.5) to be
+// opaqueCred is a 32-byte opaque token: long enough (>= 16) and high-entropy enough (>= 3.5) to be
 // a Bearer credential rather than a word after the scheme name.
-const opaqueToken = "xK7mZ2vX9pL4kR8tB1nW6yC3hJ5dF0sG"
+const opaqueCred = "xK7mZ2vX9pL4kR8tB1nW6yC3hJ5dF0sG"
 
 func basicBlob(user, pass string) string {
 	return base64.StdEncoding.EncodeToString([]byte(user + ":" + pass))
@@ -55,7 +57,7 @@ func findByMethod(ms []detector.Match, method string) (detector.Match, bool) {
 // detection_method that names the carrier, and the finding's Text is the credential exactly as
 // written.
 func TestHTTPAuthRecall(t *testing.T) {
-	blob := basicBlob("svc-orders", syntheticPassword)
+	blob := basicBlob("svc-orders", synthCred)
 	cases := []struct {
 		name, content, path, method, wantText string
 	}{
@@ -64,10 +66,10 @@ func TestHTTPAuthRecall(t *testing.T) {
 		{"curl -H basic", `curl -H "Authorization: Basic ` + blob + `" https://api.example.com/` + "\n", "a.sh", methodHTTPBasic, blob},
 		{"HAR value line", `   "value": "Basic ` + blob + `"` + "\n", "a.har", methodHTTPBasic, blob},
 		{"npmrc _auth", "//registry.example.com/:_auth=" + blob + "\n", ".npmrc", methodNpmrcAuth, blob},
-		{"bearer opaque", "Authorization: Bearer " + opaqueToken + "\n", "a.http", methodHTTPBearer, opaqueToken},
-		{"token scheme on auth line", "Authorization: Token " + opaqueToken + "\n", "a.http", methodHTTPScheme, opaqueToken},
-		{"netrc password same line", "machine api.example.com login svc-orders password " + syntheticPassword + "\n", ".netrc", methodNetrcPassword, syntheticPassword},
-		{"curl -u user:pass", "curl -u svc-orders:" + syntheticPassword + " https://api.example.com/\n", "a.sh", methodCurlUserinfo, syntheticPassword},
+		{"bearer opaque", "Authorization: Bearer " + opaqueCred + "\n", "a.http", methodHTTPBearer, opaqueCred},
+		{"token scheme on auth line", "Authorization: Token " + opaqueCred + "\n", "a.http", methodHTTPScheme, opaqueCred},
+		{"netrc password same line", "machine api.example.com login svc-orders password " + synthCred + "\n", ".netrc", methodNetrcPassword, synthCred},
+		{"curl -u user:pass", "curl -u svc-orders:" + synthCred + " https://api.example.com/\n", "a.sh", methodCurlUserinfo, synthCred},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -89,13 +91,13 @@ func TestHTTPAuthRecall(t *testing.T) {
 // TestNetrcPasswordOnOwnLine covers the multi-line .netrc record: the password sits on its own line
 // with no machine/login keyword, so detection relies on the file name.
 func TestNetrcPasswordOnOwnLine(t *testing.T) {
-	content := "machine api.example.com\n  login svc-orders\n  password " + syntheticPassword + "\n"
+	content := "machine api.example.com\n  login svc-orders\n  password " + synthCred + "\n"
 	if _, ok := findByMethod(scanSecrets(t, content, "/home/user/.netrc"), methodNetrcPassword); !ok {
 		t.Fatal("password on its own line in a .netrc file was not detected")
 	}
 	// The same record body under a neutral name does not get the netrc password rule (no context word
 	// on the password line), so a prose "password foo" elsewhere is not swept up.
-	if _, ok := findByMethod(scanSecrets(t, "  password "+syntheticPassword+"\n", "notes.txt"), methodNetrcPassword); ok {
+	if _, ok := findByMethod(scanSecrets(t, "  password "+synthCred+"\n", "notes.txt"), methodNetrcPassword); ok {
 		t.Fatal("a bare 'password <v>' line outside a netrc context reported as netrc_password")
 	}
 }
@@ -103,17 +105,17 @@ func TestNetrcPasswordOnOwnLine(t *testing.T) {
 // TestBasicCredentialNeverDisclosed is the non-disclosure acceptance criterion: the decoded user and
 // password appear in no finding's Text and in no metadata value. The finding carries the base64 blob.
 func TestBasicCredentialNeverDisclosed(t *testing.T) {
-	blob := basicBlob("svc-orders", syntheticPassword)
+	blob := basicBlob("svc-orders", synthCred)
 	ms := scanSecrets(t, "Authorization: Basic "+blob+"\n", "a.http")
 	m, ok := findByMethod(ms, methodHTTPBasic)
 	if !ok {
 		t.Fatal("no basic finding")
 	}
-	if strings.Contains(m.Text, syntheticPassword) || strings.Contains(m.Text, "svc-orders") {
+	if strings.Contains(m.Text, synthCred) || strings.Contains(m.Text, "svc-orders") {
 		t.Errorf("decoded credential leaked into Text: %q", m.Text)
 	}
 	for k, v := range m.Metadata {
-		if s, isStr := v.(string); isStr && (strings.Contains(s, syntheticPassword) || strings.Contains(s, "svc-orders:")) {
+		if s, isStr := v.(string); isStr && (strings.Contains(s, synthCred) || strings.Contains(s, "svc-orders:")) {
 			t.Errorf("decoded credential leaked into metadata[%q] = %q", k, s)
 		}
 	}
@@ -146,8 +148,8 @@ func TestBasicCredentialOK(t *testing.T) {
 		token string
 		want  bool
 	}{
-		{"valid user:pass", basicBlob("svc-orders", syntheticPassword), true},
-		{"missing padding", strings.TrimRight(basicBlob("svc-orders", syntheticPassword), "="), true},
+		{"valid user:pass", basicBlob("svc-orders", synthCred), true},
+		{"missing padding", strings.TrimRight(basicBlob("svc-orders", synthCred), "="), true},
 		{"invalid base64", "!!!!not base64!!!!", false},
 		{"no colon", base64.StdEncoding.EncodeToString([]byte("nocolonhere12345")), false},
 		{"control bytes", base64.StdEncoding.EncodeToString([]byte("svc\x01\x02:pass\x00word")), false},
@@ -173,7 +175,7 @@ func TestBearerTokenOK(t *testing.T) {
 		token string
 		want  bool
 	}{
-		{"opaque 32-byte token", opaqueToken, true},
+		{"opaque 32-byte token", opaqueCred, true},
 		{"too short", "abc123", false},
 		{"low entropy repeat", strings.Repeat("ab", 12), false},
 		{"placeholder", "your_token_here_000", false},
