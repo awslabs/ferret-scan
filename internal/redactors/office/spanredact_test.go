@@ -237,14 +237,16 @@ func TestSpanRangeAndOverlap(t *testing.T) {
 	}
 }
 
-// TestApplyEditsGoesRightToLeft is why an earlier edit cannot invalidate a later one's offsets.
-func TestApplyEditsGoesRightToLeft(t *testing.T) {
+// TestApplyEditsKeepsEachEditOnItsSourceOffsets is why an earlier edit cannot invalidate a later one's
+// offsets: every edit is placed against the ORIGINAL bytes, whatever the length of the ones before it.
+func TestApplyEditsKeepsEachEditOnItsSourceOffsets(t *testing.T) {
 	src := []byte("0123456789")
 	// Two edits of DIFFERENT lengths, deliberately: equal-length splices would pass even if the order
-	// were wrong, which is how an ordering bug survives its own test.
+	// were wrong, which is how an ordering bug survives its own test. Given out of order, so the sort is
+	// what places them.
 	got := string(applyEdits(src, []spanEdit{
-		{srcStart: 2, srcEnd: 4, with: []byte("LONGER")},
 		{srcStart: 6, srcEnd: 8, with: []byte("X")},
+		{srcStart: 2, srcEnd: 4, with: []byte("LONGER")},
 	}))
 	if want := "01LONGER45X89"; got != want {
 		t.Errorf("applyEdits = %q, want %q — a length change moved a later edit's offsets", got, want)
