@@ -2418,60 +2418,60 @@ rules:
         finding_type: US_STREET_ADDRESS
         line_number: "22"
     - id: SUP-00000219
-      hash: 3fd4140a74ef7a7886f7e9e07e2d40684e850d66c72c86c54dbb40d1872c851b # pragma: allowlist secret
+      hash: 516499bf98b487e335d2e6c4191c2b4d046ee12032334609e42a86225bc44330 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: replacement.go
-        finding_type: BUSINESS
-        line_number: "758"
-    - id: SUP-00000220
-      hash: 8e7d19192cb0d51ff9a2da0a8a3dc18dd65c996ef35b7fcf855e601b86d08d5c # pragma: allowlist secret
-      reason: "fixture: example value in a source comment"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: replacement.go
-        finding_type: BUSINESS
-        line_number: "758"
-    - id: SUP-00000221
-      hash: 7f6a5462cfcad014438a6fd7c8ca0ca44290ed3c012ab0fffae6f20f6a7971d1 # pragma: allowlist secret
-      reason: "fixture: example value in a source comment"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T17:11:00.915341672Z
       metadata:
         confidence: "100.00"
         filename: replacement.go
         finding_type: BUSINESS
         line_number: "760"
-    - id: SUP-00000222
-      hash: bd665dc843a0c7af0bcdb1a0a6cb40cbe0f77a9682f26f194a8454486bb96423 # pragma: allowlist secret
+    - id: SUP-00000220
+      hash: 5dae582bdca836b607641714f352609aa0aa6140a004b0262461f861ef48b847 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T17:11:00.915341672Z
+      metadata:
+        confidence: "100.00"
+        filename: replacement.go
+        finding_type: BUSINESS
+        line_number: "760"
+    - id: SUP-00000221
+      hash: cc345d6cecb604357d6ee8bb400501cf69b8f135a574a18cf9d157df0ab2cc5e # pragma: allowlist secret
+      reason: "fixture: example value in a source comment"
+      enabled: true
+      created_at: 2026-11-09T19:55:15.405018783Z
+      last_seen_at: 2026-11-11T17:11:00.915341672Z
+      metadata:
+        confidence: "100.00"
+        filename: replacement.go
+        finding_type: BUSINESS
+        line_number: "762"
+    - id: SUP-00000222
+      hash: a41a25569dd64776b8843e26c62bd15e206c60539b06e54019660f55567b531f # pragma: allowlist secret
+      reason: "fixture: example value in a source comment"
+      enabled: true
+      created_at: 2026-11-09T19:55:15.405018783Z
+      last_seen_at: 2026-11-11T17:11:00.915341672Z
       metadata:
         confidence: "98.00"
         filename: replacement.go
         finding_type: INTELLECTUAL_PROPERTY
-        line_number: "949"
+        line_number: "955"
     - id: SUP-00000223
-      hash: 52e845cf44578b82ed5ff1e181f450fd04e9462598cf9c5681b7d82db2675dc0 # pragma: allowlist secret
+      hash: 7c0930345de43e0ea01ce3b7343704cd66d32253af017e8c2688b0b6b30cae7b # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T17:11:00.915341672Z
       metadata:
         confidence: "94.00"
         filename: replacement.go
         finding_type: AWS_ACCESS_KEY
-        line_number: "1302"
+        line_number: "1385"
     - id: SUP-00000224
       hash: 88aa26cce29daa3e08e072cfae9c0bb950325948949551b2297c547bfce0d2d0 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
@@ -6576,16 +6576,16 @@ rules:
         finding_type: API_KEY_OR_SECRET
         line_number: "56"
     - id: SUP-00000597
-      hash: 0117cefc4e2585889f3573154a3fd4915ad7ac2395d7ee6e68ca20a2a66506cf # pragma: allowlist secret
+      hash: 0dcf55f2ca640c453011feb51eb3e612a4bda7979028f457bf8ff53762f5c23e # pragma: allowlist secret
       reason: "fixture: test input the test asserts is detected or redacted"
       enabled: true
       created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
+      last_seen_at: 2026-11-11T17:11:15.415842815Z
       metadata:
         confidence: "100.00"
         filename: complexity_guard_test.go
         finding_type: GITHUB_TOKEN
-        line_number: "233"
+        line_number: "257"
     - id: SUP-00000598
       hash: 3fde0390bf590828aa3c2b3719ca1f6686c2abf198dd2815f3f228a5434039c0 # pragma: allowlist secret
       reason: "detector FP: #931"
