@@ -201,7 +201,14 @@ over the variable, being the more specific request.
 **An explicit flag outranks the inference.** `--format`, `--quiet` and `--no-color` are respected
 when you pass them; the pre-commit values are defaults for when you do not. And an `--output` file
 you asked for is always written, even on a clean run where the console output is deliberately
-silent.
+silent, on `--stdin` as on `--file`.
+
+The machine reports name the profile the mode applied, because it narrows the run: json and yaml
+carry `"profile": {"name": "precommit", "selected_by": "pre-commit mode"}` in their `scan` block
+beside `checks_run` and `checks_not_run`, junit has the `ferret-scan.profile` and
+`ferret-scan.profile_selected_by` properties, and sarif `ferretScanProfile` and
+`ferretScanProfileSelectedBy` in `run.properties`. See
+[A narrowed run says what it ran](COVERAGE_DISCLOSURE.md#a-narrowed-run-says-what-it-ran).
 
 `--quiet=false` means "give me the full report", and that now reaches the **formatter**, not just the
 progress output. It previously did not: the formatters were told pre-commit mode was active from the
@@ -536,6 +543,8 @@ entry: ./bin/ferret-scan --pre-commit-mode --checks CREDIT_CARD,SECRETS
 # Check file paths and content
 # Suppressions match by hash: a different line number, file basename or line content breaks matching
 # (line endings, indentation and trailing whitespace do not, for rules written with formula v5)
+# A rule whose finding only moved to another line matches again after --generate-suppressions,
+# which re-anchors it; a renamed file or an edited line needs a new rule
 # A binary that predates formula v5 does not read v5 rules: run the same version locally and in CI
 ```
 

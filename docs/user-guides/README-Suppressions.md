@@ -20,7 +20,11 @@ The suppression system uses **cryptographic hashing** to uniquely identify findi
   Confidence is not part of it (a rule written before v2.3.0 hashed it, and still matches while the
   finding's confidence is unchanged). Converting a file between LF and CRLF, re-indenting it or adding
   a trailing space leaves a v5 rule matching; a line inserted above the finding or a renamed file does
-  not. `--generate-suppressions` rewrites a rule it matched through an older formula to v5. A binary
+  not. A rule whose finding only moved to another line matches again after `--generate-suppressions`,
+  which re-anchors it to the line the finding is now on: the same value on the same line text in a
+  file of the same name, and only when exactly one finding fits (see
+  [Re-anchoring](../suppression-system.md#re-anchoring)). A renamed file or an edited line needs a new
+  rule. `--generate-suppressions` also rewrites a rule it matched through an older formula to v5. A binary
   that predates formula v5 does not read it, so upgrade every binary that reads a shared suppression
   file before regenerating it. The formulas are listed in
   [the suppression system architecture](../suppression-system.md#hash-generation-algorithm).
@@ -223,7 +227,8 @@ in the web UI:
 # Generate suppression rules for all findings (disabled by default)
 ferret-scan --file document.txt --generate-suppressions
 
-# Run again to update last_seen_at timestamps for existing findings
+# Run again: it refreshes last_seen_at, re-anchors rules whose finding moved to another line,
+# and prints what it did ("Updated suppression rules: added 0 (disabled by default), refreshed 3, ...")
 ferret-scan --file document.txt --generate-suppressions
 
 # Edit the generated .ferret-scan-suppressions.yaml file
@@ -318,7 +323,7 @@ still hold, and delete the rest.
 
 ### 7. Track Finding Activity
 ```bash
-# Regular scans update last_seen_at automatically
+# A run that generates rules updates last_seen_at; a scan that does not generate leaves the file alone
 ferret-scan --file . --recursive --generate-suppressions
 
 # Review which findings are still active vs stale
@@ -394,7 +399,7 @@ Suppression rules include metadata for easier management:
 - `filename`: Original filename (basename only)
 - `line_number`: Line where finding occurred
 - `confidence`: Detection confidence score
-- `last_seen_at`: Timestamp when finding was last encountered (updated automatically)
+- `last_seen_at`: Timestamp when finding was last encountered (updated by a run that generates rules: `--generate-suppressions`, or `generate_suppressions` / `suppressions.generate_on_scan` in the config)
 
 ### Bulk Operations
 ```bash
