@@ -296,16 +296,36 @@ func (ws *WebServer) Start() error {
 // bound to a non-loopback interface, a prominent warning is printed because
 // the UI has no authentication and any reachable client can mutate
 // suppression rules or upload arbitrary files for scanning.
+//
+// Neither access hint widens exposure. The loopback line used to suggest
+// `--bind 0.0.0.0`, which puts an unauthenticated UI on every interface; it
+// now names an SSH local forward to the loopback address instead. The
+// container line used to suggest `-p 8082:<port>`, which publishes on every
+// host interface, and a host port other than the server's own fails the
+// Origin check (sameOriginHostSet accepts localhost:<port> and
+// 127.0.0.1:<port> only), so every POST from that page was refused; it now
+// names `-p 127.0.0.1:<port>:<port>`. Both forwards keep the port number for
+// the same reason.
 func (ws *WebServer) printStartupBanner(currentPort string) {
-	fmt.Printf("Ferret Scan Web UI started on %s:%s\n", ws.bindAddr, currentPort)
+	bound := net.JoinHostPort(ws.bindAddr, currentPort)
+	fmt.Printf("Ferret Scan Web UI started on %s\n", bound)
 	fmt.Printf("Access URLs:\n")
 	if IsLoopbackBind(ws.bindAddr) {
-		fmt.Printf("Local:     http://localhost:%s\n", currentPort)
-		fmt.Printf("(bound to loopback only — pass --bind 0.0.0.0 to expose on the network)\n")
+		local := net.JoinHostPort("localhost", currentPort)
+		if ws.bindAddr == "::1" {
+			// localhost may resolve to 127.0.0.1 first, where nothing listens.
+			local = bound
+		}
+		fmt.Printf("Local:     http://%s\n", local)
+		fmt.Printf("(bound to loopback only; from another machine, forward the same port over SSH:\n"+
+			"   ssh -N -L %s:%s <this host>   then open http://localhost:%s there)\n",
+			currentPort, bound, currentPort)
 		return
 	}
-	fmt.Printf("Listening: http://%s:%s\n", ws.bindAddr, currentPort)
-	fmt.Printf("Container: Use your mapped port (e.g., -p 8082:%s → http://localhost:8082)\n", currentPort)
+	fmt.Printf("Listening: http://%s\n", bound)
+	fmt.Printf("Container: publish the same port on the host's loopback, -p 127.0.0.1:%s:%s, then open http://localhost:%s\n"+
+		"           (a different host port fails the Origin check; a bare -p publishes on every host interface)\n",
+		currentPort, currentPort, currentPort)
 	if ws.bindAddr == "0.0.0.0" || ws.bindAddr == "::" {
 		fmt.Fprintf(os.Stderr,
 			"\nWARNING: web UI is bound to %s with no authentication.\n"+
