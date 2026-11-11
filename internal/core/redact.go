@@ -198,6 +198,11 @@ func RedactFileCtx(ctx context.Context, cfg RedactConfig) (*RedactResult, error)
 	// because that passthrough copies the original: reaching it with a file that
 	// has unredacted findings is what turned this into a silent cleartext copy.
 	if stats != nil && len(stats.UnredactedFiles) > 0 {
+		// A strategy the format refuses keeps its sentinel (#863), so pkg/scan's
+		// ErrStrategyNotSupported matches with errors.Is. Same text either way: Reason is Err.Error().
+		if d := stats.UnredactedFiles[0]; errors.Is(d.Err, redactors.ErrStrategyNotSupported) {
+			return nil, fmt.Errorf("could not redact %s: %w", d.FilePath, d.Err)
+		}
 		return nil, fmt.Errorf("could not redact %s: %s",
 			stats.UnredactedFiles[0].FilePath, stats.UnredactedFiles[0].Reason)
 	}

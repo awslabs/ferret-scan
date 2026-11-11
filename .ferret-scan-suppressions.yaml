@@ -5905,16 +5905,16 @@ rules:
         finding_type: VIN
         line_number: "721"
     - id: SUP-00000578
-      hash: bf4437597258166c39b8195a767151ae54e12131226ca1b7000905b652d680f9 # pragma: allowlist secret
+      hash: b08c7d4852d5df3b49d4198552c4c1c0e8b716b42dcdfb198afcd1b11a38059a # pragma: allowlist secret
       reason: "fixture: example value in rule copy or API documentation"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T17:25:36.327960567Z
       metadata:
         confidence: "98.00"
         filename: apply.go
         finding_type: INTELLECTUAL_PROPERTY
-        line_number: "102"
+        line_number: "104"
     - id: SUP-00000579
       hash: 36fa76fb9819df9826e415e2f7915e90db3695533cd9dc549f6762fe48a360ed # pragma: allowlist secret
       reason: "detector FP: #934"
