@@ -422,19 +422,8 @@ func writtenText(value, repl string, narrowCount int) string {
 	return string(utf16.Decode(units))
 }
 
-// replaceLogical finds every occurrence of pat in a stream's logical bytes and
-// writes rep back through the sector chain.
-//
-// Every occurrence, OVERLAPPING ones included (#916). The scan used to resume after the bytes it had
-// just written, so an occurrence starting inside the previous one was skipped. Under simple that is
-// harmless, because the full mask destroys the overlap. Under format_preserving the overlap can be
-// characters the rendering KEEPS, and then the skipped occurrence is left exactly as it was. Measured
-// on the public poi--PPT95.ppt: a 9-digit value reported as SSN sits in runs of "1211" repeated,
-// once every four bytes, and its rendering "*****2111" kept the last digit of each rewritten
-// occurrence, which is the first digit of the next-but-one; 18 occurrences survived in a copy
-// reported as redacted while simple left none. So the scan resumes one byte after each occurrence it
-// rewrites. A rendering writes '*' or the character already there, never a new one, so a rewrite
-// cannot create an occurrence; it can only leave one, and this no longer does.
+// replaceLogical finds every occurrence of pat in a stream's logical bytes, overlapping ones
+// included, and writes rep back through the sector chain (#916, overlapping_occurrences_test.go).
 func replaceLogical(raw []byte, s streamExtent, logical, pat, rep []byte) int {
 	if len(pat) == 0 || len(pat) != len(rep) {
 		return 0
@@ -447,15 +436,16 @@ func replaceLogical(raw []byte, s streamExtent, logical, pat, rep []byte) int {
 			break
 		}
 		at := off + i
-		// Past this occurrence's first byte, and no further: the next one may start inside it.
-		off = at + 1
 		if !s.writeLogical(raw, at, rep) {
-			// Unwritable (a truncated or inconsistent chain). Leave the count alone so the caller
-			// does not report a redaction that did not happen.
+			// Unwritable (a truncated or inconsistent chain). Skip past it rather
+			// than spin, and leave the count alone so the caller does not report a
+			// redaction that did not happen.
+			off = at + 1
 			continue
 		}
-		// Keep the logical view in step with the file.
+		// Keep the logical view in step; resume one byte on, as rep may keep an overlap's bytes.
 		copy(logical[at:at+len(rep)], rep)
+		off = at + 1
 		count++
 	}
 	return count

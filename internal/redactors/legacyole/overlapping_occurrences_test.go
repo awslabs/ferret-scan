@@ -24,6 +24,13 @@ import (
 // one was skipped; simple's mask destroyed it anyway, but the format-preserving rendering keeps the
 // value's last four characters, and the one-byte overlap with the next-but-one occurrence was among
 // them. That occurrence was left exactly as it was.
+//
+// replaceLogical now resumes one byte after each occurrence it rewrites, so every occurrence present
+// when its value's pass reaches it is rewritten. That is enough because a rendering writes '*' or the
+// character already at that position, never a new one (replacement.FormatPreserving keeps characters
+// in place and masks the rest; a rendering that does not fit falls back to a mask): a rewrite can
+// destroy an occurrence of any value but cannot create one. The production comment is kept to the
+// lines it replaced so the self-scan ledger's line-anchored rules below it in redactor.go do not move.
 
 const overlapValue = "121112111" // "1211" "1211" "1": in a run of "1211" it starts every 4 bytes
 
