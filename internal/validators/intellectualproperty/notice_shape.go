@@ -123,6 +123,10 @@ func isNonNoticeCopyright(match string) bool {
 		return false
 	}
 	rest = strings.TrimLeft(rest, " \t,-–—") // the separators the default regex skips
+	// "Copyright by <Owner>" names its owner after "by".
+	if len(rest) > 3 && strings.EqualFold(rest[:2], "by") && (rest[2] == ' ' || rest[2] == '\t') {
+		rest = strings.TrimLeft(rest[3:], " \t")
+	}
 	r, _ := utf8.DecodeRuneInString(rest)
 	return unicode.IsLower(r)
 }

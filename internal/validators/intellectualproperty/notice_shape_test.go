@@ -91,6 +91,8 @@ func TestNoticeControlsKeepConfidence(t *testing.T) {
 		{"Proprietary and Confidential (Restricted)", "92.12"},
 		{"Company Confidential - Trade Secret - Internal Use Only", "92.00"},
 		{"Covered by US 9,123,456 and EP 1234567.", "80.00,50.00"},
+		// corpus-ab: the shape of a public-corpus MP3 ID3 copyright frame.
+		{"Copyright by Jane Example", "56.00"},
 	}
 	for _, c := range controls {
 		if got := confidences(t, c.line); got != c.want {
