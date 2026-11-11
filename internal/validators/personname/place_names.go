@@ -57,17 +57,39 @@ var toponymPhrasesMap = map[string]bool{
 
 // isToponymPhrase reports whether a candidate's whole text is one of toponymPhrasesMap, alone or as
 // the head of a hyphenated compound: the park in Queens is written with its second neighbourhood
-// after a hyphen, and that is still the park.
+// after a hyphen, and that is still the park. No phrase contains a hyphen, so a candidate that has one
+// can only match by its head.
+//
+// It runs on every candidate, so the common case allocates nothing: a head outside the phrases'
+// length range is rejected first, and an ASCII head is lowered into a stack buffer for the lookup.
 func isToponymPhrase(text string) bool {
-	lower := strings.ToLower(text)
-	if toponymPhrasesMap[lower] {
-		return true
+	head := text
+	if i := strings.IndexByte(text, '-'); i >= 0 {
+		head = text[:i]
 	}
-	if i := strings.IndexByte(lower, '-'); i > 0 && toponymPhrasesMap[lower[:i]] {
-		return true
+	if len(head) < toponymPhraseMinLen || len(head) > toponymPhraseMaxLen {
+		return false
 	}
-	return false
+	var buf [toponymPhraseMaxLen]byte
+	for i := 0; i < len(head); i++ {
+		c := head[i]
+		if c >= utf8.RuneSelf {
+			return toponymPhrasesMap[strings.ToLower(head)]
+		}
+		if 'A' <= c && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		buf[i] = c
+	}
+	return toponymPhrasesMap[string(buf[:len(head)])]
 }
+
+// toponymPhraseMinLen and toponymPhraseMaxLen bound the byte length of the entries in
+// toponymPhrasesMap; TestToponymPhraseLengthBounds keeps them in step with the map.
+const (
+	toponymPhraseMinLen = 6  // "la paz"
+	toponymPhraseMaxLen = 16 // "flushing meadows", "russian far east"
+)
 
 // maxToponymPrefixLen bounds how far continuesToponym looks back. The longest entry in
 // toponymPrefixMap has six letters ("ciudad", "puerto"); a longer preceding word cannot be one, so the
@@ -116,6 +138,27 @@ func (v *Validator) continuesToponym(line string, start int) bool {
 	if r, _ := utf8.DecodeRuneInString(word); !unicode.IsUpper(r) {
 		return false
 	}
+	// Most words in front of a candidate are not prefixes; reject those without allocating, and leave
+	// the database deference to isToponymPrefixGiven for the few that are.
+	var buf [maxToponymPrefixLen]byte
+	lower := ""
+	for k := 0; k < len(word); k++ {
+		c := word[k]
+		if c >= utf8.RuneSelf {
+			lower = strings.ToLower(word)
+			break
+		}
+		if 'A' <= c && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		buf[k] = c
+	}
+	if lower == "" && !toponymPrefixMap[string(buf[:len(word)])] {
+		return false
+	}
+	if lower != "" && !toponymPrefixMap[lower] {
+		return false
+	}
 	return v.isToponymPrefixGiven(word)
 }
 
@@ -140,18 +183,16 @@ func (v *Validator) isUnsupportedCapsFragment(c PatternMatch) bool {
 	if c.Pattern.Name != "all_caps_name" {
 		return false
 	}
-	tokens := strings.Fields(c.Text)
-	for _, tk := range tokens {
-		if utf8.RuneCountInString(tk) > capsFragmentSyllableMax {
-			return false
-		}
+	// all_caps_name is exactly two tokens with a run of spaces between them.
+	sp := strings.IndexByte(c.Text, ' ')
+	if sp <= 0 {
+		return false
 	}
-	for _, tk := range tokens {
-		if !v.isKnownNameToken(tk) {
-			return true
-		}
+	first, second := c.Text[:sp], strings.TrimLeft(c.Text[sp:], " ")
+	if utf8.RuneCountInString(first) > capsFragmentSyllableMax || utf8.RuneCountInString(second) > capsFragmentSyllableMax {
+		return false
 	}
-	return false
+	return !v.isKnownNameToken(first) || !v.isKnownNameToken(second)
 }
 
 // isKnownNameToken reports whether token, in any case, is in either name list.
