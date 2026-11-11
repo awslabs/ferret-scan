@@ -207,6 +207,7 @@ func TestRepairFlateHeaders(t *testing.T) {
 		{"previous object's filter is not this stream's", []byte("1 0 obj\n<< /Filter /FlateDecode >>\nendobj\n2 0 obj\n<< /Length 4 >>\nstream\nXXab\nendstream\nendobj\n"), 0, true},
 		{"keyword without EOL untouched", []byte("1 0 obj\n<< /Filter /FlateDecode >>streamXXab\nendstream\nendobj\n"), 0, true},
 		{"a stream-like byte run inside a body untouched", []byte("1 0 obj\n<< /Length 20 /Filter /FlateDecode >>\nstream\nx\x9c>>\nstream\nXXab\nendstream\nendobj\n"), 0, true},
+		{"a dictionary longer than a page is still read", []byte("1 0 obj\n<< /Filter /FlateDecode " + strings.Repeat("/K 1 ", 2000) + ">>\nstream\nXXab\nendstream\nendobj\n"), 1, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data := append([]byte(nil), tc.in...)
