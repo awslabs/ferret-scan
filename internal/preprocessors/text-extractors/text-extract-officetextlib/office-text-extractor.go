@@ -101,45 +101,74 @@ func ExtractText(filePath string) (*TextContent, error) {
 
 	// Determine file type based on extension
 	ext := strings.ToLower(filepath.Ext(filePath))
+	format, read, ok := formatReader(ext)
+	if !ok {
+		return nil, fmt.Errorf("unsupported file format: %s", ext)
+	}
+	content.Format = format
+
+	// Open the package (it's a zip archive)
+	reader, err := zip.OpenReader(filePath)
+	if err != nil {
+		err = fmt.Errorf("error opening file: %v", err)
+	} else {
+		defer reader.Close()
+		content, err = read(reader.File, content)
+	}
+
+	noteEmptyExtraction(content, ext)
+	return content, err
+}
+
+// ExtractTextFromFiles reads a package whose members are already open -- an archive held in memory
+// -- exactly as ExtractText reads one from disk. name only selects the format by its extension and
+// supplies the reported Filename; nothing is read from the filesystem.
+//
+// It exists for the Office redactor (#914), which must ask what the SCANNER would read out of the
+// copy it is about to write. Its own views of a part join text nodes differently from the readers
+// below (a slide's runs with a space, a sheet's cells with a tab), and a value the scanner reported
+// across such a join was invisible to all of them, so the copy was written with the value in it.
+// Calling the readers themselves, rather than a model of them, is what keeps the two from drifting.
+func ExtractTextFromFiles(files []*zip.File, name string) (*TextContent, error) {
+	ext := strings.ToLower(filepath.Ext(name))
+	format, read, ok := formatReader(ext)
+	if !ok {
+		return nil, fmt.Errorf("unsupported file format: %s", ext)
+	}
+	content, err := read(files, &TextContent{Filename: filepath.Base(name), Format: format})
+	noteEmptyExtraction(content, ext)
+	return content, err
+}
+
+// formatReader returns the report label and the reader for a lower-cased extension.
+func formatReader(ext string) (string, func([]*zip.File, *TextContent) (*TextContent, error), bool) {
 	switch ext {
 	// The macro-enabled forms share each part layout with their plain counterpart -- the
 	// difference is the content type and a vbaProject.bin -- so they dispatch to the same
 	// reader rather than to a copy of it (#497).
 	case ".docx", ".docm":
-		content.Format = "Word Document"
-		content, err = extractDocxText(filePath, content)
+		return "Word Document", extractDocxText, true
 	case ".xlsx", ".xlsm":
-		content.Format = "Excel Spreadsheet"
-		content, err = extractXlsxText(filePath, content)
+		return "Excel Spreadsheet", extractXlsxText, true
 	case ".pptx", ".pptm":
-		content.Format = "PowerPoint Presentation"
-		content, err = extractPptxText(filePath, content)
+		return "PowerPoint Presentation", extractPptxText, true
 	// A template is the same package as its document form, so it reads identically. Its
 	// Format is named separately because that string reaches the report (#528).
 	case ".odt":
-		content.Format = "OpenDocument Text"
-		content, err = extractOdtText(filePath, content)
+		return "OpenDocument Text", extractOdtText, true
 	case ".ods":
-		content.Format = "OpenDocument Spreadsheet"
-		content, err = extractOdsText(filePath, content)
+		return "OpenDocument Spreadsheet", extractOdsText, true
 	case ".odp":
-		content.Format = "OpenDocument Presentation"
-		content, err = extractOdpText(filePath, content)
+		return "OpenDocument Presentation", extractOdpText, true
 	case ".ott":
-		content.Format = "OpenDocument Text Template"
-		content, err = extractOdtText(filePath, content)
+		return "OpenDocument Text Template", extractOdtText, true
 	case ".ots":
-		content.Format = "OpenDocument Spreadsheet Template"
-		content, err = extractOdsText(filePath, content)
+		return "OpenDocument Spreadsheet Template", extractOdsText, true
 	case ".otp":
-		content.Format = "OpenDocument Presentation Template"
-		content, err = extractOdpText(filePath, content)
+		return "OpenDocument Presentation Template", extractOdpText, true
 	default:
-		return nil, fmt.Errorf("unsupported file format: %s", ext)
+		return "", nil, false
 	}
-
-	noteEmptyExtraction(content, ext)
-	return content, err
 }
 
 // noteEmptyExtraction records an ExtractionWarning when a container whose format
@@ -177,19 +206,12 @@ func noteEmptyExtraction(content *TextContent, ext string) {
 }
 
 // extractDocxText extracts text from a Word document
-func extractDocxText(filePath string, content *TextContent) (*TextContent, error) {
-	// Open the docx file (it's a zip archive)
-	reader, err := zip.OpenReader(filePath)
-	if err != nil {
-		return content, fmt.Errorf("error opening file: %v", err)
-	}
-	defer reader.Close()
-
+func extractDocxText(files []*zip.File, content *TextContent) (*TextContent, error) {
 	// Find document content files. Part names are producer-controlled, so the main
 	// document is located through the package relationships and by conventional
 	// name case-insensitively, then unioned — see ooxml_parts.go for why one
 	// capital letter used to drop the entire body.
-	pkg := newOOXMLPackage(reader.File)
+	pkg := newOOXMLPackage(files)
 	documentFiles := unionParts(
 		pkg.relatedParts("", "officeDocument"),
 		[]*zip.File{pkg.lookup("word/document.xml"), pkg.lookup("word/main.xml")},
@@ -386,19 +408,12 @@ func extractDocxText(filePath string, content *TextContent) (*TextContent, error
 }
 
 // extractXlsxText extracts text from an Excel spreadsheet
-func extractXlsxText(filePath string, content *TextContent) (*TextContent, error) {
-	// Open the xlsx file (it's a zip archive)
-	reader, err := zip.OpenReader(filePath)
-	if err != nil {
-		return content, fmt.Errorf("error opening file: %v", err)
-	}
-	defer reader.Close()
-
+func extractXlsxText(files []*zip.File, content *TextContent) (*TextContent, error) {
 	// Find shared strings and worksheets. Resolved through the workbook's
 	// relationships and by conventional name case-insensitively, then unioned —
 	// see ooxml_parts.go. A capitalized "xl/Worksheets/" or "xl/SharedStrings.xml"
 	// used to make the whole sheet, or every shared string in it, invisible.
-	pkg := newOOXMLPackage(reader.File)
+	pkg := newOOXMLPackage(files)
 	workbookParts := unionParts(
 		pkg.relatedParts("", "officeDocument"),
 		[]*zip.File{pkg.lookup("xl/workbook.xml")},
@@ -517,19 +532,12 @@ func extractXlsxText(filePath string, content *TextContent) (*TextContent, error
 }
 
 // extractPptxText extracts text from a PowerPoint presentation
-func extractPptxText(filePath string, content *TextContent) (*TextContent, error) {
-	// Open the pptx file (it's a zip archive)
-	reader, err := zip.OpenReader(filePath)
-	if err != nil {
-		return content, fmt.Errorf("error opening file: %v", err)
-	}
-	defer reader.Close()
-
+func extractPptxText(files []*zip.File, content *TextContent) (*TextContent, error) {
 	// Find all presentation content files. Slides come from the presentation's
 	// relationships unioned with the conventional name matched case-insensitively
 	// (see ooxml_parts.go); pkg also resolves each slide's notes through its own
 	// relationships part, rather than guessing by position.
-	pkg := newOOXMLPackage(reader.File)
+	pkg := newOOXMLPackage(files)
 	presentationParts := unionParts(
 		pkg.relatedParts("", "officeDocument"),
 		[]*zip.File{pkg.lookup("ppt/presentation.xml")},
@@ -637,18 +645,11 @@ func extractPptxText(filePath string, content *TextContent) (*TextContent, error
 }
 
 // extractOdtText extracts text from an OpenDocument Text file
-func extractOdtText(filePath string, content *TextContent) (*TextContent, error) {
-	// Open the odt file (it's a zip archive)
-	reader, err := zip.OpenReader(filePath)
-	if err != nil {
-		return content, fmt.Errorf("error opening file: %v", err)
-	}
-	defer reader.Close()
-
+func extractOdtText(files []*zip.File, content *TextContent) (*TextContent, error) {
 	// Find content and style files. ODF has no relationship parts, but the entry
 	// names are still producer-controlled, so match them case-insensitively for the
 	// same reason the OOXML paths do (ooxml_parts.go).
-	pkg := newOOXMLPackage(reader.File)
+	pkg := newOOXMLPackage(files)
 	contentFile := pkg.lookup("content.xml")
 	stylesFile := pkg.lookup("styles.xml")
 	metaFile := pkg.lookup("meta.xml")
@@ -694,17 +695,10 @@ func extractOdtText(filePath string, content *TextContent) (*TextContent, error)
 }
 
 // extractOdsText extracts text from an OpenDocument Spreadsheet
-func extractOdsText(filePath string, content *TextContent) (*TextContent, error) {
-	// Open the ods file (it's a zip archive)
-	reader, err := zip.OpenReader(filePath)
-	if err != nil {
-		return content, fmt.Errorf("error opening file: %v", err)
-	}
-	defer reader.Close()
-
+func extractOdsText(files []*zip.File, content *TextContent) (*TextContent, error) {
 	// Find the content.xml file which contains the spreadsheet data, matched
 	// case-insensitively like the other container paths (ooxml_parts.go).
-	pkg := newOOXMLPackage(reader.File)
+	pkg := newOOXMLPackage(files)
 	contentFile := pkg.lookup("content.xml")
 	metaFile := pkg.lookup("meta.xml")
 
@@ -735,17 +729,10 @@ func extractOdsText(filePath string, content *TextContent) (*TextContent, error)
 }
 
 // extractOdpText extracts text from an OpenDocument Presentation
-func extractOdpText(filePath string, content *TextContent) (*TextContent, error) {
-	// Open the odp file (it's a zip archive)
-	reader, err := zip.OpenReader(filePath)
-	if err != nil {
-		return content, fmt.Errorf("error opening file: %v", err)
-	}
-	defer reader.Close()
-
+func extractOdpText(files []*zip.File, content *TextContent) (*TextContent, error) {
 	// Find content and style files, matched case-insensitively like the other
 	// container paths (ooxml_parts.go).
-	pkg := newOOXMLPackage(reader.File)
+	pkg := newOOXMLPackage(files)
 	contentFile := pkg.lookup("content.xml")
 	stylesFile := pkg.lookup("styles.xml")
 	metaFile := pkg.lookup("meta.xml")
@@ -837,7 +824,7 @@ func extractTextFromXML(file *zip.File, pattern string) (string, error) {
 			text := decodeXMLEntities(string(match[1]))
 
 			// Remove any XML tags that might be inside the text
-			text = regexp.MustCompile(`<[^>]*>`).ReplaceAllString(text, "")
+			text = runTagRe.ReplaceAllString(text, "")
 
 			result.WriteString(text)
 			result.WriteString(" ")
@@ -955,6 +942,11 @@ var (
 	// Named entities and numeric character references, matched in one alternation
 	// so decodeXMLEntities can resolve each in a single non-overlapping pass.
 	entityRe = regexp.MustCompile(`&(?:lt|gt|quot|apos|amp|#x[0-9a-fA-F]+|#[0-9]+);`)
+
+	// runTagRe strips any markup left inside one extracted run. It was compiled inside the loop, once per
+	// run: 0.26s of a 1.80s redaction of a 4 MiB slide (two profiled runs), now that the Office redactor
+	// reads every copy back through this reader before writing it (#914).
+	runTagRe = regexp.MustCompile(`<[^>]*>`)
 )
 
 // decodeXMLEntities expands the XML entities that appear in OOXML text runs.

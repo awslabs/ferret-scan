@@ -242,7 +242,7 @@ func (or *OfficeRedactor) RedactDocument(originalPath string, outputPath string,
 	matches = redactors.RestoreBoundedMatchText(matches)
 
 	// Perform redaction
-	redactionMap, modifiedContents, err := or.redactOfficeContent(zipContents, extractedText, textPositions, matches, strategy, docType)
+	redactionMap, modifiedContents, spanResidue, err := or.redactOfficeContent(zipContents, extractedText, textPositions, matches, strategy, docType, filepath.Base(originalPath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to redact office content: %w", err)
 	}
@@ -299,6 +299,22 @@ func (or *OfficeRedactor) RedactDocument(originalPath string, outputPath string,
 		return nil, fmt.Errorf(
 			"refusing to write %s: %d reported value(s) still present in the document's own parts (types: %s)",
 			filepath.Base(outputPath), len(residue), strings.Join(residueTypes(residue), ", "))
+	}
+
+	// Refuse to write a document the SCANNER would still read a reported value out of (#914).
+	//
+	// The check above reads each part through views of its own, and the scanner joins text nodes in
+	// ways none of them do: a slide's runs and an OpenDocument paragraph or cell with a space, a sheet's
+	// cells with a tab. A value reported across such a join that no rewrite could place was invisible to
+	// it, so the copy was written with the value in it and nothing said. redactOfficeContent reads the
+	// copy back through the scanner's own reader, after rewriting what it could across those joins; what
+	// is left is refused here, last, so every refusal above keeps its own message. Types only, as above.
+	if len(spanResidue) > 0 {
+		return nil, fmt.Errorf(
+			"refusing to write %s: could not locate %d reported value(s) in any single text node: each spans "+
+				"a boundary between runs, paragraphs or cells that the scanner reads across, and the copy would "+
+				"still carry it (types: %s)",
+			filepath.Base(outputPath), len(spanResidue), strings.Join(residueTypes(spanResidue), ", "))
 	}
 
 	// Repackage ZIP with modified contents
@@ -912,10 +928,12 @@ func (or *OfficeRedactor) extractAttributes(element xml.StartElement) map[string
 	return attributes
 }
 
-// redactOfficeContent performs redaction on Office document content
-func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, extractedText string, textPositions []OfficeTextPosition, matches []detector.Match, strategy redactors.RedactionStrategy, docType OfficeDocumentType) ([]redactors.RedactionMapping, *OfficeZipContents, error) {
-	var redactionMap []redactors.RedactionMapping
-	modifiedContents := &OfficeZipContents{
+// redactOfficeContent performs redaction on Office document content.
+//
+// name is the document's file name, which selects the scanner reader the copy is read back through
+// (closeBoundarySpans); spanResidue is what that reader would still find after every rewrite here.
+func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, extractedText string, textPositions []OfficeTextPosition, matches []detector.Match, strategy redactors.RedactionStrategy, docType OfficeDocumentType, name string) (redactionMap []redactors.RedactionMapping, modifiedContents *OfficeZipContents, spanResidue []detector.Match, err error) {
+	modifiedContents = &OfficeZipContents{
 		Files: make(map[string][]byte, len(zipContents.Files)),
 		Order: make([]string, 0, len(zipContents.Files)),
 	}
@@ -940,7 +958,7 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 	groups := redactors.ResolveOverlaps(matches)
 	units, err := officeWriteUnits(groups, matches, strategy, or.scope)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	unitMatches := make([]detector.Match, len(units))
 	for i := range units {
@@ -976,6 +994,10 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 	// Computed once: see distinctPartCount for why building it per match was quadratic.
 	partCount := distinctPartCount(textPositions)
 
+	// The units no route below could place, kept so closeBoundarySpans can give the ones it does place
+	// an audit entry.
+	var unlocated []officeWriteUnit
+
 	// Process each write unit: a single match, or an overlap group's union.
 	for _, unit := range units {
 		match := unit.match
@@ -989,9 +1011,10 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 			if unit.group.IsGroup() {
 				// A group that cannot be written refuses the document rather than leaving its members'
 				// bytes behind. Types only, never the values: this reaches stderr and every format.
-				return nil, nil, fmt.Errorf("an overlapping group of %d findings (types %s) could not be located in the document's parts: %w",
+				return nil, nil, nil, fmt.Errorf("an overlapping group of %d findings (types %s) could not be located in the document's parts: %w",
 					len(unit.group.Members), strings.Join(unit.group.MemberTypes(matches), ", "), err)
 			}
+			unlocated = append(unlocated, unit)
 			continue
 		}
 
@@ -1016,14 +1039,22 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 	// be rewritten across two runs before its group's union is offered at all -- stranding the rest of
 	// the union exactly as before. The residue guard in RedactDocument still checks every member.
 	if err := or.recordCoverageForRemainingParts(modifiedContents, unitMatches, strategy, pending); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if err := or.applyPendingRedactions(modifiedContents, pending, docType); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	return redactionMap, modifiedContents, nil
+	// Last, the values the scanner reads across a node boundary, which none of the routes above can see
+	// (#914): rewritten where the boundary views place them, returned where they do not.
+	spanResidue, spanMappings, err := or.closeBoundarySpans(modifiedContents, name, docType, strategy, units, unlocated, matches, pending)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	redactionMap = append(redactionMap, spanMappings...)
+
+	return redactionMap, modifiedContents, spanResidue, nil
 }
 
 // officeWriteUnit is one value the Office redactor records: a single match, or an overlap group's

@@ -1329,38 +1329,38 @@ rules:
         finding_type: SSN
         line_number: "172"
     - id: SUP-00000162
-      hash: 9f30fad23ea6034d1f1adc6bd306b93f36897fe7025fd4e57973593050d9b806 # pragma: allowlist secret
+      hash: f44331f89a8b87241ceca91d36546b22571bf79ad73d99e5e6727d9c7de246b5 # pragma: allowlist secret
       reason: "detector FP: #935"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T14:02:39.325106773Z
       metadata:
         confidence: "100.00"
         filename: office-text-extractor.go
         finding_type: PERSON_NAME
-        line_number: "1368"
+        line_number: "1360"
     - id: SUP-00000163
-      hash: 558972dae94c8f5b9f4f55d40be52da1865feede59ced4d794860397a9bd814c # pragma: allowlist secret
+      hash: 7c5f4750ebca53330d1fdbfd12642e6f940a8bc0ce153c9dfc26160b5aec26bf # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T14:02:39.325106773Z
       metadata:
         confidence: "100.00"
         filename: office-text-extractor.go
         finding_type: PHONE
-        line_number: "1364"
+        line_number: "1356"
     - id: SUP-00000164
-      hash: 3cfd46d8473973b610e086c4e8ae92212a79f522a7593bf9f90a3dc349a0b1a3 # pragma: allowlist secret
+      hash: ccd85c7a328ba733fc03643ca17236f9d97b2563dd29e09b4ea185fa8d1822b6 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T14:02:39.325106773Z
       metadata:
         confidence: "100.00"
         filename: office-text-extractor.go
         finding_type: PHONE
-        line_number: "1364"
+        line_number: "1356"
     - id: SUP-00000165
       hash: 2b6e52c157d2d492fd111786b7f906c4af46d11cddc59f32d251c590de6b3450 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
@@ -1615,16 +1615,16 @@ rules:
         finding_type: SSN
         line_number: "2094"
     - id: SUP-00000188
-      hash: b611fac6c6f60c6326fc51d29940232b66e18ab1bde228c72deb0348c62b997f # pragma: allowlist secret
+      hash: 846be248b33a876b92eaea72c07d1452680e786c39c63cdc15e8b19c508fc8cd # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T14:02:39.325106773Z
       metadata:
         confidence: "100.00"
         filename: spanredact.go
         finding_type: SSN
-        line_number: "317"
+        line_number: "329"
     - id: SUP-00000189
       hash: f1f549bcd0147de39d8012936740eb7ad281ab33610e5188af56ef1cd3c99ce9 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
@@ -1725,38 +1725,38 @@ rules:
         finding_type: PERSON_NAME
         line_number: "239"
     - id: SUP-00000198
-      hash: 834860cc2d6937d6a31cb98644277f1019042d9327a0c0c019a796af9b550327 # pragma: allowlist secret
+      hash: 81c9d275f8d24fc6e00f68e9e19367edf4e92fff01fe9a599ce14b71ffadeb90 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T14:02:39.325106773Z
       metadata:
         confidence: "97.50"
         filename: redactor.go
         finding_type: PASSPORT
-        line_number: "1042"
+        line_number: "1073"
     - id: SUP-00000199
-      hash: 743013fb58a5caf7c3b8f627d201858b77e405da025f339d2d427e3ba7beed77 # pragma: allowlist secret
+      hash: 8311b44cce0cad7d7425cb68c04c64432743c7c30977e81b07186f31d982b1ff # pragma: allowlist secret
       reason: "detector FP: #935"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T14:02:39.325106773Z
       metadata:
         confidence: "100.00"
         filename: redactor.go
         finding_type: PERSON_NAME
-        line_number: "937"
+        line_number: "955"
     - id: SUP-00000200
-      hash: 03ee3370639007b0b8017b62a492ac5a757f1ad1b2eac13873b96de186dfd722 # pragma: allowlist secret
+      hash: b21bcc7f42f5f0bb10ef1980820678d477f57547a8e2ad0bdc551a6ecd8451b7 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T14:02:39.325106773Z
       metadata:
         confidence: "100.00"
         filename: redactor.go
         finding_type: SSN
-        line_number: "1817"
+        line_number: "1848"
     - id: SUP-00000201
       hash: cf54c5f03e10d8aa914538e4ef603571d7d5955c9e960ddc48b4e5ec2ebcf192 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"

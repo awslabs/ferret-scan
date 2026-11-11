@@ -129,8 +129,9 @@ type subEdit struct {
 //
 // # Order
 //
-// Edits are applied right-to-left by source offset, so an earlier edit's length change cannot invalidate
-// a later edit's offsets. Within one token the sub-edits are applied right-to-left for the same reason.
+// Edits are placed against the original source offsets in one ascending pass (applyEdits), so an earlier
+// edit's length change cannot invalidate a later edit's offsets. Within one token the sub-edits are
+// applied right-to-left, so an earlier one's length change cannot move a later one.
 //
 // Returns the rewritten part and the number of split occurrences removed.
 func redactAcrossRuns(content []byte, values []string, repl map[string]string, accept func(path []string) bool) ([]byte, int) {
@@ -280,21 +281,32 @@ func rewriteSpan(runText string, s charSpan, list []subEdit) spanEdit {
 	return spanEdit{srcStart: s.srcStart, srcEnd: s.srcEnd, with: buf.Bytes()}
 }
 
-// applyEdits splices every edit into content, right to left.
+// applyEdits splices every edit into content in one pass.
+//
+// Edits are applied in ascending source order, each copying the bytes since the previous one and then its
+// replacement, so the cost is one pass over content plus the replacement bytes. The previous version went
+// right to left and re-copied the whole tail of the part for every edit, which is O(edits x part): measured
+// at 1.28s of a 1.85s redaction of one 1 MiB slide holding 7,493 values each split across two paragraphs
+// (#914), where the boundary rewrite makes thousands of edits to a single part. Edits never overlap (each is
+// one token's bytes); one that would, or that falls outside content, is skipped, as before.
 func applyEdits(content []byte, edits []spanEdit) []byte {
-	sort.Slice(edits, func(i, j int) bool { return edits[i].srcStart > edits[j].srcStart })
+	sort.Slice(edits, func(i, j int) bool { return edits[i].srcStart < edits[j].srcStart })
 
-	out := make([]byte, 0, len(content)+len(content)/8)
-	out = append(out, content...)
+	grow := 0
 	for _, e := range edits {
-		if e.srcStart < 0 || e.srcEnd > len(out) || e.srcStart > e.srcEnd {
+		grow += len(e.with)
+	}
+	out := make([]byte, 0, len(content)+grow)
+	prev := 0
+	for _, e := range edits {
+		if e.srcStart < prev || e.srcEnd > len(content) || e.srcStart > e.srcEnd {
 			continue // defensive, for the same reason as rewriteSpan
 		}
-		tail := append([]byte(nil), out[e.srcEnd:]...)
-		out = append(out[:e.srcStart], e.with...)
-		out = append(out, tail...)
+		out = append(out, content[prev:e.srcStart]...)
+		out = append(out, e.with...)
+		prev = e.srcEnd
 	}
-	return out
+	return append(out, content[prev:]...)
 }
 
 // runJoinedIndex caches each XML part's run-joined text for one document.
