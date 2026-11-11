@@ -204,8 +204,8 @@ func NewWebServerWithOptions(port, bindAddr, configPath, suppressionsPath string
 
 // Start starts the web server. Binds to ws.bindAddr (default 127.0.0.1) and
 // iterates ports 8080-8089 looking for the first free one starting at
-// ws.port. The port-availability test uses the same bind address as the
-// final server so a busy 192.168.1.5:8080 isn't masked by an idle
+// ws.port. Each attempt is the real listener on the bind address, the one the
+// server then serves, so a busy 192.168.1.5:8080 isn't masked by an idle
 // 127.0.0.1:8080 (or vice versa).
 func (ws *WebServer) Start() error {
 	// Validate the operator-supplied config once at startup and cache the
@@ -255,10 +255,13 @@ func (ws *WebServer) Start() error {
 			currentPort = fmt.Sprintf("%d", 8080+i)
 		}
 
-		// Test if port is available first, on the same bind address we'll
-		// use for the real server.
-		probeAddr := ws.bindAddr + ":" + currentPort
-		listener, err := net.Listen("tcp", probeAddr)
+		// Listen once, on the address the server serves, and serve that listener. This used to
+		// listen, close, and let ListenAndServe bind the port again, so the probe could pass and the
+		// real bind then fail if the port was taken in between; only the real listener's own error
+		// cannot race (#926). The address is joined with net.JoinHostPort: concatenated, an IPv6
+		// bind such as --bind ::1 read "::1:8080", which net.Listen refuses ("too many colons"), so
+		// it never started.
+		listener, err := net.Listen("tcp", net.JoinHostPort(ws.bindAddr, currentPort))
 		if err != nil {
 			lastError = err
 			if i == 0 {
@@ -266,15 +269,14 @@ func (ws *WebServer) Start() error {
 			}
 			continue // Port is busy, try next one
 		}
-		listener.Close()
 
 		// Create secure server with timeout configurations.
 		ws.server = ws.createSecureServer(currentPort)
 
 		ws.printStartupBanner(currentPort)
 
-		// Start the server with enhanced error handling
-		if err := ws.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		// Serve closes the listener when it returns.
+		if err := ws.server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			lastError = err
 			fmt.Printf("Server on port %s failed: %v\n", currentPort, err)
 			continue // Try next port
