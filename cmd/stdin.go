@@ -256,17 +256,37 @@ func runStdinScan(in stdinScanInputs) int {
 	}
 
 	// --generate-suppressions writes against raw matches before suppression.
+	//
+	// What it did goes to stderr, except where stderr IS the findings document (--enable-redaction without
+	// --output). There those lines went ahead of the document and made it unparseable: measured on main
+	// @ 2fb4719, `--stdin --enable-redaction --format json --generate-suppressions` wrote a stderr that
+	// begins "Updated suppression rules: …" before the JSON, and with no finding a bare "No findings to
+	// generate suppression rules for" where the gateway otherwise writes nothing. That was the one way
+	// this path's generating run reported differently from --file's (#887). The rule file is written
+	// either way. A failure to write it is still printed: the operator asked for that file, and a loud
+	// mismatch is the better failure, as for --redaction-output-dir below.
+	//
+	// It stays BEFORE the suppression loop, unlike --file's, and that is measured rather than assumed: the
+	// manager defers the rules generation re-anchors to the next load (see GenerateSuppressionRules), so
+	// the generating run's findings, stats.suppressed, exit code and rule file are --file's (#885's
+	// fixture after a line inserted at the top: 5 results, 0 suppressed, 5 rules re-anchored, on both
+	// paths). Generating first also leaves the manager's record of which rules matched holding the hashes
+	// generation migrated to the current formula, which matching after it would not.
 	if finalCfg.generateSuppressions {
+		generationNotes := io.Writer(os.Stderr)
+		if stdinStderrCarriesFindings(finalCfg, in.outputFile) {
+			generationNotes = io.Discard
+		}
 		if len(allMatches) > 0 {
 			reason := "Auto-generated suppression rule (disabled by default)"
 			if err := suppressionManager.GenerateSuppressionRules(allMatches, reason, false); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to generate suppression rules: %v\n", err)
 			} else {
-				suppressions.WriteGenerationReport(os.Stderr, suppressionManager.LastGeneration())
-				fmt.Fprintln(os.Stderr, "Edit the suppression file to enable specific rules by setting 'enabled: true'")
+				suppressions.WriteGenerationReport(generationNotes, suppressionManager.LastGeneration())
+				fmt.Fprintln(generationNotes, "Edit the suppression file to enable specific rules by setting 'enabled: true'")
 			}
 		} else {
-			fmt.Fprintln(os.Stderr, "No findings to generate suppression rules for")
+			fmt.Fprintln(generationNotes, "No findings to generate suppression rules for")
 		}
 	}
 
