@@ -8,6 +8,8 @@ import (
 	"math"
 	"regexp"
 	"strings"
+
+	"github.com/awslabs/ferret-scan/v2/internal/context"
 )
 
 // HTTP authentication credential carriers (#902 Part A).
@@ -276,4 +278,39 @@ func shannonEntropyBytes(s string) float64 {
 		}
 	}
 	return e
+}
+
+// appendHTTPAuthResults scores this line's HTTP-auth candidates and appends those whose span is not
+// already covered by a finding another path reported, exactly as appendURIUserinfoResults does and
+// for the same reason (#902 resolution 2): these sources are ADDITIVE. A candidate whose span equals
+// or lies inside a reported span adds nothing and is dropped, so a quoted `auth_token = "Bearer
+// <jwt>"` keeps the keyword path's one whole finding, and a `Bearer ghp_...` run keeps the provider
+// literal's GITHUB_TOKEN. A candidate that ENCLOSES a reported finding is kept, since the rest of the
+// credential would otherwise be left in the clear. Scored in a call of its own, so it can never
+// raise another path's confidence (it is not part of mergeBySpanKeepStrongest).
+func (v *Validator) appendHTTPAuthResults(lineResults []spannedMatch, auths []httpAuthCandidate, line string, lineNum int, originalPath, content string, contextInsights context.ContextInsights, lineHasShellVars bool, envType string, isShellScript bool, govKeyLine string) []spannedMatch {
+	cands := make([]scopedCandidate, 0, len(auths))
+	for _, a := range auths {
+		cands = append(cands, scopedCandidate{candidate: a.candidate, method: a.method, threshold: httpAuthThreshold, structural: true})
+	}
+	cands = dedupeScopedBySpan(cands)
+	scored := v.processScopedCandidates(cands, line, lineNum, originalPath, content, contextInsights, lineHasShellVars, envType, isShellScript, govKeyLine)
+	for _, r := range scored {
+		if !spanInsideAnyReported(r, lineResults) {
+			lineResults = append(lineResults, r)
+		}
+	}
+	return lineResults
+}
+
+// spanInsideAnyReported reports whether c's byte span lies within (or equals) some reported span. A
+// line carries only a handful of findings, so the linear scan is cheaper than the sorted sweep the
+// URI path uses for its potentially many candidates.
+func spanInsideAnyReported(c spannedMatch, reported []spannedMatch) bool {
+	for _, r := range reported {
+		if r.start <= c.start && r.end >= c.end {
+			return true
+		}
+	}
+	return false
 }

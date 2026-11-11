@@ -869,18 +869,6 @@ func (v *Validator) validateContentCtx(ctx stdctx.Context, content string, origi
 			cands = append(cands, scopedCandidate{candidate: c, method: "keyword_pattern", threshold: 60})
 		}
 
-		// #902 Part A: HTTP authentication credential carriers (Basic/Proxy/Bearer headers, the
-		// npmrc _auth line, the .netrc password field, curl -u). Structural like the URI user-info
-		// source (#766): position in a known grammar is the corroboration, so each carries the
-		// exemption from the M24 55-cap and the entropy path's threshold of 50, and a test/dev marker
-		// demotes rather than drops. Never gateable (#753): a header or record is a literal, not an
-		// expression. Appended to cands before dedupeScopedBySpan, so a span a provider literal or a
-		// quoted pattern already claims (a `Bearer ghp_...` run is both this and a GITHUB_TOKEN) keeps
-		// that path's method and type and only a genuinely new span is added. See http_auth.go.
-		for _, c := range v.findHTTPAuthCredentials(line, originalPath) {
-			cands = append(cands, scopedCandidate{candidate: c.candidate, method: c.method, threshold: httpAuthThreshold, structural: true})
-		}
-
 		// #746 shape (c), continued. Order matters: the state is advanced AFTER this line is
 		// examined, so the key line itself is never treated as an item of its own sequence.
 		govKeyLine := ""
@@ -911,6 +899,18 @@ func (v *Validator) validateContentCtx(ctx stdctx.Context, content string, origi
 		// specific, higher-confidence AWS_SECRET_ACCESS_KEY row replaces the
 		// generic API_KEY_OR_SECRET row for that span instead of joining it.
 		lineResults = mergeBySpanKeepStrongest(lineResults, awsResults)
+
+		// #902 Part A: HTTP authentication credential carriers (Basic/Proxy/Bearer headers, the
+		// npmrc _auth line, the .netrc password field, curl -u). Appended like the URI user-info
+		// source and for the same reasons: structural (its grammar position is the corroboration, so
+		// the M24 cap and the hex cap do not apply and the threshold is 50), never gated (#753), and
+		// additive -- a candidate whose span lies inside a finding another path already reported is
+		// dropped, so a quoted `auth_token = "Bearer <jwt>"` keeps the keyword path's single whole
+		// finding and a `Bearer ghp_...` run keeps the provider literal's GITHUB_TOKEN. See
+		// http_auth.go.
+		if auths := v.findHTTPAuthCredentials(line, originalPath); len(auths) > 0 {
+			lineResults = v.appendHTTPAuthResults(lineResults, auths, line, lineNum, originalPath, content, contextInsights, lineHasShellVars, envType, isShellScript, govKeyLine)
+		}
 
 		// #766: a password or token in URI user info. A separate, ADDITIVE source: it runs outside
 		// containsSecretIndicators (so none of that function's arms changes, and a line it skips,
