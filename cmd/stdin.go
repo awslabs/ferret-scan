@@ -292,6 +292,13 @@ func runStdinScan(in stdinScanInputs) int {
 		}
 	}
 
+	// The enabled rules for this input that matched none of its findings (#885), for the note below and
+	// the stats block. Asked once, after matching: this path generates BEFORE it matches, so the manager's
+	// ledger already holds whatever generation rewrote (see unmatchedRulesAccount). A cut-short scan
+	// names none, since its findings were not all looked for.
+	unmatched := newUnmatchedRulesAccount(suppressionManager, stdinRunScope(in.stdinName, result.Incomplete,
+		checksRun, checksNotApplicable, result.DisabledDetectionTypes)).report()
+
 	// The config-provenance note is a DISCLOSURE about what governed the scan, not progress output, so
 	// it is gated on neither --quiet nor pre-commit mode — the same rule #603 applied to the file path.
 	//
@@ -329,6 +336,9 @@ func runStdinScan(in stdinScanInputs) int {
 		// IsSuppressed loop above, once per lapsed (rule, finding) pair.
 		expiredSkips, oldestExpiry := suppressionManager.ExpiredSkips()
 		writeExpiredRulesWarning(os.Stderr, expiredSkips, oldestExpiry)
+		// And for a rule that matched nothing, the file path's note (#885). With stderr carrying the
+		// findings document the count rides in its stats block instead.
+		suppressions.WriteUnmatchedRulesNote(os.Stderr, unmatched)
 	}
 
 	if !shouldSuppressStdinProse(finalCfg, precommitConfig, in.outputFile) {
@@ -361,6 +371,7 @@ func runStdinScan(in stdinScanInputs) int {
 		notExamined:            stdinNotExamined(result, scanCfg.VirtualPath),
 		scope: scopeInputsFor(checksRun, checksNotApplicable, result.DisabledDetectionTypes,
 			run, in.flags, suppressionManager),
+		suppressionRulesUnmatched: unmatched.Count(),
 	}
 
 	// Redaction path: emit redacted content on stdout (or --output if set)
@@ -653,6 +664,8 @@ type stdinReport struct {
 	// scope is everything NewScanScope needs except the confidence filter, which each report site
 	// parses itself.
 	scope formatters.ScopeInputs
+	// suppressionRulesUnmatched is how many enabled rules for this input matched no finding (#885).
+	suppressionRulesUnmatched int
 }
 
 // stdinFormatterOptions is the ONE FormatterOptions both --stdin report sites build: the report runStdinScan
@@ -736,6 +749,8 @@ func (r *stdinReport) stats(matches []detector.Match) *formatters.ScanStats {
 		Low:                    low,
 		Suppressed:             r.suppressedCount,
 		Duration:               r.elapsed.Seconds(),
+		// The rules for this input that matched nothing, as --file counts them (#885).
+		SuppressionRulesUnmatched: r.suppressionRulesUnmatched,
 	}
 }
 
