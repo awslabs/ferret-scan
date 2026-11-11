@@ -1,0 +1,10 @@
+=== REDACTED ===
+// and would have missed "+4012.22-07500.25/" entirely
+"+3699.99-07500.25/", // 99 minutes
+"+49.78461-159.03771/" is ISO 6709.
+xyz: +40.7128-074.0060+000.125/
+pos +51.5007-000.1246CRSWGS_84/
+location +401213.1-0750015.1/
+ids "00125.37" and "00074.56695-7"
+total 000104.66 EUR
+=== FINDINGS (sorted) ===
