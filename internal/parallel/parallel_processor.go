@@ -101,6 +101,13 @@ type FileDiagnostic struct {
 	// Zero value is CauseUnset, not CauseUnreadable, so a producer that has not been updated behaves
 	// exactly as before: the consumer falls back to classifying the prose.
 	Cause coverage.Cause `json:"cause,omitempty"`
+
+	// Err is the typed error Reason was rendered from, when the producer had one (set for
+	// UnredactedFiles from Result.RedactionError), so a library caller can test it with errors.Is
+	// -- redactors.ErrStrategyNotSupported for a strategy the format refuses (#863) -- instead of
+	// matching Reason's prose. Reason is unchanged and remains what every display reads; Err is
+	// never serialized.
+	Err error `json:"-"`
 }
 
 // MaxFileWorkers caps the file-level worker pool regardless of how many CPUs the host has, to
@@ -247,6 +254,7 @@ func (pp *ParallelProcessor) ProcessFilesWithProgress(filePaths []string, valida
 			unredactedFiles = append(unredactedFiles, FileDiagnostic{
 				FilePath: result.FilePath,
 				Reason:   result.RedactionError.Error(),
+				Err:      result.RedactionError,
 			})
 			if pp.observer != nil {
 				pp.observer.LogOperation(observability.StandardObservabilityData{

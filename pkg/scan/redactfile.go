@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/core"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 	"github.com/awslabs/ferret-scan/v2/internal/router"
 )
 
@@ -84,6 +85,16 @@ type RedactCoverage struct {
 // file that was not fully examined -- or, when it did mask something, the partially redacted copy,
 // as --file leaves it. Either way it is not a redacted copy safe to share.
 var ErrIncomplete = errors.New("scan: redaction incomplete")
+
+// ErrStrategyNotSupported is wrapped by the error RedactFile and RedactFileContext return when the
+// file's format does not take the requested strategy (#863): legacy .doc/.xls/.ppt, audio and video
+// overwrite values in place at their own byte length, so they take simple and format_preserving but
+// refuse synthetic, and a container holding such a part refuses with it. Nothing is written for
+// that file and the result is nil; the message names the strategies the format does take, so the
+// caller can retry with one of them. Every other redaction failure leaves errors.Is false.
+//
+// It is the internal sentinel itself, not a copy, so errors.Is matches whichever layer refused.
+var ErrStrategyNotSupported = redactors.ErrStrategyNotSupported
 
 // RedactFile scans a file and writes a redacted copy of the SAME file type
 // (a redacted .docx stays a .docx, a .jpg stays a .jpg, images get EXIF/GPS
