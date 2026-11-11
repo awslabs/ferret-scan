@@ -515,9 +515,9 @@ func (v *Validator) CalculateConfidenceWithComponents(match string, components N
 	// were already 20 points apart and only the lower one needed rejecting. See toponymPrefixMap for
 	// why this is a list of toponym GENERATORS and not a list of cities.
 	//
-	// isToponymPrefixGiven defers to the name databases on the same terms, which is why "La Paz" is
-	// still reported: "La" is a real surname, and overriding the data to catch one capital city would
-	// delete every person named La, Le or Lake.
+	// isToponymPrefixGiven defers to the name databases on the same terms, which is why the prefix "La"
+	// is never rejected: it is a real surname, and overriding the data to catch one capital city would
+	// delete every person named La, Le or Lake. The capital is caught whole instead (toponymPhrasesMap).
 	if v.isToponymPrefixGiven(components.FirstName) {
 		checks["proper_case"] = false
 		checks["has_known_name_component"] = false
@@ -1011,7 +1011,7 @@ func (v *Validator) findPatternCandidates(line string) []PatternMatch {
 
 	masked, changed := v.maskNonNameGivenWords(line)
 	if !changed {
-		return candidates
+		return v.dropPlaceCandidates(line, candidates)
 	}
 
 	seen := make(map[[2]int]struct{}, len(candidates))
@@ -1030,7 +1030,7 @@ func (v *Validator) findPatternCandidates(line string) []PatternMatch {
 		c.Text = line[c.StartIndex:c.EndIndex]
 		candidates = append(candidates, c)
 	}
-	return candidates
+	return v.dropPlaceCandidates(line, candidates)
 }
 
 // isKnownShortName checks if a short name (< 4 chars) is in the known name databases

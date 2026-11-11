@@ -385,10 +385,10 @@ var commonWordNamesMap = map[string]bool{
 //
 // isToponymPrefixGiven defers to the shipped data exactly as isFunctionWordGiven does, and that is not
 // a formality — it changes the outcome for a third of this list. "Santa", "Val", "Isla" and "Monte" are
-// given names; "La", "Le", "Fort", "Lake" and "Villa" are surnames. So "La Paz" is STILL reported, and
-// that is correct: overriding the data to catch one Bolivian capital would delete every person named
-// La, Le or Lake. A city that shares a real person's name is not distinguishable from that person by
-// any structural rule, and guessing costs a finding that would otherwise have been redacted.
+// given names; "La", "Le", "Fort", "Lake" and "Villa" are surnames. So the prefix never rejects "La",
+// and that is correct: overriding the data to catch one Bolivian capital would delete everyone named
+// La, Le or Lake; the capital is caught as a whole phrase instead (toponymPhrasesMap). A city sharing a
+// real person's name is not distinguishable from that person by any rule, and guessing costs a finding.
 var toponymPrefixMap = map[string]bool{
 	// Iberian and Latin American: San Francisco, Santa Clara, Sao Paulo, Puerto Vallarta,
 	// Ciudad Juarez, Villa Nueva, Bahia Blanca, Isla Mujeres, Monte Plata.
