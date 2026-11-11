@@ -6,6 +6,8 @@ package textextractpdftextlib
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -66,28 +68,72 @@ func (c *TextContent) Truncated() bool { return c.PagesScanned < c.PageCount }
 // "configurable", which it never was -- no config key, no flag, no override.
 const maxScannedPages = 50
 
-// ExtractText extracts text from a PDF document using ledongthuc/pdf
-func ExtractText(filePath string) (content *TextContent, err error) {
-	// Initialize content with basic file info
-	content = &TextContent{
-		Filename: filepath.Base(filePath),
+// ExtractText extracts text from a PDF document using ledongthuc/pdf.
+//
+// # The Flate-header fallback (#944)
+//
+// The library panics on a FlateDecode stream whose 2-byte zlib header is invalid. On a page content
+// stream that costs one page; on a cross-reference stream or an object stream it costs the whole
+// document, because nothing can be resolved without them — measured on main, a document whose page
+// streams were intact reported 0 findings and "PDF library panic ... zlib: invalid header". So when
+// the first attempt fails, the file is read into memory, every FlateDecode stream whose header is
+// invalid gets a valid one written over those same 2 bytes (repairFlateHeaders), and extraction
+// runs once more on that copy. The copy is never written anywhere. Offsets and /Length do not move,
+// so the cross-reference data stays correct, and the deflate body and its Adler-32 trailer are
+// untouched, so a stream whose body is also damaged still fails exactly as it did before.
+func ExtractText(filePath string) (*TextContent, error) {
+	name := filepath.Base(filePath)
+	f, err := os.Open(filePath)
+	if err != nil {
+		return &TextContent{Filename: name}, fmt.Errorf("error opening PDF: %v", err)
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return &TextContent{Filename: name}, fmt.Errorf("error opening PDF: %v", err)
 	}
 
-	// Recover from panics in the PDF library (e.g. corrupted zlib streams)
+	content, err := extract(name, f, fi.Size())
+	if err == nil {
+		return content, nil
+	}
+
+	// Fallback only on failure, so a readable document is never touched by the repair.
+	data := make([]byte, fi.Size())
+	if _, rerr := f.ReadAt(data, 0); rerr != nil && rerr != io.EOF {
+		return content, err
+	}
+	if repairFlateHeaders(data) == 0 {
+		return content, err
+	}
+	if repaired, rerr := extract(name, bytes.NewReader(data), int64(len(data))); rerr == nil {
+		return repaired, nil
+	}
+	// The first attempt's error names the original cause; report that one.
+	return content, err
+}
+
+// extract runs one extraction over ra. A library panic is recovered here and reported by the
+// phase it happened in, so the disclosure says WHICH part of the document was unreadable instead
+// of "library panic": the cross-reference section (pdf.NewReader), the catalog or page tree
+// (NumPage; on an object-stream document both live inside an object stream), or the form fields.
+func extract(name string, ra io.ReaderAt, size int64) (content *TextContent, err error) {
+	content = &TextContent{Filename: name}
+
+	phase := "cross-reference section"
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("PDF library panic on %s: %v", filepath.Base(filePath), r)
+			err = fmt.Errorf("%s unreadable in %s: %v", phase, name, r)
 		}
 	}()
 
-	// Open the PDF file
-	f, r, err := pdf.Open(filePath)
+	r, err := pdf.NewReader(ra, size)
 	if err != nil {
 		return content, fmt.Errorf("error opening PDF: %v", err)
 	}
-	defer f.Close()
 
 	// The document's real page count, kept whether or not all of it is read.
+	phase = "document catalog or page tree"
 	content.PageCount = r.NumPage()
 
 	// Bound the work, WITHOUT overwriting the count above. Every loop below iterates PagesScanned.
@@ -170,6 +216,7 @@ func ExtractText(filePath string) (content *TextContent, err error) {
 	content.PagesFailed = failedPages
 
 	// Extract form data (AcroForm fields)
+	phase = "form fields (AcroForm)"
 	formData, err := extractFormData(r)
 	if err == nil && formData != "" {
 		buf.WriteString("\n--- PDF Form Data ---\n")
