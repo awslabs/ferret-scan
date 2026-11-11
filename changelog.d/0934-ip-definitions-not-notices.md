@@ -8,6 +8,5 @@
   `(c)` or `Copyright` followed by a lowercase word (the QuickTime `©xyz` atom name, "copyright
   notice with ..."). On this repository's own `config.yaml`, `docs/configuration.md`, both
   `examples/*.yaml`, the validator's source and the files the issue names, HIGH findings go from 20
-  to 0 (178 to 97 at any confidence). Real notices keep their confidence, including "X is a
-  trademark of Y", "Amazon Confidential and Trademark", `Windows(R)` and a quoted CSV
-  classification cell. ([#934](https://github.com/awslabs/ferret-scan/issues/934))
+  to 0 (178 to 97 at any confidence). Every real-notice control in the package tests keeps its
+  confidence. ([#934](https://github.com/awslabs/ferret-scan/issues/934))

@@ -67,9 +67,9 @@ func isQuotedListElement(line string, start, end int) bool {
 // isNonNoticeTrademark reports whether a trademark match is prose or code
 // rather than a mark: its leading word is a function word ("with trademark"
 // with the word in lowercase, "a ™"), or it ends in a lowercase "(r)" (a call argument such as
-// basename(r); the registered mark is written "(R)"). The "Registered
-// Trademark" form is kept whatever precedes it ("is a registered trademark
-// of ..." is the canonical notice).
+// basename(r); the registered mark is an uppercase R). The registered-mark
+// word form is kept whatever word precedes it: an article before it is the
+// usual wording of a real notice.
 func isNonNoticeTrademark(match, after string) bool {
 	if strings.HasSuffix(match, "(r)") {
 		return true
