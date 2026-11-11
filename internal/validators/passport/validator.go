@@ -897,6 +897,11 @@ func (v *Validator) scoreCandidate(cl *candidateLine, country string, start, end
 		return spannedMatch{}, false
 	}
 
+	// Nine bare digits followed by a byte unit are a byte count (#939, isByteQuantityAt).
+	if country == "UK" && isByteQuantityAt(line, end) {
+		return spannedMatch{}, false
+	}
+
 	// Skip if it's a common word or test pattern
 	if v.isCommonWord(canon) || v.isTestPattern(canon) {
 		return spannedMatch{}, false

@@ -4860,60 +4860,60 @@ rules:
         finding_type: PASSPORT
         line_number: "204"
     - id: SUP-00000483
-      hash: ec3915f60acb12b553dd8e46ce1ffd292c6c0464e3495310419c3336ed54c996 # pragma: allowlist secret
+      hash: 2537b89887e9cf05f54b249126003f978f882b92fb2fb1ddf41d2ce98ae954e7 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "100.00"
         filename: validator.go
         finding_type: PASSPORT
-        line_number: "1197"
+        line_number: "1202"
     - id: SUP-00000484
-      hash: 49ca497cf59111679d5e5fe94a6c563f8b41b422d16bac4b31dce57ee04aec7e # pragma: allowlist secret
+      hash: 800ad2d712c394f52971073ec6cf2e120259287e1021635fc9ff98830cd6a4e5 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "100.00"
         filename: validator.go
         finding_type: PASSPORT
-        line_number: "1214"
+        line_number: "1219"
     - id: SUP-00000485
-      hash: eeea32904fa29393e8e952834e139eb8c9be7c4a468fd1d33ade780dbbf26d6e # pragma: allowlist secret
+      hash: ea29b2157f337de23ebd36e38135a209bab00416c1a0dc483767567be55e9a34 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "92.50"
         filename: validator.go
         finding_type: PASSPORT
-        line_number: "1396"
+        line_number: "1401"
     - id: SUP-00000486
-      hash: 6e32e041cab5c77c37275891ab34ca5bdd1c420566dc0904f7dccc4bdedf60c2 # pragma: allowlist secret
+      hash: c3d235a1db94a4f14a682d4a983bdbfc65873f2bfc753b09819604b167c728f5 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "100.00"
         filename: validator.go
         finding_type: PASSPORT
-        line_number: "1439"
+        line_number: "1444"
     - id: SUP-00000487
-      hash: ca6763302002a418f1dcd1c0b8ba1f33c546c9abfe5260acad391b306216b118 # pragma: allowlist secret
+      hash: 6b9b34364fa6f25900872ad6ba84ee014a479aa22edceafb724f6d934de319db # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: SSN
-        line_number: "1214"
+        line_number: "1219"
     - id: SUP-00000488
       hash: a0ef2cb705eed6d28513af4e3da2f2e08849cc14eb92444ba67fa640783a8530 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
@@ -5762,137 +5762,137 @@ rules:
         finding_type: SSN
         line_number: "440"
     - id: SUP-00000565
-      hash: d5c8d21c0c545ffe62b3fdd11998269ebc2e57d2e59fb03853adc248748f2bdf # pragma: allowlist secret
+      hash: 903bd538366255febea63b417c01b2ff2d441515c722e524abc0e752ed61317d # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: SSN
-        line_number: "515"
+        line_number: "519"
     - id: SUP-00000566
-      hash: 1cfced0b7b17cad1c23df7c2624d2591b2da6f20c3ecd66782554624815229ad # pragma: allowlist secret
+      hash: a44f9883f0280a17affcd77076b898b6ef669810e60ea2290d9df505211edbe3 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: SSN
-        line_number: "515"
+        line_number: "519"
     - id: SUP-00000567
-      hash: 69745228a4b8a862380e19c836eb9186e5aa27050552f0df7e8ab0cbc71b27f8 # pragma: allowlist secret
+      hash: 3d575522a7b89ddfba06dd1132762d3e7c812a42da4da1d443c0d3deda6c646e # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: SSN
-        line_number: "516"
+        line_number: "520"
     - id: SUP-00000568
-      hash: d7cd199969c1c892d59f0c6e2023516550a80a7ee7627209efd3460acf2929e7 # pragma: allowlist secret
+      hash: 2c32db92b3dc2b7442fe412dd6f56c3e9760bee3f2f1507b061eb81bde7d3858 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: SSN
-        line_number: "516"
+        line_number: "520"
     - id: SUP-00000569
-      hash: 711b64c622752444fc50b508a4dfe0e482c8454bdda6bffb7591611a03094ff7 # pragma: allowlist secret
+      hash: bbf58fe7a0dc575b2ecbedc0c28fe6fdef30ae2375df65f00c19a2304916a6fa # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "100.00"
         filename: validator.go
         finding_type: SSN
-        line_number: "569"
+        line_number: "573"
     - id: SUP-00000570
-      hash: 7dfcd5b08b5cc9e5ff26d9bc0879e64ebc6bcedd8e33755cf6aea3d9b2eddbd3 # pragma: allowlist secret
+      hash: bf6157b0674344fd059726ca074e9048e7b5ab9f36f758703a634a06d0bf0641 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: SSN
-        line_number: "579"
+        line_number: "583"
     - id: SUP-00000571
-      hash: a5a81eb593bc945800c62c6de1c4cc09c1e6f843d1ceefb04d18569e80b2686c # pragma: allowlist secret
+      hash: 4f99ee3757fcb7ddc36ca87b59633eb1abce808c154bc8974ac98e9972bf67f9 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "100.00"
         filename: validator.go
         finding_type: SSN
-        line_number: "700"
+        line_number: "717"
     - id: SUP-00000572
-      hash: b5aac1841072a3e86060318819abd27c815c8691190efc217f045694061c4813 # pragma: allowlist secret
+      hash: cbf76915dc0fec93ad4557d866368997e3848e8fa99520e52d550cb76da415bc # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "100.00"
         filename: validator.go
         finding_type: SSN
-        line_number: "701"
+        line_number: "718"
     - id: SUP-00000573
-      hash: 73e58bc6265910cf154d4094a0085f9dd22623434410d61f2a8a8d72a8c80445 # pragma: allowlist secret
+      hash: b7db6eda40c0eaf794ddc3b0f39be0d0a122adf08b32171df254097aeee4849b # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "100.00"
         filename: validator.go
         finding_type: SSN
-        line_number: "702"
+        line_number: "719"
     - id: SUP-00000574
-      hash: 454b97be44c1e88b8886866e46a068065a3663a0ad3f938638b838a5ee1406ea # pragma: allowlist secret
+      hash: 743f1d076ffced753c3f651d0f65bfad4cff2c22f83a09edc2f343b6d70d3ac0 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: SSN
-        line_number: "703"
+        line_number: "720"
     - id: SUP-00000575
-      hash: c9f57b995cf7e46d5b668852cdc377a78389cde1dc8c96cf15c920562526b478 # pragma: allowlist secret
+      hash: bb54a5b9d1a3980d6f72e77dcad730ff71f180c38c43eb0584dd238a6955be4e # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "100.00"
         filename: validator.go
         finding_type: ITIN
-        line_number: "762"
+        line_number: "779"
     - id: SUP-00000576
-      hash: cc917bdc8e0869a98b9bf1e270f276772ec76b0fd92aa90f1b138f43691cca84 # pragma: allowlist secret
+      hash: 2eca029872fe28d192a2fd46a45e533ee8bee31db3fd22f331d83168208d34a0 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-11T13:42:45.999742475Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: SSN
-        line_number: "795"
+        line_number: "812"
     - id: SUP-00000577
       hash: 301c8b68af96294f4055fc0fca288780a2cd063403055ebb7cf042a724a8cb4f # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
