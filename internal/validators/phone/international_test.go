@@ -124,11 +124,11 @@ func TestControlsAreUnchanged(t *testing.T) {
 		line, text, pattern, country string
 		conf                         float64
 	}{
-		{"Phone: +44 20 7946 0372", "+44 20 7946 0372", "International_Plus", "International", 100},
+		{"Phone: +44 161 496 0372", "+44 161 496 0372", "International_Plus", "UK", 100},
 		{"+49 30 23125417", "+49 30 23125417", "International_Plus", "International", 95},
 		{"(297) 201-0003", "(297) 201-0003", "US_Standard", "US/CA", 85},
 		{"Tel:297-201-0004", "297-201-0004", "US_Dashed", "US/CA", 100},
-		{"Call 0044 20 7946 0958 after 6pm", "0044 20 7946 0958", "International_00", "International", 100},
+		{"Call 0044 161 496 0958 after 6pm", "0044 161 496 0958", "International_00", "UK", 100},
 		// The golden corpus's "call +1 449-87-4100" (overlap_groups_render_once): nine digits after
 		// +1 is a length NANP does not have, and "call" outweighs the length table for a value main
 		// already reports, so it keeps everything main gave it.
@@ -266,11 +266,12 @@ func TestGateDecoys(t *testing.T) {
 }
 
 // TestBoundaryMatrix: an international number reads the same behind every character a phone is
-// written after, and its span is the number, never the context.
+// written after, and its span is the number, never the context. The UK shapes are in Ofcom's
+// Manchester drama block, which this validator does not cap; the London block it caps (#930).
 func TestBoundaryMatrix(t *testing.T) {
 	shapes := []string{
-		"+44 20 7946 0958", "+33 1 99 00 47 18", "+49 30 23125417", "+1 297 201 0016",
-		"+55 11 91010-1050", "+44 (0)20 7946 0372", "+442079460627",
+		"+44 161 496 0958", "+33 1 99 00 47 18", "+49 30 23125417", "+1 297 201 0016",
+		"+55 11 91010-1050", "+44 (0)161 496 0372", "+441614960627",
 	}
 	carriers := []string{
 		"%s", "(%s)", "[%s]", "a/%s", "Tel:%s", "tel:%s", `<a href="tel:%s">x</a>`,
