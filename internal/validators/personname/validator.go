@@ -2047,26 +2047,31 @@ func (v *Validator) deduplicateMatches(matches []detector.Match) []detector.Matc
 // by the producer (detector.LineContext at the candidate's true offset) is reproduced at
 // that span. The resolver hands out occurrences of a text left to right in arrival order,
 // so if a candidate for some occurrence is missing it can place a later one on an earlier
-// occurrence; the context check catches that. A match whose span is not trusted:
+// occurrence; the context check catches that. A match whose span is not trusted is never
+// used as a CONTAINER, and:
 //
-//   - is never used as a CONTAINER (it cannot drop anything by position), and
-//   - as a candidate for dropping, falls back to the old text rule (a strictly longer,
-//     distinct text on the same line contains it), so it is decided as before.
+//   - if it was placed on its line but at the wrong occurrence, it is KEPT (not contained):
+//     its true offset is unknown, and keeping a real name value can only add coverage,
+//     whereas dropping it is exactly the #966 leak;
+//   - if it could not be placed at all (no Context.FullLine, or the text is not in it), it
+//     falls back to the old text rule (a strictly longer, distinct text on the same line
+//     contains it), so it is decided as before.
 //
-// shortcut: the fallback still has the old per-line O(u^2) over distinct texts, but only
-// over untrusted matches, which a producer that records Context.FullLine never emits.
+// shortcut: the text-rule fallback keeps the old per-line O(u^2) over distinct texts, but only
+// for unplaced matches, which neither findNames* producer emits (both record FullLine).
 func containedInLongerSpan(matches []detector.Match) []bool {
 	spans := detector.ResolveLineSpans(matches)
 	contained := make([]bool, len(matches))
 
 	// Trusted spans grouped by line (LineID: offsets from different lines never compare).
 	byLine := make(map[int][]int)
-	var untrusted []int
+	var unplaced []int
 	for i := range matches {
-		if spanTrusted(matches[i], spans[i]) {
+		switch {
+		case !spans[i].OK:
+			unplaced = append(unplaced, i)
+		case spanTrusted(matches[i], spans[i]):
 			byLine[spans[i].LineID] = append(byLine[spans[i].LineID], i)
-		} else {
-			untrusted = append(untrusted, i)
 		}
 	}
 
@@ -2098,10 +2103,10 @@ func containedInLongerSpan(matches []detector.Match) []bool {
 		}
 	}
 
-	if len(untrusted) == 0 {
+	if len(unplaced) == 0 {
 		return contained
 	}
-	// Old text rule for untrusted matches, against every distinct text on the same line.
+	// Old text rule for unplaced matches, against every distinct text on the same line.
 	textsByLine := make(map[int][]string)
 	seen := make(map[dedupKey]struct{}, len(matches))
 	for _, m := range matches {
@@ -2111,7 +2116,7 @@ func containedInLongerSpan(matches []detector.Match) []bool {
 			textsByLine[m.LineNumber] = append(textsByLine[m.LineNumber], m.Text)
 		}
 	}
-	for _, i := range untrusted {
+	for _, i := range unplaced {
 		text := matches[i].Text
 		for _, other := range textsByLine[matches[i].LineNumber] {
 			if len(other) > len(text) && strings.Contains(other, text) {
@@ -2123,12 +2128,9 @@ func containedInLongerSpan(matches []detector.Match) []bool {
 	return contained
 }
 
-// spanTrusted reports whether span is the occurrence match was produced from: resolved,
-// and reproducing the before/after context the producer recorded at its true offset.
+// spanTrusted reports whether a resolved span is the occurrence match was produced from:
+// the before/after context the producer recorded at its true offset is reproduced there.
 func spanTrusted(match detector.Match, span detector.LineSpan) bool {
-	if !span.OK {
-		return false
-	}
 	at := detector.LineContext(match.Context.FullLine, span.Start, span.End)
 	return at.BeforeText == match.Context.BeforeText && at.AfterText == match.Context.AfterText
 }
