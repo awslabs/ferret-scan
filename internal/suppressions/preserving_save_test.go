@@ -120,12 +120,20 @@ func TestASaveWithNoChangeIsByteIdentical(t *testing.T) {
 // TestRegeneratingTheBaselineTouchesOnlyLastSeenAtAndTheNewRules is the issue's baseline check: a
 // --generate-suppressions run may refresh last_seen_at and append rules, and nothing else. The committed
 // ledger's rules are all enabled and none expires (#927); the two synthetic matches below hit none of
-// them, so the save appends two rules numbered after the last one and touches nothing else.
+// them, so the save appends two rules numbered after the highest existing ID and touches nothing else.
+// The IDs are not contiguous: a rule is deleted when its finding goes (a detector fix lands, a release
+// moves CHANGELOG.md), and the generator numbers from the highest ID, not from the count.
 func TestRegeneratingTheBaselineTouchesOnlyLastSeenAtAndTheNewRules(t *testing.T) {
 	path := copyToTemp(t, filepath.Join("..", "..", ".ferret-scan-suppressions.yaml"))
 	before := readText(t, path)
 	sm, _ := loadWithWarnings(t, path)
-	ruleCount := len(sm.config.Rules)
+	maxID := 0
+	for _, r := range sm.config.Rules {
+		var n int
+		if _, err := fmt.Sscanf(r.ID, "SUP-%08d", &n); err == nil && n > maxID {
+			maxID = n
+		}
+	}
 	now := time.Now()
 	for _, i := range []int{0, 100, len(sm.config.Rules) - 1} {
 		sm.config.Rules[i].LastSeenAt = &now // what GenerateSuppressionRules does for a finding it already has
@@ -159,9 +167,9 @@ func TestRegeneratingTheBaselineTouchesOnlyLastSeenAtAndTheNewRules(t *testing.T
 		t.Fatalf("the saved file is shorter than the original: stopped at line %d of %d", i+1, len(old))
 	}
 	tail := strings.Join(cur[j:], "\n")
-	firstNewID := fmt.Sprintf("    - id: SUP-%08d\n", ruleCount+1)
+	firstNewID := fmt.Sprintf("    - id: SUP-%08d\n", maxID+1)
 	if got := strings.Count(tail, "    - id: SUP-"); got != 2 || !strings.HasPrefix(tail, firstNewID) {
-		t.Errorf("the appended tail is not the 2 new rules numbered from %d:\n%s", ruleCount+1, tail)
+		t.Errorf("the appended tail is not the 2 new rules numbered from %d:\n%s", maxID+1, tail)
 	}
 }
 
