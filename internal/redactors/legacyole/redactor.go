@@ -250,7 +250,11 @@ func (r *LegacyOLERedactor) RedactDocument(originalPath string, outputPath strin
 			// by an earlier unit, so finding nothing here is that redaction. A value that was in none
 			// of the original bytes is one this redactor cannot reach at all, and the copy would keep
 			// it wherever it really is: it used to be skipped with only the log line above.
-			if !inOriginal(m.Text) {
+			//
+			// Only for a value reported in THIS file. A container hands an embedded part every match
+			// it found (office/embedded.go), so its body's values are in none of the part's streams by
+			// construction, and they carry the container's name rather than this file's.
+			if reportedIn(m, originalPath) && !inOriginal(m.Text) {
 				notFound = append(notFound, unrewrittenValue{types: []string{m.Type}})
 			}
 			continue

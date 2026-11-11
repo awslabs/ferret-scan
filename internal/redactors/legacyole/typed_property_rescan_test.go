@@ -4,6 +4,8 @@
 package legacyole_test
 
 import (
+	"archive/zip"
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
@@ -101,4 +103,87 @@ func isAllMask(s string) bool {
 		}
 	}
 	return true
+}
+
+// A legacy part embedded in a .docx is handed EVERY match the container found (office/embedded.go),
+// so the body's values are in none of the part's streams. The "not found in any stream" refusal must
+// not fire for them, or every .docx whose body and embedded .doc hold different values would be
+// refused whole. The decoy: a body SSN and an embedded .doc carrying an email; both strategies write
+// the container, and neither value is in the copy. On main this passes (main never refused a value it
+// could not find); a version of this change without the provenance check refused the .docx.
+func TestAContainersBodyValuesDoNotRefuseItsEmbeddedLegacyPart(t *testing.T) {
+	const (
+		ssn   = "449-87-4100"
+		email = "jane.analyst@example.com"
+	)
+	doc := olefixture.MustBuild([]olefixture.Stream{
+		{Name: olefixture.StreamWordDocument, Data: []byte("Contact " + email + " for the review.\r")},
+	})
+	var zb bytes.Buffer
+	zw := zip.NewWriter(&zb)
+	for _, part := range []struct {
+		name string
+		data []byte
+	}{
+		{"[Content_Types].xml", []byte(`<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="doc" ContentType="application/msword"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`)},
+		{"_rels/.rels", []byte(`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`)},
+		{"word/document.xml", []byte(`<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Employee SSN ` + ssn + ` on file.</w:t></w:r></w:p></w:body></w:document>`)},
+		{"word/embeddings/legacy.doc", doc},
+	} {
+		w, err := zw.Create(part.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(part.data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "notes.docx")
+	if err := os.WriteFile(src, zb.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, strategy := range []string{"simple", "format_preserving"} {
+		t.Run(strategy, func(t *testing.T) {
+			res, err := core.RedactFile(core.RedactConfig{
+				FilePath:  src,
+				OutputDir: filepath.Join(dir, "out-"+strategy),
+				Strategy:  strategy,
+				Checks:    []string{"SSN", "EMAIL"},
+				Config:    config.LoadConfigOrDefault(""),
+				LogWriter: io.Discard,
+			})
+			if err != nil {
+				t.Fatalf("the container was refused: %v", err)
+			}
+			if res.RedactedFilePath == "" {
+				t.Fatal("no redacted copy was written")
+			}
+			z, err := zip.OpenReader(res.RedactedFilePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer z.Close()
+			for _, f := range z.File {
+				rc, err := f.Open()
+				if err != nil {
+					t.Fatal(err)
+				}
+				b, err := io.ReadAll(rc)
+				_ = rc.Close()
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, v := range []string{ssn, email} {
+					if bytes.Contains(b, []byte(v)) {
+						t.Errorf("part %s of the copy still holds a reported value (%d bytes)", f.Name, len(v))
+					}
+				}
+			}
+		})
+	}
 }

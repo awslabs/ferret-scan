@@ -60,6 +60,14 @@ func presentIn(logical [][]byte, typed []typedValue, value string) bool {
 	return false
 }
 
+// reportedIn reports whether a match was reported in the file at path: its Filename is that path, or
+// it has none (a caller that does not say is taken at its word). The worker pool hands a file its own
+// findings under the path it was given; a container's findings handed to an embedded part name the
+// container, and the part is redacted from a temporary copy.
+func reportedIn(m detector.Match, path string) bool {
+	return m.Filename == "" || m.Filename == path || filepath.Clean(m.Filename) == filepath.Clean(path)
+}
+
 // isMaskOnly reports whether a value is nothing but the mask byte. Overwriting such a value writes
 // the same bytes back, so it is always "still present" and never a disclosure: it is what a copy
 // this redactor already wrote holds where a value was.

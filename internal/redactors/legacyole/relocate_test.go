@@ -88,3 +88,39 @@ func TestRedaction_AValueAnEarlierWriteRemovedIsNotAMiss(t *testing.T) {
 		})
 	}
 }
+
+// A value found in none of the file's bytes refuses it only when it was reported in THAT file. An
+// embedded part is handed its container's matches, named after the container; those are not this
+// file's to account for, and refusing on them refused the container whole.
+func TestRedaction_OnlyThisFilesUnlocatedValuesRefuseIt(t *testing.T) {
+	src := writeFixture(t, docFixture(t), "part.doc")
+	r := NewLegacyOLERedactor(nil, nil)
+	absent := func(filename string) []detector.Match {
+		return []detector.Match{
+			{Text: testSSN, Type: "SSN", LineNumber: 1, Confidence: 100, Filename: filename},
+			{Text: "555-66-7777", Type: "SSN", LineNumber: 4, Confidence: 100, Filename: filename}, // in no stream
+		}
+	}
+	if _, err := r.RedactDocument(src, filepath.Join(t.TempDir(), "a.doc"), absent("/scan/notes.docx"), redactors.RedactionSimple); err != nil {
+		t.Errorf("a container's value absent from the part refused the part: %v", err)
+	}
+	for _, own := range []string{"", src} {
+		if _, err := r.RedactDocument(src, filepath.Join(t.TempDir(), "b.doc"), absent(own), redactors.RedactionSimple); err == nil {
+			t.Errorf("Filename %q: a value reported in this file and found in none of its bytes was accepted", own)
+		}
+	}
+	for _, c := range []struct {
+		filename, path string
+		want           bool
+	}{
+		{"", "/x/a.doc", true},
+		{"/x/a.doc", "/x/a.doc", true},
+		{"/x/./a.doc", "/x/a.doc", true},
+		{"/x/notes.docx", "/tmp/ferret-embedded-1/embedded.doc", false},
+		{"/x/a.doc -> ObjectPool/_1/Ole10Native", "/x/a.doc", false},
+	} {
+		if got := reportedIn(detector.Match{Filename: c.filename}, c.path); got != c.want {
+			t.Errorf("reportedIn(%q, %q) = %v, want %v", c.filename, c.path, got, c.want)
+		}
+	}
+}
