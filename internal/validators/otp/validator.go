@@ -429,6 +429,11 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			if execguard.LineLoopCancelled(ctx, i) {
 				return matches, ctx.Err()
 			}
+			// A URI with no secret in it is not a provisioning URI (#940). Its span stays in
+			// uriLocs, which keeps a base32 run inside it out of the OTP_SECRET pass below.
+			if !carriesSecret(line[loc[0]:loc[1]]) {
+				continue
+			}
 			emit(loc[0], loc[1]-loc[0], "OTPAUTH_URI", false)
 		}
 

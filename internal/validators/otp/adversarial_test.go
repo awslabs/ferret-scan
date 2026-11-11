@@ -227,11 +227,10 @@ func TestAdversarial_OTPAuthURI_HighConfidence(t *testing.T) {
 			content: "otpauth://totp/My%20Service:user%40example.com?secret=K5CUWY3ZNRXW4Z3T&issuer=My%20Service",
 			desc:    "URL-encoded URI must still be detected at HIGH confidence",
 		},
-		{
-			name:    "Minimal URI without secret param",
-			content: "otpauth://totp/App:user@domain.com?algorithm=SHA1&digits=6",
-			desc:    "URI without secret= param should still be >= 80",
-		},
+		// "Minimal URI without secret param" (otpauth://totp/App:user@domain.com?algorithm=SHA1&digits=6)
+		// asserted >= 80 here. A URI with no secret= is not a provisioning URI (#940, and
+		// docs/validators-new.md's "must contain `secret=` parameter"), so it moved to
+		// TestASecretlessURIIsNotAProvisioningURI as a negative.
 	}
 
 	for _, tt := range tests {
