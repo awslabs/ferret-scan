@@ -4,6 +4,7 @@
 package web
 
 import (
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -164,7 +165,10 @@ func hostFromURL(raw string, expected map[string]struct{}) bool {
 func sameOriginHostSet(bindAddr, port string) map[string]struct{} {
 	set := map[string]struct{}{}
 	add := func(host string) {
-		set[strings.ToLower(host+":"+port)] = struct{}{}
+		// Joined as a URL authority is written, so an IPv6 bind reads "[::1]:8080", which is what
+		// url.Parse returns as the Host of the browser's Origin; the unbracketed form this used to
+		// build matched no request (#926).
+		set[strings.ToLower(net.JoinHostPort(host, port))] = struct{}{}
 	}
 	add(bindAddr)
 	if bindAddr == "127.0.0.1" || bindAddr == "::1" {

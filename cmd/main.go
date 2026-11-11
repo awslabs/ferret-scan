@@ -3947,10 +3947,22 @@ func printPrecommitError(precommitConfig *precommit.PrecommitConfig, errorMsg st
 	}
 }
 
-// isPortAvailable checks if a port is available for binding
+// isPortAvailable reports whether the web server could listen on port at the address it will bind.
+//
+// It used to listen on ":port", which is every interface, so `--web --bind 127.0.0.1` listened on
+// 0.0.0.0 and [::] for a moment before its loopback bind, against the loopback posture --web is built
+// on (TM-01). It also answered for the wrong address: a port held on [::1] alone, as a dev server on
+// "localhost" holds it, read as taken although 127.0.0.1:<port> was free, so the server moved to
+// another port (#926). The address is --bind resolved exactly as handleWebMode resolves it, read
+// through the flag set the way effectivePrecommitQuiet reads --quiet, so the probe and the server
+// cannot disagree about it. The server's own bind, in web.Start, is still the check that decides.
 func isPortAvailable(port string) bool {
-	address := fmt.Sprintf(":%s", port)
-	listener, err := net.Listen("tcp", address)
+	bindFlag := ""
+	if f := flag.Lookup("bind"); f != nil {
+		bindFlag = f.Value.String()
+	}
+	bindAddr, _ := web.ResolveBindAddress(bindFlag)
+	listener, err := net.Listen("tcp", net.JoinHostPort(bindAddr, port))
 	if err != nil {
 		return false
 	}
