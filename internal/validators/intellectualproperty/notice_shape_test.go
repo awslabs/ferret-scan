@@ -55,6 +55,8 @@ func TestNonNoticeShapesAreNotReported(t *testing.T) {
 		// 98.00 consolidated; "when trademark" alone read 94 after the
 		// copyright half was dropped.
 		`t.Error("copyright should still be detected when trademark is disabled")`,
+		// minified JavaScript: a call argument named c before a comma.
+		"for(;o<n;o++)s=a(c),u.next(s),o.push(s)",
 	}
 	for _, line := range decoys {
 		if got := confidences(t, line); got != "" {

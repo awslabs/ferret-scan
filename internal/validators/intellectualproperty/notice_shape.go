@@ -122,7 +122,7 @@ func isNonNoticeCopyright(match string) bool {
 	default:
 		return false
 	}
-	rest = strings.TrimLeft(rest, " \t")
+	rest = strings.TrimLeft(rest, " \t,-–—") // the separators the default regex skips
 	r, _ := utf8.DecodeRuneInString(rest)
 	return unicode.IsLower(r)
 }
