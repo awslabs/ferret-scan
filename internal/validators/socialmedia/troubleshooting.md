@@ -51,8 +51,8 @@ validators:
 
 #### C. Invalid Regex Patterns
 
-Each pattern that does not compile prints a warning on stderr when a `--file` scan runs the validator
-(`--stdin` does not print it yet, [#903](https://github.com/awslabs/ferret-scan/issues/903)), naming its
+Each pattern that does not compile prints a warning on stderr when a `--file` or `--stdin` scan runs the
+validator ([#903](https://github.com/awslabs/ferret-scan/issues/903)), naming its
 platform and index, never the pattern, and is skipped:
 ```
 Warning: config value validators.social_media.platform_patterns.linkedin[0]: not a valid RE2 regular expression: invalid named capture ("(?<!" is a PCRE negative lookbehind; RE2, Go's regex engine, has no lookaround) — skipped; no platform has a valid pattern, so social media detection is off

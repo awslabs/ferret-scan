@@ -526,9 +526,13 @@ which has no lookaround (`(?=`, `(?!`, `(?<=`, `(?<!`) and no backreferences:
 
 The warning is not silenced by `--quiet` or pre-commit mode, but only a validator the run uses
 reports one: under `--checks EMAIL`, or the built-in pre-commit profile, which does not run
-INTELLECTUAL_PROPERTY, a bad `internal_urls` entry prints nothing. `--stdin` does not print these
-warnings yet ([#903](https://github.com/awslabs/ferret-scan/issues/903)), and `--debug` shows none
-of the validator's configure-time detail.
+INTELLECTUAL_PROPERTY, a bad `internal_urls` entry prints nothing. `--stdin` prints the same lines
+([#903](https://github.com/awslabs/ferret-scan/issues/903)). The json and yaml reports carry them in
+`stats.config_warnings`, in the order the lines print, and SARIF in
+`runs[].invocations[].toolConfigurationNotifications[]` with the descriptor
+`ferret-scan/config-value-unusable`; text, csv, junit and gitlab-sast carry them on stderr only. With
+a usable configuration the key and the notification are absent. `--debug` shows none of the
+validator's configure-time detail.
 
 ##### Configuration Examples by Organization Type
 

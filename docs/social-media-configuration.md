@@ -340,8 +340,10 @@ is skipped; the scan runs and the exit code does not change:
   the validator ships no built-in patterns, so social media detection is off.
 
 The warnings are not silenced by `--quiet` or pre-commit mode, but only a run that uses the
-validator prints them: the built-in pre-commit profile does not run SOCIAL_MEDIA. `--stdin` does not
-print them yet ([#903](https://github.com/awslabs/ferret-scan/issues/903)). `--debug` shows none of
+validator prints them: the built-in pre-commit profile does not run SOCIAL_MEDIA. `--stdin` prints
+them too, and the json, yaml and SARIF reports carry them (`stats.config_warnings`; SARIF
+`toolConfigurationNotifications`, [#903](https://github.com/awslabs/ferret-scan/issues/903)).
+`--debug` shows none of
 the validator's configure-time detail; at scan time, when detection is off, it prints
 `No social media patterns configured for <file> - returning empty results`.
 
@@ -448,8 +450,10 @@ is skipped; the scan runs and the exit code does not change:
   the validator ships no built-in patterns, so social media detection is off.
 
 The warnings are not silenced by `--quiet` or pre-commit mode, but only a run that uses the
-validator prints them: the built-in pre-commit profile does not run SOCIAL_MEDIA. `--stdin` does not
-print them yet ([#903](https://github.com/awslabs/ferret-scan/issues/903)). `--debug` shows none of
+validator prints them: the built-in pre-commit profile does not run SOCIAL_MEDIA. `--stdin` prints
+them too, and the json, yaml and SARIF reports carry them (`stats.config_warnings`; SARIF
+`toolConfigurationNotifications`, [#903](https://github.com/awslabs/ferret-scan/issues/903)).
+`--debug` shows none of
 the validator's configure-time detail; at scan time, when detection is off, it prints
 `No social media patterns configured for <file> - returning empty results`.
 
