@@ -167,3 +167,45 @@ func TestADOCXHasNoBoundaryView(t *testing.T) {
 		t.Errorf("a DOCX produced %d views and %d tokens; the refusal is its only path", len(views), len(toks))
 	}
 }
+
+// TestAFormulaCellKeepsItsFormula: a covered cell with an <f> keeps the formula and takes the new text as
+// a string result (t="str"); the shared formula it may anchor stays intact for the cells that use it.
+func TestAFormulaCellKeepsItsFormula(t *testing.T) {
+	sheet := `<worksheet ` + spanSheetNS + `><sheetData><row r="1">` +
+		`<c r="A1"><v>600</v></c><c r="B1" s="2"><f t="shared" ref="B1:B4" si="0">A1+0</f><v>600</v></c>` +
+		`</row></sheetData></worksheet>`
+	contents := &OfficeZipContents{Files: map[string][]byte{"xl/worksheets/sheet1.xml": []byte(sheet)}}
+	contents.Order = []string{"xl/worksheets/sheet1.xml"}
+	got := rewriteAcrossBoundaries(contents, DocumentTypeXLSX, []string{"600\t600"}, map[string]string{"600\t600": "[PHONE-REDACTED]"}, false)
+	if len(got["600\t600"]) != 1 {
+		t.Fatalf("rewriteAcrossBoundaries placed nothing: %v", got)
+	}
+	out := string(contents.Files["xl/worksheets/sheet1.xml"])
+	for _, want := range []string{
+		`<c r="A1" t="inlineStr"><is><t xml:space="preserve">[PHONE-REDACTED]</t></is></c>`,
+		`<c r="B1" s="2" t="str"><f t="shared" ref="B1:B4" si="0">A1+0</f><v></v></c>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("worksheet lacks %s:\n%s", want, out)
+		}
+	}
+}
+
+// TestASliceThatWouldCutACharacterFallsBackToTheFirstNode: a same-length replacement is cut at the node
+// boundaries only when every piece is still text; otherwise the whole replacement goes to the first node.
+func TestASliceThatWouldCutACharacterFallsBackToTheFirstNode(t *testing.T) {
+	slide := `<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ` +
+		`xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><a:p><a:r><a:t>ab</a:t></a:r></a:p>` +
+		`<a:p><a:r><a:t>cd</a:t></a:r></a:p></p:sld>`
+	contents := &OfficeZipContents{Files: map[string][]byte{"ppt/slides/slide1.xml": []byte(slide)}}
+	contents.Order = []string{"ppt/slides/slide1.xml"}
+	with := "x\u00e9yz" // five bytes, like "ab cd", with a two-byte character across the first cut
+	if len(with) != len("ab cd") {
+		t.Fatalf("fixture: %q is %d bytes, want %d", with, len(with), len("ab cd"))
+	}
+	rewriteAcrossBoundaries(contents, DocumentTypePPTX, []string{"ab cd"}, map[string]string{"ab cd": with}, true)
+	out := string(contents.Files["ppt/slides/slide1.xml"])
+	if !strings.Contains(out, "<a:t>"+with+"</a:t>") || !strings.Contains(out, "<a:t></a:t>") {
+		t.Errorf("the replacement was not given whole to the first node:\n%s", out)
+	}
+}
