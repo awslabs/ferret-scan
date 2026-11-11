@@ -350,6 +350,13 @@ have needed a fabricated path, and a true disclosure under a false heading is on
 | stderr | `Note: config disabled N <CHECK> detection sub-type(s) for this scan: ...` |
 | `json`, `yaml` | `stats.disabled_detection_types`, keyed by check name, values sorted |
 | `sarif` | `invocations[].toolExecutionNotifications[]`, descriptor `ferret-scan/detection-disabled-by-config`, level `warning` |
+| `junit` | `<property name="ferret-scan.disabled_detection_types" value="CHECK:sub-type,...">` in the `security-scan` suite's `<properties>` |
+| `gitlab-sast` | a `scan.messages[]` entry at level `warn`: `ferret-scan: config disabled N <CHECK> detection sub-type(s) ...` |
+| `text` | the `Scope:` line at the end of the report: `...; disabled sub-types: CHECK:sub-type` |
+| `csv` | nothing in band: stderr only |
+
+A disabled sub-type makes the run **narrowed**, so every format but csv also carries the run's
+scope, described in the next section.
 
 Three properties worth knowing:
 
@@ -362,10 +369,33 @@ Three properties worth knowing:
 - **An unrecognised sub-type is a separate warning**, because it is the opposite failure: the
   operator asked for detection to stop and it did not.
 
-The gap that remains: the `--stdin` path builds no scan-statistics block at all, so it gets the
-stderr line (since #887) and no machine-readable form. The stderr line is withheld when
+`--stdin` carries the same disclosure ([#904](https://github.com/awslabs/ferret-scan/issues/904)):
+its json and yaml reports have the `stats` block, `stats.disabled_detection_types` included, and
+junit, sarif, gitlab-sast and text carry it as they do for `--file`. The stderr line is withheld when
 `--enable-redaction` is set with no `--output`, because stderr then carries the findings document;
-pass `--output <file>` to get it. Tracked separately.
+that document's `stats.disabled_detection_types` is the disclosure, and `--output <file>` puts the
+line back on stderr.
+
+## A narrowed run says what it ran
+
+A run is **narrowed** when a check did not run (`--checks`, `defaults.checks`, a profile, the
+pre-commit profile), a confidence band is hidden (`--confidence`), or a detection sub-type was
+disabled. A narrowed report with no findings is not a clean full scan, so each format names the
+run's scope ([#904](https://github.com/awslabs/ferret-scan/issues/904)):
+
+| format | where |
+|---|---|
+| `json`, `yaml` | a `scan` object beside `stats`: `checks_run`, `checks_not_run`, `checks_not_applicable` (`METADATA` on `--stdin`), `confidence_levels`, `profile` when one is active, `config.source`, `suppressions.rules_enabled` and `tool` |
+| `junit` | `<properties>` first in the `security-scan` suite (`ferret-scan.checks_run`, `ferret-scan.checks_not_run`, ...) |
+| `sarif` | `ferretScan*` keys in `run.properties`, and, when checks did not run, one `warning` notification on the `ferret-scan/detection-disabled-by-config` descriptor naming them |
+| `gitlab-sast` | `scan.messages[]`: `warn` for checks that did not run and for disabled sub-types, `info` for a hidden confidence band |
+| `text` | one `Scope:` line at the end of the report, for example `Scope: ran 1 of 19 checks (SSN)` |
+| `csv` | nothing: a csv report of a narrowed run reads like one of a full run |
+
+A run that ran in full writes none of this, so its output is unchanged in every format. The csv
+residual is pinned by `TestEveryFormatButCSVRendersANarrowedScope`
+(`internal/formatters/scope_formats_test.go`): a csv that starts rendering the scope fails it until
+this page says so.
 
 ## Caps
 

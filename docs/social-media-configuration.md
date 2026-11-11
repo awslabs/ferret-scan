@@ -327,12 +327,23 @@ allowlisted URL and an ordinary one were both reported at HIGH 100.
 
 ## Configuration Validation
 
-The validator will log warnings if:
-- No patterns are configured
-- Invalid regex patterns are found
-- Patterns conflict with other validators
+A value under `validators.social_media` that the validator cannot use prints a warning on stderr and
+is skipped; the scan runs and the exit code does not change:
 
-Use `--debug` mode to see detailed configuration information and pattern compilation results.
+- An invalid regular expression is named by its platform and index, never by its text. RE2, Go's
+  regex engine, has no lookaround:
+  `Warning: config value validators.social_media.platform_patterns.linkedin[1]: not a valid RE2 regular expression: invalid named capture ("(?<!" is a PCRE negative lookbehind; RE2, Go's regex engine, has no lookaround) — skipped`.
+  When no platform keeps a valid pattern, the warning ends `so social media detection is off`.
+- A value of the wrong type is named the same way:
+  `Warning: config value validators.social_media.platform_patterns.github: expected a list of patterns, got a string — ignored; github has no valid pattern, so github is not detected`.
+- No patterns at all (no `social_media` section, or an empty `platform_patterns`) prints nothing:
+  the validator ships no built-in patterns, so social media detection is off.
+
+The warnings are not silenced by `--quiet` or pre-commit mode, but only a run that uses the
+validator prints them: the built-in pre-commit profile does not run SOCIAL_MEDIA. `--stdin` does not
+print them yet ([#903](https://github.com/awslabs/ferret-scan/issues/903)). `--debug` shows none of
+the validator's configure-time detail; at scan time, when detection is off, it prints
+`No social media patterns configured for <file> - returning empty results`.
 
 ## Performance Features
 
@@ -424,12 +435,23 @@ find ./documents -name "*.pdf" -exec ./ferret-scan --checks SOCIAL_MEDIA --show-
 
 ## Configuration Validation
 
-The validator will log warnings if:
-- No patterns are configured
-- Invalid regex patterns are found
-- Patterns conflict with other validators
+A value under `validators.social_media` that the validator cannot use prints a warning on stderr and
+is skipped; the scan runs and the exit code does not change:
 
-Use `--debug` mode to see detailed configuration information and pattern compilation results.
+- An invalid regular expression is named by its platform and index, never by its text. RE2, Go's
+  regex engine, has no lookaround:
+  `Warning: config value validators.social_media.platform_patterns.linkedin[1]: not a valid RE2 regular expression: invalid named capture ("(?<!" is a PCRE negative lookbehind; RE2, Go's regex engine, has no lookaround) — skipped`.
+  When no platform keeps a valid pattern, the warning ends `so social media detection is off`.
+- A value of the wrong type is named the same way:
+  `Warning: config value validators.social_media.platform_patterns.github: expected a list of patterns, got a string — ignored; github has no valid pattern, so github is not detected`.
+- No patterns at all (no `social_media` section, or an empty `platform_patterns`) prints nothing:
+  the validator ships no built-in patterns, so social media detection is off.
+
+The warnings are not silenced by `--quiet` or pre-commit mode, but only a run that uses the
+validator prints them: the built-in pre-commit profile does not run SOCIAL_MEDIA. `--stdin` does not
+print them yet ([#903](https://github.com/awslabs/ferret-scan/issues/903)). `--debug` shows none of
+the validator's configure-time detail; at scan time, when detection is off, it prints
+`No social media patterns configured for <file> - returning empty results`.
 
 ## Migration from Other Tools
 

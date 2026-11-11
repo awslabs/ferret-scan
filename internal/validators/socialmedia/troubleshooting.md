@@ -13,9 +13,12 @@ This guide helps you diagnose and resolve common issues with the Social Media Va
 **Possible Causes and Solutions:**
 
 #### A. No Configuration Provided
+
+The validator ships no built-in patterns, so without a `social_media` section it detects nothing, and
+it says nothing about that at startup. `--debug` shows it at scan time:
 ```bash
-# Check if you see this warning:
-# "Social media detection disabled: no social_media configuration section"
+ferret-scan --file document.txt --checks SOCIAL_MEDIA --debug 2>&1 | grep 'No social media patterns'
+# → socialmedia: No social media patterns configured for /full/path/document.txt - returning empty results
 ```
 
 **Solution:** Add social media configuration to your `ferret.yaml`:
@@ -33,10 +36,9 @@ validators:
 ```
 
 #### B. Empty Platform Patterns
-```bash
-# Check if you see this warning:
-# "Social media detection disabled: empty platform_patterns map configured"
-```
+
+`platform_patterns: {}` configures nothing, exactly as a missing section does: no startup message, and
+the same `No social media patterns configured for ...` line under `--debug`.
 
 **Solution:** Ensure at least one platform has patterns configured:
 ```yaml
@@ -48,17 +50,20 @@ validators:
 ```
 
 #### C. Invalid Regex Patterns
-```bash
-# Check if you see this warning:
-# "Social media detection disabled: pattern compilation failed"
+
+Each pattern that does not compile prints a warning on stderr when a `--file` scan runs the validator
+(`--stdin` does not print it yet, [#903](https://github.com/awslabs/ferret-scan/issues/903)), naming its
+platform and index, never the pattern, and is skipped:
+```
+Warning: config value validators.social_media.platform_patterns.linkedin[0]: not a valid RE2 regular expression: invalid named capture ("(?<!" is a PCRE negative lookbehind; RE2, Go's regex engine, has no lookaround) — skipped; no platform has a valid pattern, so social media detection is off
 ```
 
-**Solution:** Fix regex syntax errors:
+**Solution:** Write the pattern in RE2 syntax, which has no lookaround and no backreferences:
 ```yaml
-# ❌ Wrong - unescaped special characters
-- "https://linkedin.com/in/[a-zA-Z0-9_-]+"
+# ❌ Wrong - a lookbehind, which RE2 does not compile
+- "(?<!@)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+"
 
-# ✅ Correct - properly escaped
+# ✅ Correct
 - "(?i)https?://(?:www\\.)?linkedin\\.com/in/[a-zA-Z0-9_-]+"
 ```
 
@@ -266,26 +271,22 @@ ferret-scan --config test-config.yaml --file document.txt --checks SOCIAL_MEDIA 
 
 ## Debug Output Interpretation
 
-### Normal Operation
-```
-[INFO] Social Media Validator: Loaded 3 platform pattern groups
-[INFO] Social Media Validator: Compiled 8 regex patterns successfully
-[INFO] Social Media Validator: Configuration loaded successfully
-```
+`--debug` prints no configure-time line for this validator: a configuration problem is a
+`Warning: config value ...` line on stderr whether or not `--debug` is set (section C above), and
+patterns that compile print nothing.
 
 ### Configuration Issues
 ```
-[WARNING] Social media detection disabled: no social_media configuration section
-[WARNING] Social media detection disabled: empty platform_patterns map configured
-[ERROR] Social media detection disabled: pattern compilation failed
+   → socialmedia: No social media patterns configured for /full/path/document.txt - returning empty results
 ```
 
 ### Pattern Matching Debug
+
+Every matched value is printed as `[HIDDEN]` with its length. For `Connect with me: https://linkedin.com/in/johndoe`:
 ```
-[DEBUG] Social Media Validator: Processing line 1: "Connect with me: https://linkedin.com/in/johndoe"
-[DEBUG] Social Media Validator: LinkedIn pattern matched: "https://linkedin.com/in/johndoe"
-[DEBUG] Social Media Validator: Confidence calculated: 85.0%
-[DEBUG] Social Media Validator: Context analysis: +5.0% (positive keywords)
+   → socialmedia: Context analysis for linkedin match [HIDDEN] (len=31): impact=23.0
+   → socialmedia:   Positive keywords found: [connect with me connect link]
+   → socialmedia: Found linkedin match [HIDDEN] (len=31) (confidence: 100.0%, type: profile_url, username len=7)
 ```
 
 ## Getting Help
@@ -330,13 +331,13 @@ ferret-scan --help | grep -A 10 "checks"
 **Cause:** Using an older version of Ferret Scan that doesn't include the social media validator.
 **Solution:** Update to the latest version or rebuild from source.
 
-### "Social media detection disabled: no social_media configuration section"
-**Cause:** No social media configuration in ferret.yaml.
+### "No social media patterns configured for ... - returning empty results" (`--debug`)
+**Cause:** No social media configuration in ferret.yaml, or an empty `platform_patterns`.
 **Solution:** Add social media configuration as shown in the examples above.
 
-### "Social media detection disabled: pattern compilation failed"
-**Cause:** Invalid regex patterns in configuration.
-**Solution:** Check regex syntax and escape special characters properly.
+### "Warning: config value validators.social_media.platform_patterns..."
+**Cause:** A pattern that RE2 does not compile, or a value of the wrong type; the warning names it.
+**Solution:** Fix the value it names; RE2 has no lookaround and no backreferences.
 
 ### "No matches found"
 **Cause:** Patterns don't match the content or confidence is too low.
