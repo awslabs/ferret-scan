@@ -465,10 +465,13 @@ func (v sparseQuadraticValidator) ValidateContent(content, _ string) ([]detector
 // over 1 MB (base) or 4 MB (big) while the linear term is per-match allocation, so load inflates the
 // big term more than the base -- 10.42x (base 9.412ms, big 98.114ms) in a wave-7 full-suite run,
 // red in every busy run of that wave and passing whenever run alone. Measured on linux/amd64 (16
-// CPUs) before this change, five runs each: alone at load 10-12, 5.47x-6.38x; with two package
-// suites looping, load 14-15, 5.38x-5.81x; with 32 more CPU/memory burners, load 32-41,
-// 4.66x-6.79x, per-pair samples up to 13.52x. A negative pin whose failure direction is "the guard
-// got better" can never catch a regression, so a clock reading only made it a source of red.
+// CPUs) before this change, the test run on its own: load 10-12, 5.47x-6.38x; load 14-15 with two
+// package suites looping, 5.38x-5.81x; load 32-41 with 32 CPU/memory burners added, 4.66x-6.79x;
+// load 133, 5.37x-5.90x (five runs each, all passing, per-pair samples up to 13.52x). Run after the
+// other GrowthRatio controls in the same process, as a full suite runs it, at load 131-146: 8 of 10
+// runs FAILED, 7.45x-10.96x, with the base unmoved (9.9-11.0ms) and the big term at 74-115ms. A
+// negative pin whose failure direction is "the guard got better" can never catch a regression, so a
+// clock reading only made it a source of red.
 //
 // So the limit is now asserted STRUCTURALLY, in a unit no scheduler can move: allocated bytes
 // (runtime.MemStats.TotalAlloc across one ValidateContent call). The fixture's rescan copies the
@@ -485,8 +488,9 @@ func (v sparseQuadraticValidator) ValidateContent(content, _ string) ([]detector
 //  3. the same measurement at 1 rescan per 256 matches reads ABOVE maxGrowthRatio, so the unit is
 //     not blind to the quadratic and assertion 2 could fail if the arithmetic changed.
 //
-// Readings, linux/amd64, Go 1.27.3, reps 48000 (identical to 4 significant figures under -race,
-// which does not instrument TotalAlloc; repeated readings differ by under 6 KB in 69 MB, 1e-4):
+// Readings, linux/amd64, Go 1.27.3, reps 48000. Measured identical to 4 significant figures under
+// -race, so this pin needs no race/!race split; repeated readings differ by under 7 KB, 1e-4 of the
+// 69 MB base, under any load (25 runs at load 119-146 gave the same three ratios):
 //
 //	                         base            big              ratio
 //	linear only (no rescan)  68,646,832 B    330,112,864 B    4.81x   (rL; append doubling, not 4.00)
