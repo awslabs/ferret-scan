@@ -23,7 +23,7 @@ import "strings"
 // two helpers narrow what that escape may lift; neither drops a finding.
 
 // isScopedIdentifierAt reports whether an IPv6-shaped match is directly followed by a second
-// "::" run, as the regex's "Face::Add" is in "Face::Add::Bead".
+// "::" run, as the regex's match at the head of "Face::Add::Bead" is.
 //
 // An IPv6 address holds at most one "::" (RFC 4291, 2.2), so a token carrying two is a
 // "::"-separated path (C++ scopes, CloudFormation and Ruby module names), not an address. The
@@ -34,7 +34,7 @@ func isScopedIdentifierAt(match, line string, matchEnd int) bool {
 }
 
 // productVersionValues returns the dotted quads that occur on the line in the product-token
-// position (isProductVersionAt), or nil when none does.
+// position (isProductVersionAt) with no port or CIDR suffix, or nil when none does.
 //
 // A version is often quoted twice on one line, once bare and once where it came from: "matching
 // `4.3.3.2` out of `Application: LibreOffice/4.3.3.2$Linux_X86_64`". The per-line dedup reports
@@ -42,12 +42,16 @@ func isScopedIdentifierAt(match, line string, matchEnd int) bool {
 // value is was skipped. The line names the value a version, so every occurrence of it on that
 // line is held to the product-version ceiling.
 //
+// An occurrence with a suffix does not count: "Gateway/203.0.113.42:8443" is an address, because
+// a port or CIDR welded to the value outranks the shape before it (hasStructuralSuffixAt), and
+// counting it would demote the same address written as a URL elsewhere on the line.
+//
 // found is the IPv4_Standard pattern's matches on the line, so this costs one pass over
 // matches the loop computes anyway and no second regex run.
 func productVersionValues(line string, found [][]int) map[string]struct{} {
 	var set map[string]struct{}
 	for _, loc := range found {
-		if !isProductVersionAt(line, loc[0]) {
+		if !isProductVersionAt(line, loc[0]) || hasStructuralSuffixAt(line, loc[1]) {
 			continue
 		}
 		if set == nil {
@@ -101,9 +105,8 @@ var addressPrepositions = map[string]struct{}{
 // $(go env GOROOT)/src, $(go env GOMODCACHE), this repository and the public corpus by-format/
 // (24,689 files): 6 lines carry a public quad after a capitalised non-keyword word with an IP
 // keyword elsewhere on the line. 4 are this repository's CHANGELOG "Manager 26.8.0.3" lines (in
-// the checkout and in the v2.5.3 module copy) and 2 are "Per 8.1.2.2 Connection-Specific Header",
-// an RFC section number in net/http, which the preposition rule leaves as it was. None is an
-// address.
+// the checkout and in the v2.5.3 module copy) and 2 are an RFC section number after "Per" in a
+// net/http comment, which the preposition rule leaves as it was. None is an address.
 func (v *Validator) isNamedByNonAddressWordAt(line string, matchIndex int) bool {
 	end := matchIndex - 1
 	if end < 2 || line[end] != ' ' {

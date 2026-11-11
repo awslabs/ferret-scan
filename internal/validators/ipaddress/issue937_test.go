@@ -107,6 +107,15 @@ func TestAVersionBesideItsOwnProductTokenIsAVersion(t *testing.T) {
 	if c := reportedConfidences(t, control, "52.94.236.248"); len(c) != 1 || c[0] < 90 {
 		t.Errorf("control %q reported at %v, want HIGH", control, c)
 	}
+
+	// Control: a product-token occurrence with a port is an address, so it lends the value no
+	// version evidence. CHANGELOG.md:1900 on main writes the same address as a URL authority
+	// and as "Gateway/<quad>:8443" on one line; the URL occurrence must stay HIGH.
+	suffixed := "separates `LibreOffice/24.8.4.2` from `http://52.94.236.248`, where the quad is also " +
+		"preceded by `/`; a port is welded to the value, so `Gateway/52.94.236.248:8443` stays HIGH"
+	if c := reportedConfidences(t, suffixed, "52.94.236.248"); len(c) != 1 || c[0] < 90 {
+		t.Errorf("URL-authority address beside a suffixed product token reported at %v, want HIGH", c)
+	}
 }
 
 // TestAVersionAfterAProductNameIsNotLiftedByAKeywordElsewhere covers the second IPv4 shape.

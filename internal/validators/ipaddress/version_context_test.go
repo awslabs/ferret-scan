@@ -64,6 +64,7 @@ func TestProductVersionValues(t *testing.T) {
 		{"matching `4.3.3.2` out of `LibreOffice/4.3.3.2$Linux`", []string{"4.3.3.2"}},
 		{"Chrome/138.0.0.0 and Firefox/115.0.2.1", []string{"138.0.0.0", "115.0.2.1"}},
 		{"http://52.94.236.248/x and 4.3.3.2", nil},
+		{"Gateway/52.94.236.248:8443 and Route/52.94.236.249/24", nil},
 		{"no quads here", nil},
 	}
 	for _, tc := range cases {
