@@ -262,7 +262,7 @@ func NewValidator() *Validator {
 		"2001:db8::/32",   // RFC 3849 IPv6 documentation
 		"fe80::/10",       // IPv6 link-local
 		"fc00::/7",        // IPv6 unique local (ULA)
-		"::1/128",         // IPv6 loopback
+		"::/96",           // IPv6 ::, loopback ::1 and the deprecated IPv4-compatible block (#937)
 		"169.254.0.0/16",  // IPv4 APIPA / link-local
 		"192.0.2.0/24",    // RFC 5737 TEST-NET-1
 		"198.51.100.0/24", // RFC 5737 TEST-NET-2
@@ -382,6 +382,10 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			lineBounds = table.Bounds(line)
 		}
 
+		// Quads this line itself names as product versions; filled from the IPv4_Standard
+		// matches below, before any of them is scored (#937, see productVersionValues).
+		var productValues map[string]struct{}
+
 		for _, pattern := range v.patterns {
 			if pattern.version == "IPv6" {
 				if !hasColon {
@@ -398,6 +402,9 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			// a latent correctness bug: strings.Index finds the FIRST occurrence
 			// of a duplicated token, not the actual match position.
 			foundIdx := pattern.regex.FindAllStringIndex(line, -1)
+			if pattern.name == "IPv4_Standard" {
+				productValues = productVersionValues(line, foundIdx)
+			}
 
 			for _, loc := range foundIdx {
 				matchIndex, matchEnd := loc[0], loc[1]
@@ -410,9 +417,11 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					continue
 				}
 
-				// Skip if this IP is embedded within a longer alphanumeric string.
+				// Skip if this IP is embedded within a longer alphanumeric string, or is
+				// the head of a "::"-separated identifier (#937, isScopedIdentifierAt).
 				// Offset-based check avoids a fresh strings.Index scan of the line.
-				if v.isEmbeddedInStringAt(match, line, matchIndex, matchEnd) {
+				if v.isEmbeddedInStringAt(match, line, matchIndex, matchEnd) ||
+					isScopedIdentifierAt(match, line, matchEnd) {
 					continue
 				}
 
@@ -477,9 +486,17 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				//
 				// With productVersion false and a non-tabular document this reduces
 				// exactly to hasIPContextSignalAt, so ordinary content is unchanged.
+				//
+				// #937 narrows both from the value's side. A quad the same line also writes
+				// as a product token is that product's version, wherever this occurrence
+				// sits; and a quad directly after a capitalised non-keyword name ("Manager
+				// 26.8.0.3") is not lifted by a keyword elsewhere on the line, which labels
+				// something else. See version_context.go.
 				productVersion := pattern.version == "IPv4" &&
-					isProductVersionAt(line, matchIndex)
-				keywordSignal := lineHasPositiveKeyword ||
+					(isProductVersionAt(line, matchIndex) || hasProductValue(productValues, cleanForDedup))
+				lineKeyword := lineHasPositiveKeyword &&
+					!(pattern.version == "IPv4" && v.isNamedByNonAddressWordAt(line, matchIndex))
+				keywordSignal := lineKeyword ||
 					v.headerNamesIP(table, lineBounds, matchIndex)
 				clearsCap := hasStructuralSuffixAt(line, matchEnd) ||
 					(keywordSignal && !productVersion)
