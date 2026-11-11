@@ -52,6 +52,9 @@ func TestNonNoticeShapesAreNotReported(t *testing.T) {
 		// 80.00: a call argument named r.
 		"self._by_base = {os.path.basename(r): r for r in self.files}",
 		"rows = [r for r in pending if pub_key(r) not in pub]",
+		// 98.00 consolidated; "when trademark" alone read 94 after the
+		// copyright half was dropped.
+		`t.Error("copyright should still be detected when trademark is disabled")`,
 	}
 	for _, line := range decoys {
 		if got := confidences(t, line); got != "" {
@@ -91,5 +94,34 @@ func TestNoticeControlsKeepConfidence(t *testing.T) {
 		if got := confidences(t, c.line); got != c.want {
 			t.Errorf("%q: got %q, want %q", c.line, got, c.want)
 		}
+	}
+}
+
+// TestNoticeAfterProseCopyrightIsKept: the copyright regex's entity class
+// runs on through commas and parentheses, so a prose "copyright ..." match
+// can swallow a real notice later on the line. Dropping the prose match must
+// not drop the notice: it is reported from its own marker, at the confidence
+// main gave the combined match.
+func TestNoticeAfterProseCopyrightIsKept(t *testing.T) {
+	cases := []struct{ line, text, conf string }{
+		{"copyright notices (e.g., Copyright 2023 Company Name)", "Copyright 2023 Company Name)", "87.00"},
+		{"the copyright holder, Copyright 2024 Acme Corp", "Copyright 2024 Acme Corp", "87.00"},
+		{"copyright owner (c) 2021 Globex Corporation", "(c) 2021 Globex Corporation", "87.00"},
+	}
+	for _, c := range cases {
+		ms, err := NewValidator().ValidateContent(c.line+"\n", "notice.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent(%q): %v", c.line, err)
+		}
+		if len(ms) != 1 || ms[0].Text != c.text || fmt.Sprintf("%.2f", ms[0].Confidence) != c.conf {
+			var got []string
+			for _, m := range ms {
+				got = append(got, fmt.Sprintf("%q@%.2f", m.Text, m.Confidence))
+			}
+			t.Errorf("%q: got %v, want %q@%s", c.line, got, c.text, c.conf)
+		}
+	}
+	if got := confidences(t, "copyright copyright copyright notice"); got != "" {
+		t.Errorf("repeated prose marker: got %s, want none", got)
 	}
 }

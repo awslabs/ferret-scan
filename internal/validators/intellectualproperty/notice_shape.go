@@ -1,6 +1,7 @@
 package intellectualproperty
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -65,8 +66,9 @@ func isQuotedListElement(line string, start, end int) bool {
 }
 
 // isNonNoticeTrademark reports whether a trademark match is prose or code
-// rather than a mark: its leading word is a function word ("with trademark"
-// with the word in lowercase, "a ™"), or it ends in a lowercase "(r)" (a call argument such as
+// rather than a mark: the lowercase word "trademark" after a lowercase word
+// ("with trademark", "when trademark"), a symbol after a function word
+// ("a ™"), or a lowercase "(r)" (a call argument such as
 // basename(r); the registered mark is an uppercase R). The registered-mark
 // word form is kept whatever word precedes it: an article before it is the
 // usual wording of a real notice.
@@ -88,6 +90,13 @@ func isNonNoticeTrademark(match, after string) bool {
 	if strings.HasSuffix(strings.ToLower(match), "trademark") && !strings.HasSuffix(match, "trademark") {
 		return false
 	}
+	// The lowercase word after a lowercase word ("when trademark is
+	// disabled") is prose: the word before a mark is its brand.
+	if strings.HasSuffix(match, "trademark") {
+		if r, _ := utf8.DecodeRuneInString(match); unicode.IsLower(r) {
+			return true
+		}
+	}
 	end := strings.IndexFunc(match, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' })
 	if end < 0 {
 		end = len(match)
@@ -102,15 +111,14 @@ func isNonNoticeTrademark(match, after string) bool {
 // argument ("f(c) for c in ..."). A notice names its owner with a capital,
 // or carries a year.
 func isNonNoticeCopyright(match string) bool {
-	lower := strings.ToLower(match)
 	var rest string
 	switch {
 	case strings.HasPrefix(match, "©"):
 		rest = match[len("©"):]
-	case strings.HasPrefix(lower, "(c)"):
-		rest = match[len("(c)"):]
-	case strings.HasPrefix(lower, "copyright"):
-		rest = match[len("copyright"):]
+	case len(match) >= 3 && strings.EqualFold(match[:3], "(c)"):
+		rest = match[3:]
+	case len(match) >= 9 && strings.EqualFold(match[:9], "copyright"):
+		rest = match[9:]
 	default:
 		return false
 	}
@@ -164,4 +172,46 @@ func dropQuotedListMatches(lineMatches map[int][]detector.Match, lineNum int, id
 
 func isWordByte(b byte) bool {
 	return b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
+}
+
+// laterCopyrightNotice recovers a real notice that a rejected copyright match
+// swallowed: the copyright regex's entity class runs on through commas and
+// parentheses, so in "copyright notices (e.g., Copyright 2023 Company Name)"
+// the leftmost match starts at the prose word and covers the notice too. It
+// finds the first later marker inside the match that is followed by a year or
+// a capital (the cheap test, so the regex runs at most once per rejected
+// match and the scan stays linear) and returns the regex match starting
+// there, if it is itself a notice.
+func laterCopyrightNotice(ipType string, re *regexp.Regexp, line string, start, end int) (int, int, bool) {
+	if ipType != "copyright" || re == nil {
+		return start, end, false
+	}
+	seg := line[start:end]
+	for i := 1; i < len(seg); i++ {
+		var n int
+		switch rest := seg[i:]; {
+		case strings.HasPrefix(rest, "©"):
+			n = len("©")
+		case len(rest) >= 3 && strings.EqualFold(rest[:3], "(c)"):
+			n = 3
+		case len(rest) >= 9 && strings.EqualFold(rest[:9], "copyright") && !isWordByte(seg[i-1]):
+			n = 9
+		default:
+			continue
+		}
+		if isNonNoticeCopyright(line[start+i : end]) {
+			i += n - 1
+			continue
+		}
+		loc := re.FindStringIndex(line[start+i : end])
+		if loc == nil || loc[0] != 0 {
+			return start, end, false
+		}
+		s, e := start+i, start+i+loc[1]
+		if isNonNoticeMatch(ipType, line, s, e) {
+			return start, end, false
+		}
+		return s, e, true
+	}
+	return start, end, false
 }

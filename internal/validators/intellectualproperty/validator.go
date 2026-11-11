@@ -1026,7 +1026,11 @@ func (v *Validator) detectPatternsByLine(ctx stdctx.Context, content string, ori
 				matchStart, matchEnd := loc[0], loc[1]
 				match := line[matchStart:matchEnd]
 				if isNonNoticeMatch(ipType, line, matchStart, matchEnd) {
-					continue // #934: regex syntax, prose or an atom name, not a notice
+					var ok bool
+					if matchStart, matchEnd, ok = laterCopyrightNotice(ipType, regex, line, matchStart, matchEnd); !ok {
+						continue // #934: regex syntax, prose or an atom name, not a notice
+					}
+					match = line[matchStart:matchEnd]
 				}
 				if isQuotedListElement(line, matchStart, matchEnd) {
 					quotedList = append(quotedList, len(lineMatches[lineNum]))
