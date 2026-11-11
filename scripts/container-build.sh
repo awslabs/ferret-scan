@@ -67,5 +67,5 @@ $CONTAINER_CMD build \
     .
 
 echo "Container image built successfully with $CONTAINER_CMD!"
-echo "Run with: $CONTAINER_CMD run --rm -p 8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan --web"
+echo "Run with: $CONTAINER_CMD run --rm -p 127.0.0.1:8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan --web"
 echo "Note: The --web flag starts the web interface mode. Refer to documentation for more details."
