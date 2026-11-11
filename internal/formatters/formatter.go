@@ -221,6 +221,17 @@ type ScanStats struct {
 	// byte-identical in JSON and YAML.
 	DisabledDetectionTypes map[string][]string `json:"disabled_detection_types,omitempty" yaml:"disabled_detection_types,omitempty"`
 
+	// ConfigWarnings lists the configured values under `validators:` that this run's validators could
+	// not use, one line each, as the CLI prints them after "Warning: " (#903): a regex RE2 rejects, an
+	// entry of the wrong type, a scalar where a list belongs. Each value was dropped, so the detection,
+	// disable or allowlist it configured did not take effect. In core.ConfigWarnings' order: by check
+	// name, then in the order the validator met them.
+	//
+	// The machine half of the stderr warning, for a reader that never sees stderr, and the only channel
+	// on `--stdin --enable-redaction` without --output, where stderr IS this document. omitempty, so a
+	// run whose configuration is usable stays byte-identical in JSON and YAML.
+	ConfigWarnings []string `json:"config_warnings,omitempty" yaml:"config_warnings,omitempty"`
+
 	// FilesNotRedacted counts files whose findings were REPORTED but whose values
 	// were not redacted, so they remain in cleartext. Separate from
 	// FilesNotExamined because they are different facts about different stages: a

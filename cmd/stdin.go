@@ -323,6 +323,11 @@ func runStdinScan(in stdinScanInputs) int {
 		// complete. With stderr carrying the findings document the narrowing has no channel yet: the
 		// document's stats.disabled_detection_types is the remaining half of #887.
 		reportDisabledDetectionTypes(os.Stderr, result.DisabledDetectionTypes, result.UnrecognisedDisabledTypes)
+		// Same rule for a configured value the validators ScanContent built could not use (#903): the file
+		// path's "Warning: config value …" lines. core.ScanContent has reported them since #917, and this
+		// path printed none, so a pattern RE2 rejects left a gateway passing its value through with nothing
+		// on stderr. With stderr carrying the findings document they go into its stats block instead.
+		writeConfigValueWarnings(os.Stderr, result.ConfigWarnings)
 		// And for findings an EXPIRED rule would have suppressed (#866). The file path has printed it
 		// since #699; here it was never printed, so `--stdin --pre-commit-mode` blocked a commit with 0
 		// bytes on stderr and no hint that the operator's own baseline had lapsed. Counted by the
@@ -358,6 +363,7 @@ func runStdinScan(in stdinScanInputs) int {
 		elapsed:                elapsed,
 		suppressedCount:        suppressedCount,
 		disabledDetectionTypes: result.DisabledDetectionTypes,
+		configWarnings:         result.ConfigWarnings,
 		notExamined:            stdinNotExamined(result, scanCfg.VirtualPath),
 		scope: scopeInputsFor(checksRun, checksNotApplicable, result.DisabledDetectionTypes,
 			run, in.flags, suppressionManager),
@@ -650,6 +656,9 @@ type stdinReport struct {
 	suppressedCount        int
 	disabledDetectionTypes map[string][]string
 	notExamined            []formatters.NotExaminedFile
+	// configWarnings are the configured values core.ScanContent's validators could not use (#903). The
+	// stats block carries them, which under --enable-redaction without --output is their only channel.
+	configWarnings []string
 	// scope is everything NewScanScope needs except the confidence filter, which each report site
 	// parses itself.
 	scope formatters.ScopeInputs
@@ -730,6 +739,7 @@ func (r *stdinReport) stats(matches []detector.Match) *formatters.ScanStats {
 		FilesProcessed:         1,
 		FilesNotExamined:       len(r.notExamined),
 		DisabledDetectionTypes: r.disabledDetectionTypes,
+		ConfigWarnings:         r.configWarnings,
 		TotalFindings:          len(matches),
 		High:                   high,
 		Medium:                 medium,

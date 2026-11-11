@@ -86,6 +86,10 @@ type SARIFDriver struct {
 type SARIFInvocation struct {
 	ExecutionSuccessful        bool                `json:"executionSuccessful"`
 	ToolExecutionNotifications []SARIFNotification `json:"toolExecutionNotifications,omitempty"`
+	// ToolConfigurationNotifications carries the configured values the validators could not use
+	// (#903); see attachConfigWarnings. omitempty, so a run whose configuration is usable keeps
+	// every byte.
+	ToolConfigurationNotifications []SARIFNotification `json:"toolConfigurationNotifications,omitempty"`
 }
 
 // SARIFNotification is one runtime condition detected during the run.

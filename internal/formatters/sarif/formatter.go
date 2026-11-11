@@ -174,6 +174,7 @@ func (f *Formatter) buildReport(mapper *VulnerabilityMapper, ruleManager *RuleMa
 	// Before the sub-type notifications, so a run that narrowed both says the wider fact first.
 	attachScope(&run, options)
 	attachDisabledDetectionTypes(&run, options)
+	attachConfigWarnings(&run, options)
 
 	// Create the top-level SARIF report
 	report := &SARIFReport{
