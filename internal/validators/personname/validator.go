@@ -2060,18 +2060,44 @@ func (v *Validator) deduplicateMatches(matches []detector.Match) []detector.Matc
 // shortcut: the text-rule fallback keeps the old per-line O(u^2) over distinct texts, but only
 // for unplaced matches, which neither findNames* producer emits (both record FullLine).
 func containedInLongerSpan(matches []detector.Match) []bool {
-	spans := detector.ResolveLineSpans(matches)
 	contained := make([]bool, len(matches))
+
+	// Only a line holding two or more distinct texts can contain anything, so every other
+	// line is skipped before any span is resolved. That keeps the dense repeated-value line
+	// (TestPersonNameValidator_PerformanceWorstCase) a single map pass, as it was. Resolving
+	// a subset is exact: the resolver's cursors are per (line, text), and every match of a
+	// selected line is in the subset.
+	firstText := make(map[int]string, len(matches))
+	multi := make(map[int]bool)
+	for _, m := range matches {
+		if t, ok := firstText[m.LineNumber]; !ok {
+			firstText[m.LineNumber] = m.Text
+		} else if t != m.Text {
+			multi[m.LineNumber] = true
+		}
+	}
+	var sub []detector.Match
+	var orig []int // orig[j] is sub[j]'s index in matches
+	for i, m := range matches {
+		if multi[m.LineNumber] {
+			sub = append(sub, m)
+			orig = append(orig, i)
+		}
+	}
+	if len(sub) == 0 {
+		return contained
+	}
+	spans := detector.ResolveLineSpans(sub)
 
 	// Trusted spans grouped by line (LineID: offsets from different lines never compare).
 	byLine := make(map[int][]int)
 	var unplaced []int
-	for i := range matches {
+	for j := range sub {
 		switch {
-		case !spans[i].OK:
-			unplaced = append(unplaced, i)
-		case spanTrusted(matches[i], spans[i]):
-			byLine[spans[i].LineID] = append(byLine[spans[i].LineID], i)
+		case !spans[j].OK:
+			unplaced = append(unplaced, j)
+		case spanTrusted(sub[j], spans[j]):
+			byLine[spans[j].LineID] = append(byLine[spans[j].LineID], j)
 		}
 	}
 
@@ -2093,8 +2119,8 @@ func containedInLongerSpan(matches []detector.Match) []bool {
 				run++
 			}
 			end := spans[idxs[k]].End
-			for _, i := range idxs[k:run] {
-				contained[i] = maxEnd >= end
+			for _, j := range idxs[k:run] {
+				contained[orig[j]] = maxEnd >= end
 			}
 			if end > maxEnd {
 				maxEnd = end
@@ -2108,19 +2134,19 @@ func containedInLongerSpan(matches []detector.Match) []bool {
 	}
 	// Old text rule for unplaced matches, against every distinct text on the same line.
 	textsByLine := make(map[int][]string)
-	seen := make(map[dedupKey]struct{}, len(matches))
-	for _, m := range matches {
+	seen := make(map[dedupKey]struct{}, len(sub))
+	for _, m := range sub {
 		key := dedupKey{line: m.LineNumber, text: m.Text}
 		if _, ok := seen[key]; !ok {
 			seen[key] = struct{}{}
 			textsByLine[m.LineNumber] = append(textsByLine[m.LineNumber], m.Text)
 		}
 	}
-	for _, i := range unplaced {
-		text := matches[i].Text
-		for _, other := range textsByLine[matches[i].LineNumber] {
+	for _, j := range unplaced {
+		text := sub[j].Text
+		for _, other := range textsByLine[sub[j].LineNumber] {
 			if len(other) > len(text) && strings.Contains(other, text) {
-				contained[i] = true
+				contained[orig[j]] = true
 				break
 			}
 		}
