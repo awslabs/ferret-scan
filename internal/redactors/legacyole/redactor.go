@@ -462,8 +462,8 @@ func writtenText(value, repl string, narrowCount int) string {
 	return string(utf16.Decode(units))
 }
 
-// replaceLogical finds every occurrence of pat in a stream's logical bytes and
-// writes rep back through the sector chain.
+// replaceLogical finds every occurrence of pat in a stream's logical bytes, overlapping ones
+// included, and writes rep back through the sector chain (#916, overlapping_occurrences_test.go).
 func replaceLogical(raw []byte, s streamExtent, logical, pat, rep []byte) int {
 	if len(pat) == 0 || len(pat) != len(rep) {
 		return 0
@@ -483,9 +483,9 @@ func replaceLogical(raw []byte, s streamExtent, logical, pat, rep []byte) int {
 			off = at + 1
 			continue
 		}
-		// Keep the logical view in step with the file.
+		// Keep the logical view in step; resume one byte on, as rep may keep an overlap's bytes.
 		copy(logical[at:at+len(rep)], rep)
-		off = at + len(rep)
+		off = at + 1
 		count++
 	}
 	return count

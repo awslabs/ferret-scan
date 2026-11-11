@@ -6,6 +6,7 @@ package legacyole
 import (
 	"encoding/binary"
 	"fmt"
+	"sort"
 	"unicode/utf16"
 )
 
@@ -447,7 +448,15 @@ func (s streamExtent) writeLogical(raw []byte, offset int, repl []byte) bool {
 		return false
 	}
 	written := 0
-	for _, f := range s.fragments {
+	// Start at the fragment holding offset rather than at the first one. Fragments are in logical
+	// order, so this is a binary search; a scan from the first fragment made every write cost one
+	// step per sector before it, so rewriting k occurrences of a value in an n-byte stream was
+	// O(k * n / sectorSize): measured on main, one reported value at every 4th offset of a single
+	// 1, 2 and 4 MiB run took 52, 214 and 813 ms of CPU (#916 rewrites more of those occurrences).
+	first := sort.Search(len(s.fragments), func(i int) bool {
+		return s.fragments[i].logicalStart+s.fragments[i].length > offset
+	})
+	for _, f := range s.fragments[first:] {
 		if written >= len(repl) {
 			break
 		}
