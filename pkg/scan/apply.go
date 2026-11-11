@@ -20,7 +20,9 @@ const (
 	StrategyFormatPreserving RedactStrategy = iota
 	// StrategySimple replaces the entire value with a fixed token.
 	StrategySimple
-	// StrategySynthetic replaces with realistic fake data.
+	// StrategySynthetic replaces with realistic fake data. Formats whose values are overwritten in
+	// place at their own byte length (audio, video, legacy .doc/.xls/.ppt) refuse it: RedactFile
+	// returns an error wrapping ErrStrategyNotSupported and writes nothing for that file (#863).
 	StrategySynthetic
 )
 

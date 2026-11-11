@@ -21,7 +21,8 @@ type RedactFileOptions struct {
 	// redactor mirrors the source path structure beneath this directory.
 	OutputDir string
 
-	// Strategy: StrategyFormatPreserving (default), StrategySimple, or StrategySynthetic.
+	// Strategy: StrategyFormatPreserving (default), StrategySimple, or StrategySynthetic. A format
+	// that does not take the strategy is refused with an error wrapping ErrStrategyNotSupported.
 	Strategy RedactStrategy
 
 	// Checks selects validators. Empty = all.
