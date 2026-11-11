@@ -117,6 +117,48 @@ func TestPlaceFilterKeepsRealNames(t *testing.T) {
 	}
 }
 
+// TestToponymPhraseLengthBounds keeps isToponymPhrase's length pre-check in step with the map: an
+// entry outside the bounds would never match.
+func TestToponymPhraseLengthBounds(t *testing.T) {
+	for phrase := range toponymPhrasesMap {
+		if len(phrase) < toponymPhraseMinLen || len(phrase) > toponymPhraseMaxLen {
+			t.Errorf("%q (%d bytes) is outside [%d, %d]; widen the bounds", phrase, len(phrase),
+				toponymPhraseMinLen, toponymPhraseMaxLen)
+		}
+		if strings.ContainsRune(phrase, '-') {
+			t.Errorf("%q contains a hyphen; isToponymPhrase matches a hyphenated candidate by its head only", phrase)
+		}
+	}
+	for _, maxPrefix := range []string{"ciudad", "puerto"} {
+		if !toponymPrefixMap[maxPrefix] || len(maxPrefix) > maxToponymPrefixLen {
+			t.Errorf("maxToponymPrefixLen %d no longer covers %q", maxToponymPrefixLen, maxPrefix)
+		}
+	}
+	for prefix := range toponymPrefixMap {
+		if len(prefix) > maxToponymPrefixLen {
+			t.Errorf("toponym prefix %q (%d bytes) is longer than maxToponymPrefixLen %d", prefix, len(prefix), maxToponymPrefixLen)
+		}
+	}
+}
+
+// TestPlaceFilterDoesNotAllocateOnOrdinaryNames pins the cost of the filter on the common path: a
+// candidate that is no place, after a word that is no prefix, costs no allocation. The filter runs on
+// every candidate of every line.
+func TestPlaceFilterDoesNotAllocateOnOrdinaryNames(t *testing.T) {
+	v := NewValidator()
+	v.ensureNamesLoaded()
+	line := "Signed by John Smith and Signed Mary Jones"
+	start := strings.Index(line, "Mary Jones")
+	allocs := testing.AllocsPerRun(200, func() {
+		if isToponymPhrase("Mary Jones") || v.continuesToponym(line, start) {
+			t.Fatal("an ordinary name was treated as a place")
+		}
+	})
+	if allocs != 0 {
+		t.Errorf("isToponymPhrase + continuesToponym allocate %.1f times per ordinary candidate, want 0", allocs)
+	}
+}
+
 // TestContinuesToponymBoundaries pins the look-back: the prefix has to be the whole word directly
 // before the candidate, separated by spaces only, and a word the name data does not know.
 func TestContinuesToponymBoundaries(t *testing.T) {
