@@ -658,10 +658,12 @@ func compileKeywordPatterns() []*regexp.Regexp {
 
 	var patterns []*regexp.Regexp
 
-	// SSH Private Key patterns (encoded to bypass Code Defender)
+	// SSH Private Key patterns (encoded to bypass Code Defender). The label group is
+	// non-capturing (#902): as a capture, keywordCandidates took it as the value, so a one-line
+	// OPENSSH key could add a finding whose Text was the label `OPENSSH `.
 	beginPriv := "-----" + "BEGIN"
 	endPriv := "-----" + "END"
-	patterns = append(patterns, regexp.MustCompile(beginPriv+` (RSA |DSA |EC |OPENSSH )?PRIVATE KEY`+"-----"+`[\s\S]*?`+endPriv+` (RSA |DSA |EC |OPENSSH )?PRIVATE KEY`+"-----"))
+	patterns = append(patterns, regexp.MustCompile(beginPriv+` (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY`+"-----"+`[\s\S]*?`+endPriv+` (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY`+"-----"))
 
 	// Certificate Private Key patterns (encoded to bypass Code Defender)
 	patterns = append(patterns, regexp.MustCompile(beginPriv+` CERTIFICATE`+"-----"+`[\s\S]*?`+endPriv+` CERTIFICATE`+"-----"))
@@ -937,6 +939,11 @@ func (v *Validator) validateContentCtx(ctx stdctx.Context, content string, origi
 			matches = append(matches, m)
 		}
 	}
+
+	// #902 Part B: one-line PEM copies collapse to the multi-line finding, and private-key
+	// containers outside 5-dash PEM (PuTTY, ssh.com, OpenVPN, age, other armour labels) are added
+	// where no finding already reports their bytes. See private_key_containers.go.
+	matches = v.appendPrivateKeyContainers(matches, len(multiLineMatches), content, originalPath, contextInsights, isShellScript, envType)
 
 	return matches, nil
 }
@@ -1936,6 +1943,15 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 
 	if v.isPGPPrivateKey(match) {
 		confidence = 96.0
+		checks["specific_pattern"] = true
+		checks["valid_format"] = true
+		return confidence, checks
+	}
+
+	// A whole private-key container outside 5-dash PEM (#902 Part B) scores like the PEM arm: its
+	// framing is the evidence. Last of the typed arms, so a text any arm above claims keeps its score.
+	if _, ok := privateKeyContainerKind(match); ok {
+		confidence = 95.0
 		checks["specific_pattern"] = true
 		checks["valid_format"] = true
 		return confidence, checks
