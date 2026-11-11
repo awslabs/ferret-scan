@@ -182,6 +182,8 @@ func TestIsReservedFictionalNumber(t *testing.T) {
 		"4155550100", "555-0100", "5550199", "415.555.0150",
 		"(212) 555-0187 ext 4", "(212) 555-0187 extension 221", "4155550142x99",
 		"415-555-0187 EXT. 12",
+		// Ofcom's drama blocks (#930).
+		"+44 20 7946 0958", "020 7946 0958", "01632 960123", "07700 900123 ext 5",
 	}
 	for _, s := range reserved {
 		if !v.isReservedFictionalNumber(s) {
@@ -192,7 +194,7 @@ func TestIsReservedFictionalNumber(t *testing.T) {
 
 	assignable := []string{
 		"415-267-3141", "415-555-0099", "415-555-0200", "415-555-1212",
-		"(212) 867-5310", "+44 20 7946 0958", "2125550287", "555-0299",
+		"(212) 867-5310", "+44 20 7946 1958", "2125550287", "555-0299",
 		// One digit past the block in the last position.
 		"415-555-0299", "415-556-0100",
 	}
