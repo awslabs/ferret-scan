@@ -207,10 +207,12 @@ also a redaction change**. Test it explicitly, do not infer it.
   with `jq -e '.stats.high | numbers'` so a missing count fails instead of reading as 0
   ([#767](https://github.com/awslabs/ferret-scan/issues/767)).
 
-### 8. Web UI (when affected)
+### 8. Web UI security and the public redaction API
 
-- If the change touches `internal/web/`, its assets, or anything the embedded template
-  renders: run the web tests, and verify CSP is not loosened (`script-src 'self'`, no
+- `go test ./internal/web/` runs for every change, not only a web one: `/scan` and
+  `/export` consume every validator, formatter, suppression and config change (see
+  dimension 14). If the change touches `internal/web/`, its assets, or anything the
+  embedded template renders, also verify CSP is not loosened (`script-src 'self'`, no
   new `'unsafe-inline'`) and no new security header is dropped (TM-03/05/06).
 - The public redaction API (`pkg/redact`) is a separate external contract — a bump
   that external consumers pin to must keep `redact.ValidCheckNames()` and friends
@@ -227,19 +229,24 @@ also a redaction change**. Test it explicitly, do not infer it.
 
 ### 9. TP / FP and recall (real-world documents)
 
-- Measure against real documents in `~/Downloads` (never invent synthetic-only
+- Measure against real documents, the local corpus below (never invent synthetic-only
   evidence when real material exists), plus a purpose-built adversarial fixture for
   the specific mechanism.
 - **The real-world set is a local corpus**, at `$FERRET_CORPUS_DIR` (default
-  `../ferret-corpus`, next to the repository). The variable is for the two corpus scripts
-  named below; ferret-scan itself does not read it. `by-format/` holds public, licence-clean
-  files covering every format the router supports (PDF, OOXML, legacy Office, ODF, RTF,
-  SVG, images, audio, video, archives, text and code), fetched by
-  `scripts/corpus-fetch.sh`, which records each file's URL, sha256 and licence in a
-  `MANIFEST`. `private/` holds the maintainer's own documents and is never named in
-  anything that leaves the machine. Nothing under the corpus is ever committed
-  (`.gitignore` lists `ferret-corpus/` and `/corpus/`). `scripts/corpus-ab.sh BASE HEAD`
-  runs the main-vs-branch A/B over it, reported by format.
+  `../ferret-corpus`, next to the repository). The variable is for the corpus scripts
+  (`scripts/corpus-*.sh`); ferret-scan itself does not read it. `by-format/` holds public,
+  licence-clean files covering every format the router supports (PDF, OOXML, legacy Office,
+  ODF, RTF, SVG, images, audio, video, archives, text and code), fetched by
+  `make corpus-fetch` (`scripts/corpus-fetch.sh`), which records each file's URL, sha256 and
+  licence in a `MANIFEST`. `private/` holds the maintainer's own documents and is never named
+  in anything that leaves the machine. Nothing under the corpus is ever committed
+  (`.gitignore` lists `ferret-corpus/` and `/corpus/`).
+- **Run the A/B with `make corpus-ab`** (`BASE` defaults to `origin/main`, `HEAD` to
+  `HEAD`, `CORPUS=<dir>` names the corpus; `scripts/corpus-ab.sh` documents every option).
+  It builds both binaries, takes a same-binary noise floor, and reports new / lost /
+  confidence-changed findings by type and format, every file not fully examined, and the
+  redaction survivors: a value the re-scan of a redacted copy finds again, or one still in
+  its bytes. It takes minutes: run it in the background with a log and quote its tables.
 - **Build ground truth independently** where possible (e.g. an XML-parser reference
   for spreadsheet cells) and score recall/precision against it, rather than trusting
   the tool to grade itself.
@@ -296,6 +303,54 @@ ranging over a map is a latent nondeterminism bug.
   mutable state (package-level caches, compiled-pattern maps) even if untouched, when
   the validator runs concurrently across files/chunks.
 
+### 14. Surfaces: web UI and container (always)
+
+Full documentation: **[SURFACE_PARITY.md](SURFACE_PARITY.md)**.
+
+The web UI and the container image run the same scanner as the CLI, and users meet them as
+products of their own. `/scan` and `/export` consume every validator, formatter, suppression and
+config change, so "when affected" no longer applies to the web: a change that never touches
+`internal/web/` changes what the web reports. The container runs the same binary in another runtime
+(`FROM scratch`, `USER ferret`, `TMPDIR=/home/ferret/tmp`, `FERRET_CONTAINER_MODE=true`, no shell,
+no CA bundle); [#776](https://github.com/awslabs/ferret-scan/issues/776) shipped an image in which
+every redaction panicked while `--version` passed.
+
+- `go test ./internal/web/` runs on every PR and holds the web to the corpus: every golden case
+  through `/scan` (`TestWebScanMatchesCorpusScan`), `/export` against the CLI formatter for every
+  format (`TestWebExportMatchesCLIFormatter`), the export menu against `formatters.List()`, and every
+  CLI flag against a recorded web decision (`TestCLIFlagsHaveAWebDecision`). A new flag needs an
+  entry in `webEquivalent`, `webDeliberatelyAbsent` or `webUndecided`; a new allowlist entry needs
+  the mechanism and an issue.
+- `make surface-parity` before a change lands whenever production code, the Dockerfile or a
+  formatter changed: the same inputs through the host CLI, the host web UI on 127.0.0.1, the
+  container CLI and the container web UI published on 127.0.0.1 only. Quote its per-surface table
+  in the PR. Add `CORPUS=<dir>` when the change concerns a document type the golden corpus lacks.
+- Never test the web or the container on anything but loopback: `--bind 127.0.0.1` on the host,
+  `-p 127.0.0.1:<port>:<port>` and `--port <port>` for the image, verified with `ss -ltn` and
+  `docker port`. Keep the two ports equal when a browser drives the UI: it refuses a scan whose
+  `Origin` names a port other than the one the server listens on.
+- `scripts/pr-checklist.sh` prints this line as RAN only after a green four-surface run on the same
+  checkout; it is never N/A for a production change.
+
+### 15. Self-scan (always)
+
+Full documentation: **[SELF_SCAN.md](SELF_SCAN.md)**.
+
+The repository's own scan blocks on HIGH. CI scans the files a pull request changes, so it cannot
+see a validator change that newly flags a file the pull request did not touch. Before opening the
+pull request:
+
+- `make self-scan SELF_SCAN_ARGS='--base origin/main'` on the branch, green. It prints the HIGH findings
+  that are new, lost and changed against main by file class; a lost finding in a shippable file is a
+  dimension 9 question as well.
+- Every new HIGH is a decision, recorded in the pull request body: a real value removed; a detector false
+  positive fixed, or ruled `detector FP: #NNN` with the issue filed; a fixture moved to a reserved value,
+  or ruled `fixture: <why>`.
+- A finding that moved under its rule: `scripts/self-scan.sh --regenerate <file>`, review the candidate,
+  commit the re-anchored rules.
+- Body line: `15 RAN: scripts/self-scan.sh --base origin/main -> HIGH 0, suppressed N; new X, lost Y,
+  changed Z`.
+
 ---
 
 ## Sequencing (stacked PRs)
@@ -315,14 +370,15 @@ Work lands as a conflict-free sequence, so:
 
 ## Applicability (scaling the plan to the change)
 
-| Change kind | Always | Add |
-|---|---|---|
-| Validator confidence / keyword logic | 1,2,3,5,6,9,10 | 4 if loops over line/match; 11 if ranking |
-| Extraction / preprocessing | 1,2,4,5,9,11,12 | 3 only if corpus has that format; 13 if concurrent |
-| Formatter / output schema | 1,2,3,7 | 8 if web-facing |
-| Web / template / assets | 1,2,7,8 | — |
-| Dead-code removal | 1,2,3,10 | (lands alone) |
-| Pure docs | 1 | — |
+| Change kind | Always | Add | Surfaces (14) |
+|---|---|---|---|
+| Validator confidence / keyword logic | 1,2,3,5,6,9,10,15 | 4 if loops over line/match; 11 if ranking | always |
+| Extraction / preprocessing | 1,2,4,5,9,11,12,15 | 3 only if corpus has that format; 13 if concurrent | always |
+| Formatter / output schema | 1,2,3,7,15 | 8 if web-facing | always |
+| Web / template / assets | 1,2,7,8,15 | — | always |
+| Dockerfile / container scripts | 1,15 | — | always |
+| Dead-code removal | 1,2,3,10,15 | (lands alone) | always |
+| Pure docs | 1,15 | — | N/A |
 
 When in doubt, run more. The cost of an extra `go test ./...` is seconds; the cost of a
 shipped redaction bypass is a cleartext leak.

@@ -226,54 +226,14 @@ tree is the current checkout's, NEEDS-MANUAL when anything other than docs and t
 only for a diff of docs and tests alone. Committing what was tested keeps the marker valid; any edit
 invalidates it; a failed or partial run removes it.
 
-## Proposed TEST_PLAN.md text
+## In the test plan
 
-This section is the text proposed for `docs/testing/TEST_PLAN.md`, to paste after dimension 13 and
-into the Applicability section; it is not part of the plan until it is pasted there.
-
-```markdown
-### 14. Surfaces: web UI and container (always)
-
-The web UI and the container image run the same scanner as the CLI, and users meet them as
-products of their own. `/scan` and `/export` consume every validator, formatter, suppression and
-config change, so "when affected" no longer applies to the web: a change that never touches
-`internal/web/` changes what the web reports. The container runs the same binary in another runtime
-(`FROM scratch`, `USER ferret`, `TMPDIR=/home/ferret/tmp`, `FERRET_CONTAINER_MODE=true`, no shell,
-no CA bundle); #776 shipped an image in which every redaction panicked while `--version` passed.
-
-- `go test ./internal/web/` runs on every PR and holds the web to the corpus: every golden case
-  through `/scan` (`TestWebScanMatchesCorpusScan`), `/export` against the CLI formatter for every
-  format (`TestWebExportMatchesCLIFormatter`), the export menu against `formatters.List()`, and every
-  CLI flag against a recorded web decision (`TestCLIFlagsHaveAWebDecision`). A new flag needs an
-  entry in `webEquivalent`, `webDeliberatelyAbsent` or `webUndecided`; a new allowlist entry needs
-  the mechanism and an issue.
-- `make surface-parity` before a change lands whenever production code, the Dockerfile or a
-  formatter changed: the same inputs through the host CLI, the host web UI on 127.0.0.1, the
-  container CLI and the container web UI published on 127.0.0.1 only. Quote its per-surface table
-  in the PR. Add `CORPUS=<dir>` when the change concerns a document type the golden corpus lacks.
-- Never test the web or the container on anything but loopback: `--bind 127.0.0.1` on the host,
-  `-p 127.0.0.1:<port>:8080` for the image, verified with `ss -ltn` and `docker port`.
-- `scripts/pr-checklist.sh` prints this line as RAN only after a green four-surface run on the same
-  checkout; it is never N/A for a production change.
-```
-
-Proposed Applicability table, with the column added (the rows are the plan's own):
-
-```markdown
-| Change kind | Always | Add | Surfaces (14) |
-|---|---|---|---|
-| Validator confidence / keyword logic | 1,2,3,5,6,9,10 | 4 if loops over line/match; 11 if ranking | always |
-| Extraction / preprocessing | 1,2,4,5,9,11,12 | 3 only if corpus has that format; 13 if concurrent | always |
-| Formatter / output schema | 1,2,3,7 | 8 if web-facing | always |
-| Web / template / assets | 1,2,7,8 | — | always |
-| Dockerfile / container scripts | 1 | — | always |
-| Dead-code removal | 1,2,3,10 | (lands alone) | always |
-| Pure docs | 1 | — | N/A |
-```
+Dimension 14 of [TEST_PLAN.md](TEST_PLAN.md#14-surfaces-web-ui-and-container-always) holds every
+change to these instruments, and its Applicability table has a Surfaces (14) column: always, except
+for a change of docs alone.
 
 ## Follow-ups
 
-- Paste the proposed text above into `docs/testing/TEST_PLAN.md` (owned by the docs stream this wave).
 - The three `exportLosses` are web divergences to fix in `handleExport`.
 - `/export` refuses a body over 1 MiB, and the UI posts every result in one request: measured, 391
   golden findings (572,492 bytes) export and 782 (1,144,919 bytes) are refused with HTTP 400.
