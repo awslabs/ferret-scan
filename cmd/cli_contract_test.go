@@ -33,6 +33,9 @@ import (
 //	              are not capped by --limit; a result's `confidence` is the numeric score and
 //	              `confidence_level` the band name. The self-scan workflow's gate counts from
 //	              these fields (#767)
+//	unmatched     `stats.suppression_rules_unmatched` is a JSON number counting the enabled rules
+//	              that matched no finding in a file the run examined, and is absent when there
+//	              is none (#885)
 //
 // Deliberately NOT here: compatibility checks against any specific downstream tool. Whether a
 // particular consumer's integration still works is that consumer's test suite's job, not this
@@ -573,6 +576,50 @@ func TestJSONStatsAreNumericBandCounts(t *testing.T) {
 		s := stats(t, scan(t, locked))
 		if v, _ := s["files_not_examined"].(float64); v != 1 {
 			t.Errorf("stats.files_not_examined = %v for one unreadable file, want 1", s["files_not_examined"])
+		}
+	})
+}
+
+// TestJSONStatsCountTheRulesThatMatchedNothing pins stats.suppression_rules_unmatched (#885): a JSON
+// number on a --file report whose enabled rules for a scanned file matched no finding, equal to the
+// number of rules the stderr note names, and absent from a report whose rules all matched, so a CI job
+// can read it with `jq -e '.stats.suppression_rules_unmatched // 0 | numbers'`.
+func TestJSONStatsCountTheRulesThatMatchedNothing(t *testing.T) {
+	bin := buildForCLIContract(t)
+	work, _, env := profileWorkdir(t)
+	rules := enabledRulesFor(t, bin, work, env, "customers.txt", customersText("", false))
+	scan := func(t *testing.T, content string) (map[string]any, string) {
+		t.Helper()
+		writeFixture(t, filepath.Join(work, "customers.txt"), content)
+		r := runCLI(t, bin, work, env, "", "--file", "customers.txt", "--config", os.DevNull, "--format", "json",
+			"--no-color", "--quiet", "--suppression-file", rules)
+		var doc struct {
+			Stats map[string]any `json:"stats"`
+		}
+		if err := json.Unmarshal([]byte(r.stdout), &doc); err != nil {
+			t.Fatalf("the JSON report does not parse: %v\n%s", err, r.stdout)
+		}
+		return doc.Stats, r.stderr
+	}
+
+	t.Run("a line inserted above every finding", func(t *testing.T) {
+		stats, stderr := scan(t, customersText("", true))
+		n, ok := stats["suppression_rules_unmatched"].(float64)
+		if !ok || n != 5 {
+			t.Errorf("stats.suppression_rules_unmatched = %T %v, want the JSON number 5", stats["suppression_rules_unmatched"], stats["suppression_rules_unmatched"])
+		}
+		if notes := unmatchedNoteLines(stderr); len(notes) != 1 || !strings.HasPrefix(notes[0], "Note: 5 enabled") {
+			t.Errorf("the stderr note %q does not name the 5 rules the counter counts", notes)
+		}
+	})
+
+	t.Run("every rule matched", func(t *testing.T) {
+		stats, _ := scan(t, customersText("", false))
+		if v, present := stats["suppression_rules_unmatched"]; present {
+			t.Errorf("stats.suppression_rules_unmatched = %v on a run whose rules all matched; want it absent", v)
+		}
+		if n, _ := stats["suppressed"].(float64); n != 5 {
+			t.Fatalf("stats.suppressed = %v, want 5, so this control is vacuous", stats["suppressed"])
 		}
 	})
 }

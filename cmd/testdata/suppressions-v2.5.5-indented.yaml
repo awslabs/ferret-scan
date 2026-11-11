@@ -1,0 +1,63 @@
+# Suppression rules written by ferret-scan v2.5.5 (987e13d), whose finding hash is the v2 formula, for
+# indentedCustomers in cmd/unmatched_rules_test.go: `--file customers.txt --config /dev/null
+# --confidence all --generate-suppressions`, then every rule enabled. The fixture is indented, so v2
+# and the current formula (v5, edge whitespace trimmed) disagree on every finding: a current binary
+# matches these rules through the older formula, and --generate-suppressions migrates them (#885).
+# Synthetic values only.
+version: "1.0"
+rules:
+    - id: SUP-00000001
+      hash: 1465dd9751af195dde7b6721549a378c3ee0eb4868286af50646641b86b0638f # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: true
+      created_at: 2026-11-11T13:07:36Z
+      last_seen_at: 2026-11-11T13:07:36Z
+      metadata:
+        confidence: "100.00"
+        filename: customers.txt
+        finding_type: VISA
+        line_number: "3"
+    - id: SUP-00000002
+      hash: 89694229f9ada1cd3b448058cc536799cf3fc7195cea55ae361584fbb497c4a6 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: true
+      created_at: 2026-11-11T13:07:36Z
+      last_seen_at: 2026-11-11T13:07:36Z
+      metadata:
+        confidence: "100.00"
+        filename: customers.txt
+        finding_type: MASTERCARD
+        line_number: "6"
+    - id: SUP-00000003
+      hash: fe67e518634fbd43d2248e538ced1640af0f22f316fd63f8b9e084e0b533bd9a # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: true
+      created_at: 2026-11-11T13:07:36Z
+      last_seen_at: 2026-11-11T13:07:36Z
+      metadata:
+        confidence: "90.00"
+        filename: customers.txt
+        finding_type: DATE_OF_BIRTH
+        line_number: "5"
+    - id: SUP-00000004
+      hash: ace35b74cec623bef5371432ff5322f16bfeed62d94edd5d910869348cca089f # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: true
+      created_at: 2026-11-11T13:07:36Z
+      last_seen_at: 2026-11-11T13:07:36Z
+      metadata:
+        confidence: "41.00"
+        filename: customers.txt
+        finding_type: BUSINESS
+        line_number: "2"
+    - id: SUP-00000005
+      hash: d0f92d9dec5a71ac1ad7641c20910bb3807e34f62332a9a297921edc92eb753f # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: true
+      created_at: 2026-11-11T13:07:36Z
+      last_seen_at: 2026-11-11T13:07:36Z
+      metadata:
+        confidence: "100.00"
+        filename: customers.txt
+        finding_type: SSN
+        line_number: "4"
