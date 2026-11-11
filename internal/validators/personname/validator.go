@@ -1974,22 +1974,31 @@ type dedupKey struct {
 
 // deduplicateMatches removes duplicate and overlapping matches, preferring longer/more specific ones.
 //
-// The original implementation was O(M^2) over the full match list: for every match it
-// rescanned every other match for a containing/longer one, then rescanned the growing
-// output for an exact duplicate. On a single long line packed with many (often identical)
-// matches this is a quadratic DoS. This version preserves the exact same behavior while
-// avoiding the quadratic blow-ups:
+// Two rules, applied per line:
 //
-//   - Exact duplicates (same line + same text) are collapsed first via a map. Because the
-//     containment check only ever compares matches with *different* text on the same line,
-//     identical duplicates never influence anyone's keep/drop decision, so collapsing them
-//     up front is behavior-preserving. The map keeps the highest-confidence copy and the
-//     first-seen position, exactly as the old in-place overwrite did.
-//   - The "is there a longer same-line match that contains me" check is then evaluated only
-//     against the distinct texts present on the *same line* (grouped via a per-line index),
-//     instead of every match in the whole file. This removes the cross-line comparisons that
-//     made the many-line case quadratic, and shrinks the single-line case from O(k^2) over
-//     all raw matches to O(u^2) over the far smaller set of distinct texts on that line.
+//   - Exact duplicates (same line + same text) collapse to ONE finding, keeping the
+//     highest-confidence copy and the first-seen position. "Jane Doe ... Jane Doe"
+//     is one finding; the redactors' completeness sweep masks every copy of a reported value.
+//   - A match whose SPAN lies inside a strictly longer match's span on the same line is
+//     dropped: "Jane Doe" inside "Dr. Jane Doe" is the same occurrence, and the longer
+//     finding already covers its bytes.
+//
+// The second rule used to compare TEXTS ("another match on this line contains my text"),
+// which also dropped a separate occurrence elsewhere on the line: in
+// "Signed by Jane Doe, witnessed by Dr. Jane Doe." the bare "Jane Doe" was dropped
+// because "Dr. Jane Doe" contains the string, so only the second occurrence was reported
+// and the first survived redaction in clear (#966). A (line, text) group is therefore kept
+// when ANY of its occurrences is outside every longer span, and its representative is the
+// highest-confidence such occurrence. A group none of whose members is contained is
+// decided exactly as before, so every finding the old rule kept is unchanged.
+//
+// Spans come from detector.ResolveLineSpans, the resolver the redactors' overlap pass uses,
+// over the PRE-dedup list, where every occurrence is still its own candidate. See
+// containedInLongerSpan for how a span is trusted and what happens when it is not.
+//
+// Cost: ResolveLineSpans is linear on a dense line and the containment test is one sort
+// per line, O(n log n), so the per-line O(u^2) over distinct texts that the old rule paid
+// (#966's 1 MiB distinct-names measurement) is gone for every match whose span resolves.
 //
 // Output ordering matches the original: kept matches are emitted in order of first appearance.
 func (v *Validator) deduplicateMatches(matches []detector.Match) []detector.Match {
@@ -1997,49 +2006,159 @@ func (v *Validator) deduplicateMatches(matches []detector.Match) []detector.Matc
 		return matches
 	}
 
-	// Collapse exact duplicates (same line + same text), keeping the highest-confidence
-	// copy and the first-seen position. unique holds one representative per distinct
-	// (line, text) in first-appearance order.
+	contained := containedInLongerSpan(matches)
+
+	// One slot per distinct (line, text) in first-appearance order. keep[i] records whether
+	// the slot has an uncontained member; unique[i] is then the highest-confidence one.
 	indexByKey := make(map[dedupKey]int, len(matches))
 	unique := make([]detector.Match, 0, len(matches))
-	for _, match := range matches {
+	keep := make([]bool, 0, len(matches))
+	for i, match := range matches {
 		key := dedupKey{line: match.LineNumber, text: match.Text}
-		if i, ok := indexByKey[key]; ok {
-			if match.Confidence > unique[i].Confidence {
-				unique[i] = match
-			}
+		g, ok := indexByKey[key]
+		if !ok {
+			indexByKey[key] = len(unique)
+			unique = append(unique, match)
+			keep = append(keep, !contained[i])
 			continue
 		}
-		indexByKey[key] = len(unique)
-		unique = append(unique, match)
-	}
-
-	// Group the distinct texts by line so the containment check only compares within a line.
-	textsByLine := make(map[int][]string, len(unique))
-	for _, m := range unique {
-		textsByLine[m.LineNumber] = append(textsByLine[m.LineNumber], m.Text)
+		if contained[i] {
+			continue
+		}
+		if !keep[g] || match.Confidence > unique[g].Confidence {
+			unique[g] = match
+			keep[g] = true
+		}
 	}
 
 	deduplicated := make([]detector.Match, 0, len(unique))
-	for _, match := range unique {
-		shouldKeep := true
-		// Drop this match if another distinct match on the same line is strictly
-		// longer and contains it (same semantics as the original inner loop).
-		for _, otherText := range textsByLine[match.LineNumber] {
-			if otherText != match.Text &&
-				len(otherText) > len(match.Text) &&
-				strings.Contains(otherText, match.Text) {
-				shouldKeep = false
-				break
-			}
-		}
-
-		if shouldKeep {
+	for i, match := range unique {
+		if keep[i] {
 			deduplicated = append(deduplicated, match)
 		}
 	}
-
 	return deduplicated
+}
+
+// containedInLongerSpan reports, per match, whether it lies inside a strictly longer match
+// on the same line. The returned slice is parallel to matches.
+//
+// A match's span is TRUSTED only when ResolveLineSpans placed it and the context recorded
+// by the producer (detector.LineContext at the candidate's true offset) is reproduced at
+// that span. The resolver hands out occurrences of a text left to right in arrival order,
+// so if a candidate for some occurrence is missing it can place a later one on an earlier
+// occurrence; the context check catches that. A match whose span is not trusted is never
+// used as a CONTAINER, and:
+//
+//   - if it was placed on its line but at the wrong occurrence, it is KEPT (not contained):
+//     its true offset is unknown, and keeping a real name value can only add coverage,
+//     whereas dropping it is exactly the #966 leak;
+//   - if it could not be placed at all (no Context.FullLine, or the text is not in it), it
+//     falls back to the old text rule (a strictly longer, distinct text on the same line
+//     contains it), so it is decided as before.
+//
+// shortcut: the text-rule fallback keeps the old per-line O(u^2) over distinct texts, but only
+// for unplaced matches, which neither findNames* producer emits (both record FullLine).
+func containedInLongerSpan(matches []detector.Match) []bool {
+	contained := make([]bool, len(matches))
+
+	// Only a line holding two or more distinct texts can contain anything, so every other
+	// line is skipped before any span is resolved. That keeps the dense repeated-value line
+	// (TestPersonNameValidator_PerformanceWorstCase) a single map pass, as it was. Resolving
+	// a subset is exact: the resolver's cursors are per (line, text), and every match of a
+	// selected line is in the subset.
+	firstText := make(map[int]string, len(matches))
+	multi := make(map[int]bool)
+	for _, m := range matches {
+		if t, ok := firstText[m.LineNumber]; !ok {
+			firstText[m.LineNumber] = m.Text
+		} else if t != m.Text {
+			multi[m.LineNumber] = true
+		}
+	}
+	var sub []detector.Match
+	var orig []int // orig[j] is sub[j]'s index in matches
+	for i, m := range matches {
+		if multi[m.LineNumber] {
+			sub = append(sub, m)
+			orig = append(orig, i)
+		}
+	}
+	if len(sub) == 0 {
+		return contained
+	}
+	spans := detector.ResolveLineSpans(sub)
+
+	// Trusted spans grouped by line (LineID: offsets from different lines never compare).
+	byLine := make(map[int][]int)
+	var unplaced []int
+	for j := range sub {
+		switch {
+		case !spans[j].OK:
+			unplaced = append(unplaced, j)
+		case spanTrusted(sub[j], spans[j]):
+			byLine[spans[j].LineID] = append(byLine[spans[j].LineID], j)
+		}
+	}
+
+	for _, idxs := range byLine {
+		// Start ascending, end descending: every span that could contain idxs[k] sorts
+		// before it. Identical spans (same text, same occurrence) never contain each
+		// other, so the running maximum end only absorbs a run once the run is over.
+		slices.SortFunc(idxs, func(a, b int) int {
+			if spans[a].Start != spans[b].Start {
+				return spans[a].Start - spans[b].Start
+			}
+			return spans[b].End - spans[a].End
+		})
+		maxEnd := -1
+		for k := 0; k < len(idxs); {
+			run := k
+			for run < len(idxs) && spans[idxs[run]].Start == spans[idxs[k]].Start &&
+				spans[idxs[run]].End == spans[idxs[k]].End {
+				run++
+			}
+			end := spans[idxs[k]].End
+			for _, j := range idxs[k:run] {
+				contained[orig[j]] = maxEnd >= end
+			}
+			if end > maxEnd {
+				maxEnd = end
+			}
+			k = run
+		}
+	}
+
+	if len(unplaced) == 0 {
+		return contained
+	}
+	// Old text rule for unplaced matches, against every distinct text on the same line.
+	textsByLine := make(map[int][]string)
+	seen := make(map[dedupKey]struct{}, len(sub))
+	for _, m := range sub {
+		key := dedupKey{line: m.LineNumber, text: m.Text}
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			textsByLine[m.LineNumber] = append(textsByLine[m.LineNumber], m.Text)
+		}
+	}
+	for _, j := range unplaced {
+		text := sub[j].Text
+		for _, other := range textsByLine[sub[j].LineNumber] {
+			if len(other) > len(text) && strings.Contains(other, text) {
+				contained[orig[j]] = true
+				break
+			}
+		}
+	}
+	return contained
+}
+
+// spanTrusted reports whether a resolved span is the occurrence match was produced from:
+// the before/after context the producer recorded at its true offset is reproduced there.
+func spanTrusted(match detector.Match, span detector.LineSpan) bool {
+	at := detector.LineContext(match.Context.FullLine, span.Start, span.End)
+	return at.BeforeText == match.Context.BeforeText && at.AfterText == match.Context.AfterText
 }
 
 // Removed complex pattern priority methods - simple deduplication is sufficient
