@@ -71,8 +71,8 @@ func TestTheIssuesCodeShapes(t *testing.T) {
 				}
 				return
 			}
-			if len(codes) != 1 || codes[0].Text != tc.text || codes[0].Type != "CREDIT_CARD" || codes[0].Confidence != 100 {
-				t.Fatalf("want one CREDIT_CARD %q at 100, got %+v", tc.text, codes)
+			if len(codes) != 1 || codes[0].Text != tc.text || codes[0].Type != "CARD_SECURITY_CODE" || codes[0].Confidence != 100 {
+				t.Fatalf("want one CARD_SECURITY_CODE %q at 100, got %+v", tc.text, codes)
 			}
 		})
 	}

@@ -222,6 +222,8 @@ func canonicalCodeLabel(label string) string {
 }
 
 // bestCard returns the highest-scoring card finding among one line's findings, the first of equals.
+// Its cardType is the brand (Metadata["card_type"]), so a code paired with a frame names the frame's
+// PAN brand rather than CARD_TRACK_DATA.
 func bestCard(lineMatches []detector.Match, lineIdx int) (lineCard, bool) {
 	if len(lineMatches) == 0 {
 		return lineCard{}, false
@@ -230,6 +232,9 @@ func bestCard(lineMatches []detector.Match, lineIdx int) (lineCard, bool) {
 	for _, m := range lineMatches {
 		if m.Confidence > best.confidence {
 			best.confidence, best.cardType, best.ceiling = m.Confidence, m.Type, 0
+			if brand, ok := m.Metadata["card_type"].(string); ok {
+				best.cardType = brand
+			}
 			if c, ok := m.Metadata[confidenceCeilingKey].(float64); ok {
 				best.ceiling = c
 			}
@@ -288,12 +293,11 @@ func (v *Validator) appendSecurityCodes(matches []detector.Match, cands []codeCa
 		matches = append(matches, detector.Match{
 			Text:       c.line[c.start:c.end],
 			LineNumber: c.lineIdx + 1,
-			// The family type until the code has one of its own (#905's CARD_SECURITY_CODE):
-			// --checks CREDIT_CARD reports it, and simple and format_preserving mask it whole (the
-			// card mask keeps nothing of a value with fewer than eight digits). The synthetic card
-			// generator keeps a value's first four digits, so it writes a code back unchanged and
-			// the output check refuses the file.
-			Type:       "CREDIT_CARD",
+			// Its own type, outside the card mask (see securityCodeType): --checks CREDIT_CARD
+			// reports it, simple and format_preserving mask it whole, and synthetic writes a random
+			// string of its length where the card generator wrote the code back unchanged and the
+			// output check refused the file.
+			Type:       securityCodeType,
 			Confidence: confidence,
 			Filename:   originalPath,
 			Validator:  "creditcard",

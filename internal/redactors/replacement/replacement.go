@@ -327,6 +327,8 @@ func syntheticCopies(value, dataType string) []Copy {
 			}
 			return index[i] < prefix
 		})
+	case dataType == "CARD_TRACK_DATA":
+		return syntheticTrackCopies(value)
 	case dataType == "SSN":
 		// Digits are regenerated one for one; everything else is written back.
 		return runsWhere(value, func(i int) bool { return value[i] < '0' || value[i] > '9' })
@@ -935,6 +937,10 @@ func generatorFor(dataType, value string) synthGen {
 			}}
 	case "IP_ADDRESS":
 		return synthGen{family: "IP_ADDRESS", key: ipKey(value), distinct: true, draw: drawIP, render: verbatim}
+	case "CARD_TRACK_DATA":
+		return synthGen{family: "CARD_TRACK_DATA", key: value, distinct: true,
+			draw:   func(s *source, _ int) (string, error) { return syntheticTrack(value, s), nil },
+			render: verbatim}
 	case "PERSON_NAME":
 		sh := parseName(value)
 		return synthGen{family: "PERSON_NAME", key: sh.key(), distinct: true,
@@ -988,6 +994,83 @@ func writeDigits(value, digits string) string {
 		b[i] = c
 	}
 	return string(b)
+}
+
+// trackPAN returns the bounds of a card track's PAN (#905): the first run of 13 to 19 ASCII digits.
+// Every frame the credit-card validator reports as CARD_TRACK_DATA puts its PAN first, after at most
+// a start sentinel and a format code (`%B`, `B`, `;`, `%3B`), none of which holds a digit run that
+// long; a tag 57 value inside TLV is reported from the first byte after its length byte.
+func trackPAN(value string) (start, end int, ok bool) {
+	for i := 0; i < len(value); {
+		if value[i] < '0' || value[i] > '9' {
+			i++
+			continue
+		}
+		j := i
+		for j < len(value) && value[j] >= '0' && value[j] <= '9' {
+			j++
+		}
+		if n := j - i; n >= 13 && n <= 19 {
+			return i, j, true
+		}
+		i = j
+	}
+	return 0, 0, false
+}
+
+// trackHasName reports whether a track's PAN is followed by Track 1's field separator, so the bytes
+// after it hold a cardholder name and alphanumeric discretionary data rather than Track 2's or tag
+// 57's structural letters (`D`, `F`, a percent-encoded `%3D`/`%3F`).
+func trackHasName(value string, panEnd int) bool {
+	return panEnd < len(value) && value[panEnd] == '^'
+}
+
+// syntheticTrack writes a card track of the same shape with nothing of the original in it but its
+// structure (#905). The PAN is cardDigits' (the issuer prefix kept, the check digit wrong, so no
+// validator reads it as a card); every other digit is drawn at random; in a Track 1 every letter after
+// the PAN (the name, any alphanumeric discretionary data) is drawn at random in its own case. The
+// sentinels, separators and Track 2 / tag 57 structural letters are written back.
+//
+// Before CARD_TRACK_DATA had a type, a frame went through the card generator, which keeps every
+// non-digit byte and writes one Luhn-INVALID number over ALL the frame's digits: the name survived,
+// and the PAN (the first 13 to 19 of those digits) was Luhn-valid one time in ten. A re-scan of the
+// issue's synthetic copies reported 6 such cards.
+func syntheticTrack(value string, s *source) string {
+	b := []byte(value)
+	panStart, panEnd, ok := trackPAN(value)
+	if ok {
+		copy(b[panStart:panEnd], cardDigits(value[panStart:panEnd], s))
+	}
+	name := ok && trackHasName(value, panEnd)
+	for i := 0; i < len(b); i++ {
+		if ok && i >= panStart && i < panEnd {
+			continue
+		}
+		switch c := b[i]; {
+		case c >= '0' && c <= '9':
+			b[i] = byte('0' + s.intn(10)) // #nosec G115 -- a decimal digit
+		case name && i > panEnd && c >= 'A' && c <= 'Z':
+			b[i] = byte('A' + s.intn(26)) // #nosec G115 -- a letter offset
+		case name && i > panEnd && c >= 'a' && c <= 'z':
+			b[i] = byte('a' + s.intn(26)) // #nosec G115 -- a letter offset
+		}
+	}
+	return string(b)
+}
+
+// syntheticTrackCopies mirrors syntheticTrack: every byte it writes back, which is every byte that
+// is not a digit and not a letter it redraws, and the PAN's issuer prefix cardDigits keeps.
+func syntheticTrackCopies(value string) []Copy {
+	panStart, panEnd, ok := trackPAN(value)
+	name := ok && trackHasName(value, panEnd)
+	return runsWhere(value, func(i int) bool {
+		c := value[i]
+		if c >= '0' && c <= '9' {
+			return ok && i >= panStart && i < panStart+4
+		}
+		isLetter := (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+		return !(name && i > panEnd && isLetter)
+	})
 }
 
 // cardDigits draws the digits of a card-SHAPED value that is deliberately Luhn-INVALID and

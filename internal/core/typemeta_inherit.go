@@ -173,6 +173,13 @@ var typeParent = map[string]string{
 	// sub-types above it also has copy of its own (supplementalDescriptors), because "Social Security
 	// Number Detected" misnames it; the mapping still supplies its weight.
 	"ITIN": "SSN",
+
+	// Card track data and security codes (#905): the sensitive authentication data PCI DSS v4.0
+	// Requirement 3.3.1 forbids keeping after authorisation. Each has copy of its own
+	// (supplementalDescriptors), since "Credit Card Number Detected" understates a whole track or a
+	// code; the mapping groups them under CREDIT_CARD on the checks page, the check that reports them.
+	"CARD_TRACK_DATA":    "CREDIT_CARD",
+	"CARD_SECURITY_CODE": "CREDIT_CARD",
 }
 
 // supplementalDescriptors supplies copy the migrated registry does not have — both for families that
@@ -350,6 +357,41 @@ var supplementalDescriptors = map[string]TypeDescriptor{
 		GitLabRemediation: "Remove ITINs from code and documentation, or replace them with synthetic test " +
 			"data. An ITIN identifies a taxpayer to the IRS as an SSN does.",
 		GitLabName: "Individual Taxpayer Identification Number Detected",
+	},
+
+	// #905. Both are sensitive authentication data, which PCI DSS v4.0 treats more strictly than the
+	// PAN itself: a PAN may be stored if rendered unreadable (Requirement 3.5.1), while full track
+	// data (3.3.1.1) and the card verification code (3.3.1.2) may not be retained after
+	// authorisation at all, even encrypted. Hence "delete", not "tokenise".
+	"CARD_TRACK_DATA": {
+		SARIFShort: "Card Track Data Detected",
+		SARIFFull: "A full magnetic-stripe track (ISO/IEC 7813 Track 1 or Track 2) or a chip card's Track " +
+			"2 Equivalent Data (EMV tag 57) was detected in the scanned content. A track carries the card " +
+			"number together with its expiry date, service code and discretionary data, and Track 1 also " +
+			"the cardholder's name; it is the data needed to clone a card's stripe.",
+		SARIFHelp: "PCI DSS v4.0 Requirement 3.3.1.1 forbids retaining the full contents of any track " +
+			"after authorisation, even encrypted. Delete the track rather than masking or tokenising it, " +
+			"find the process that wrote it (a card reader log, a debug dump, a keyboard-wedge capture) " +
+			"and stop it, and treat the card as exposed.",
+		SARIFSensitivityWeight: 10.0,
+		GitLabCheckDesc:        "Card track data",
+		GitLabRemediation: "Delete the track data: PCI DSS forbids keeping it after authorisation, even " +
+			"encrypted, so tokenisation is not a remedy. Stop the process that wrote it.",
+		GitLabName: "Card Track Data Detected",
+	},
+	"CARD_SECURITY_CODE": {
+		SARIFShort: "Card Security Code Detected",
+		SARIFFull: "A labelled card security code (CVV2, CVC2, CID or similar) was detected in the " +
+			"scanned content. The code is printed on the card to prove the card is present, so with the " +
+			"card number it is enough for a card-not-present payment.",
+		SARIFHelp: "PCI DSS v4.0 Requirement 3.3.1.2 forbids retaining the card verification code after " +
+			"authorisation, even encrypted. Delete it rather than masking or tokenising it, and check the " +
+			"form, log or export that captured it. A code reported at LOW had no card within three lines.",
+		SARIFSensitivityWeight: 10.0,
+		GitLabCheckDesc:        "Card security code",
+		GitLabRemediation: "Delete the card security code: PCI DSS forbids keeping it after authorisation, " +
+			"even encrypted. Fix the form or log that captured it.",
+		GitLabName: "Card Security Code Detected",
 	},
 }
 
