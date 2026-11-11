@@ -119,19 +119,30 @@ type notExaminedFile struct {
 
 // routerRefusal builds the refusal for a file the router declined.
 //
-// Extracted for the same reason as oversizeRefusal: this path is not reachable from a multipart upload,
-// because an upload always lands in a readable regular temp file, so nothing in the request-level tests
-// can pin its cause and a mutation deleting it survived. A constructor can be asserted directly.
+// Extracted for the same reason as oversizeRefusal, so the cause can be asserted directly. An upload
+// always lands in a readable regular temp file, so the reachable refusals are the ones about the
+// BYTES: an unsupported type, and text carrying NUL bytes (router.ReasonRefusedNotText).
 //
-// The cause is "cannot read" rather than "cannot parse": the router declined before any preprocessor
-// looked at the bytes, so nothing is known about the content. Only the coverageGap-true half is ever
-// reported — a type nothing could have read is a benign skip and stays silent, exactly as on the CLI.
+// Which refusals are disclosed follows the CLI's file filter: a reason router.RefusalIsCoverageLoss
+// classifies as lost coverage (unreadable, or text carrying NUL bytes), and, as before, a refusal of a
+// type the router would otherwise process. A text file with a NUL byte used to fall through here as a
+// benign skip, because router.CanProcessType sniffs it as not-text, so /scan answered success with no
+// finding and no disclosure for a file the CLI reports as `cannot parse` (2 of the 639 public corpus
+// files, #924).
+//
+// The cause follows the reason, as the CLI's does: "cannot parse" for a NUL-bearing text file, whose
+// bytes the router read and declined, and "cannot read" otherwise, where nothing is known about the
+// content. A type nothing could have read is a benign skip and stays silent, exactly as on the CLI.
 func routerRefusal(displayName, reason string, processableType bool) *uploadRefusal {
+	cause := coverage.CauseUnreadable
+	if strings.HasPrefix(reason, router.ReasonRefusedNotText) {
+		cause = coverage.CauseUnparseable
+	}
 	return &uploadRefusal{
 		name:        displayName,
 		reason:      reason,
-		cause:       coverage.CauseUnreadable,
-		coverageGap: processableType,
+		cause:       cause,
+		coverageGap: processableType || router.RefusalIsCoverageLoss(reason),
 	}
 }
 
@@ -948,8 +959,11 @@ func (ws *WebServer) runFullCLIScan(ctx context.Context, filePath, originalFilen
 	// suppressed 0 of 2 on the CLI (#866). Stripping is for display, and the browser already escapes
 	// every filename it renders (escapeHtml / escapeAttr in app.js), so the raw name is what the
 	// matches carry; the diagnostics above keep the display copy.
+	//
+	// A finding inside an embedded attachment keeps its member: the preprocessor names it
+	// "<temp file> -> <member>", and uploadMatchName swaps only the temp file for the upload (#924).
 	for i := range result.Matches {
-		result.Matches[i].Filename = originalFilename
+		result.Matches[i].Filename = uploadMatchName(result.Matches[i].Filename, filePath, originalFilename)
 		// Metadata carries paths too, and renaming only Filename left them behind: a .docx
 		// whose finding came from its properties shipped
 		// metadata.original_file = "/var/folders/…/T/ferret_upload_…docx" straight to the
@@ -975,7 +989,7 @@ func (ws *WebServer) runFullCLIScan(ctx context.Context, filePath, originalFilen
 	var unsuppressed []detector.Match
 	var suppressed []detector.SuppressedMatch
 	for _, match := range result.Matches {
-		if isSuppressed, rule := suppressionManager.IsSuppressed(match); isSuppressed {
+		if isSuppressed, rule := suppressedUnderUploadName(suppressionManager, match, originalFilename); isSuppressed {
 			suppressed = append(suppressed, detector.SuppressedMatch{
 				Match:        match,
 				SuppressedBy: rule.ID,
