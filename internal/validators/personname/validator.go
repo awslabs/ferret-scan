@@ -165,7 +165,7 @@ func (v *Validator) findNamesInLine(line string, lineNum int, filePath string) [
 	var matches []detector.Match
 
 	// Use pattern manager to find matches
-	patternMatches := v.findPatternCandidates(line)
+	patternMatches := v.dropListBoundaryCandidates(line, v.findPatternCandidates(line))
 
 	// Per-line context work (lowercasing the line, keyword scans, pattern/regex
 	// scans, context-keyword list) is identical for every match on this line, so
@@ -252,7 +252,7 @@ func (v *Validator) findNamesInLineWithContext(line string, lineNum int, filePat
 	var matches []detector.Match
 
 	// Use pattern manager to find matches
-	patternMatches := v.findPatternCandidates(line)
+	patternMatches := v.dropListBoundaryCandidates(line, v.findPatternCandidates(line))
 
 	// Per-line context work (lowercasing the line, keyword scans, pattern/regex
 	// scans, context-keyword list) is identical for every match on this line, so
