@@ -4,6 +4,7 @@
 package phone
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -33,6 +34,9 @@ func TestCoordinateAndDecimalAreNotPhoneNumbers(t *testing.T) {
 		// A '+' before a run longer than any calling code, then a fraction: time.Time's monotonic
 		// clock reading, quoted.
 		`reading time.Time prints as "+9252.619193895", as isDecimalFractionTail reasons`,
+		// The integer part of a decimal: an unseparated run with a fraction straight after it.
+		`{"+1234567891011.234", "1234567891011.234"},`,
+		`x := 0000000001.1`,
 		`matching coordinates like ` + "`00074.56695-7`" + ` — to none.`,
 	} {
 		ms, err := v.ValidateContent(line, "geo.go")
@@ -65,6 +69,7 @@ func TestCoordinateRuleKeepsPhoneControls(t *testing.T) {
 		{"Phone: 0044 20 7946 0958", "0044 20 7946 0958", 100},
 		{"Phone: 0033 1 99 00 47 18", "0033 1 99 00 47 18", 100},
 		{"call +1-415-267-1234 now", "+1-415-267-1234", 100},
+		{"Call 4155550132. Then hang up", "4155550132", 15},
 	} {
 		ms, err := v.ValidateContent(c.line, "contacts.txt")
 		if err != nil {
@@ -148,6 +153,25 @@ func TestDecimalShapedZeroZero(t *testing.T) {
 	} {
 		if got := decimalShaped(text); got != want {
 			t.Errorf("decimalShaped(%q) = %t, want %t", text, got, want)
+		}
+	}
+}
+
+func TestIntegerPartOfDecimal(t *testing.T) {
+	for _, c := range []struct {
+		line, match string
+		want        bool
+	}{
+		{"x 0000000001.1", "0000000001", true},
+		{"+1234567891011.234", "+1234567891011", true},
+		{"Call 4155550132.", "4155550132", false},      // a sentence's full stop
+		{"Call 4155550132. Then", "4155550132", false}, // likewise
+		{"415.555.0132.5", "415.555.0132", false},      // separated: not this rule's
+		{"4155550132.x", "4155550132", false},
+	} {
+		s := strings.Index(c.line, c.match)
+		if got := integerPartOfDecimal(c.match, c.line, s+len(c.match)); got != c.want {
+			t.Errorf("integerPartOfDecimal(%q in %q) = %t, want %t", c.match, c.line, got, c.want)
 		}
 	}
 }

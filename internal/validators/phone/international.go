@@ -591,6 +591,22 @@ func decimalNotPhone(text string) bool {
 	return i-1 > 3 && i < len(text) && text[i] == '.'
 }
 
+// integerPartOfDecimal reports whether an unseparated match (digits, after an optional '+') is the
+// integer part of a decimal: a '.' and a digit straight after it, "0000000001" of "0000000001.1" or
+// "+1234567891011" of "+1234567891011.234" (#938). A match with separators is left alone: a number
+// written with dots continues with dots, and main's patterns take it whole.
+func integerPartOfDecimal(match, line string, end int) bool {
+	if end+1 >= len(line) || line[end] != '.' || !isDigitByte(line[end+1]) {
+		return false
+	}
+	for i := 0; i < len(match); i++ {
+		if !isDigitByte(match[i]) && !(i == 0 && match[i] == '+') {
+			return false
+		}
+	}
+	return true
+}
+
 // iso6709MaxLen bounds an ISO 6709 point string: "+DDMMSS.SSSS-DDDMMSS.SSSS+AAAAA.AAACRSWGS_84/" is
 // under 50 bytes. It bounds the walk back from a candidate and the parse forward, so the check costs
 // a constant per match whatever the line.
