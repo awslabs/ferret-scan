@@ -355,7 +355,9 @@ func (ws *WebServer) validateTemplate() error {
 func (ws *WebServer) setupRoutes() {
 	ws.mux.HandleFunc("/", ws.serveHome)
 	ws.mux.HandleFunc("/health", ws.handleHealth)
-	ws.mux.HandleFunc("/scan", ws.handleScan)
+	// /scan reads and scans the upload before it writes a byte, so its write deadline starts at
+	// its response rather than at the end of the request headers (#922).
+	ws.mux.Handle("/scan", writeDeadlineFromResponseStart(responseWriteTimeout, http.HandlerFunc(ws.handleScan)))
 	ws.mux.HandleFunc("/export", ws.handleExport)
 	ws.mux.HandleFunc("/config-info", ws.handleConfigInfo)
 
@@ -394,8 +396,9 @@ func (ws *WebServer) createSecureServer(port string) *http.Server {
 		ReadHeaderTimeout: 15 * time.Second,
 		// Timeout for reading entire request
 		ReadTimeout: 30 * time.Second,
-		// Timeout for writing response
-		WriteTimeout: 30 * time.Second,
+		// Timeout for writing response. It starts when the request headers have been read, so it
+		// also covers the handler's work; /scan re-arms it when its response starts (#922).
+		WriteTimeout: responseWriteTimeout,
 		// Timeout for idle connections
 		IdleTimeout: 60 * time.Second,
 	}
