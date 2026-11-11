@@ -917,7 +917,10 @@ func matchTypes(matches []detector.Match) []string {
 // bottom of LOW, but it may not erase.
 func TestBankAccountValidator_IBAN_IntrinsicValueFloor(t *testing.T) {
 	v := NewValidator()
-	const iban = "GB82WEST12345698765432" // mod-97 valid
+	// mod-97 valid. Not GB82WEST12345698765432, the value this test measured above: that is a
+	// published fictitious example and is now held at LOW (#930), so it cannot be the baseline of
+	// a high-confidence finding. This is the same sort code with account 98765433.
+	const iban = "GB55WEST12345698765433"
 
 	// Baseline: unpadded, this is a high-confidence finding. Without this the
 	// padded assertions below could pass vacuously.
@@ -961,7 +964,7 @@ func TestBankAccountValidator_IBAN_IntrinsicValueFloor(t *testing.T) {
 
 	// The display-format (space-grouped) pass must be floored identically —
 	// otherwise the evasion just moves to the spaced spelling of the same IBAN.
-	spaced := "GB82 WEST 1234 5698 7654 32"
+	spaced := "GB55 WEST 1234 5698 7654 33"
 	matches, err := v.ValidateContent("IBAN "+spaced+" test example fake mock sample", "spaced.txt")
 	if err != nil {
 		t.Fatalf("ValidateContent() error = %v", err)

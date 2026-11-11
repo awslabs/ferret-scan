@@ -361,6 +361,7 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 				},
 			},
 		})
+		capPublishedExample(&matches[len(matches)-1], candidate) // #930
 	}
 
 	// Second pass: display-format IBANs, grouped in fours by spaces or hyphens, and any form
@@ -403,6 +404,7 @@ func (v *Validator) scanIBAN(ctx stdctx.Context, line string, lineNum int, origi
 				},
 			},
 		})
+		capPublishedExample(&matches[len(matches)-1], normalized) // #930
 	}
 
 	return matches
