@@ -140,12 +140,12 @@ var complexityTargets = []struct {
 		threshold:       5 * time.Second,
 	},
 	{
-		// #905's labelled security codes, each on the line after its card: every code is paired
-		// with the best card within three lines, so a pairing pass that rescanned every card seen
-		// so far would be quadratic in the number of lines.
+		// #905's labelled security codes on one dense line, each beside a card: a code's own work
+		// (its label match, the line's hard-negative test, its pairing) must not rescan the line,
+		// which is what the line-scoped hard-negative test computed once per line protects.
 		name:            "creditcard_security_codes",
 		new:             func() validatorUnderTest { return creditcard.NewValidator() },
-		unit:            "card 4532015112830366\ncvv 123\n",
+		unit:            "card 4532015112830366 cvv 123 ",
 		minMatches:      600,
 		wantMatchGrowth: true,
 		threshold:       5 * time.Second,
