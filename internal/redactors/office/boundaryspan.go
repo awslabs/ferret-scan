@@ -441,10 +441,10 @@ type boundaryPiece struct {
 // rewriteAcrossBoundaries rewrites every occurrence of values that the views of contents hold across a
 // node boundary, and returns, per value rewritten, the parts it was rewritten in.
 //
-// values must be longest first; an occurrence that overlaps one already taken is left alone, so the
-// longer value wins, as in every other rewrite here. repl gives each value's replacement. slice allows a
-// replacement as long as its value to be cut at the node boundaries; simple never is, because its token
-// belongs whole in one node.
+// values must be longest first, so that where two start at the same place the longer is written, as in
+// every other rewrite here; occurrences never overlap (see the marker pass below). repl gives each
+// value's replacement. slice allows a replacement as long as its value to be cut at the node boundaries;
+// simple never is, because its token belongs whole in one node.
 //
 // An occurrence inside a single node is skipped: the per-node rewrite has already run, so one there is a
 // value that pass chose not to write, and the residue checks own that decision.
@@ -460,89 +460,111 @@ func rewriteAcrossBoundaries(contents *OfficeZipContents, docType OfficeDocument
 
 	subs := make(map[int][]subEdit)
 	partsFor := make(map[string]map[string]bool)
+
+	// One pass per view finds the occurrences of every value at once: a strings.Replacer over all of them
+	// writes a marker naming the value at each occurrence, and the markers are read back with their
+	// offsets. Searching value by value was O(values x view), the shape this repo keeps paying for; this is
+	// one scan of each view whatever the number of values. The replacer takes the leftmost occurrence and,
+	// at one position, the first value in argument order, which is the longest: occurrences never overlap.
+	// A view holds decoded character data, which cannot contain NUL, so the markers are unambiguous.
+	markArgs := make([]string, 0, 2*len(values))
+	for i, val := range values {
+		if _, ok := repl[val]; ok && val != "" {
+			markArgs = append(markArgs, val, "\x00"+strconv.Itoa(i)+"\x00")
+		}
+	}
+	if len(markArgs) == 0 {
+		return nil
+	}
+	marker := strings.NewReplacer(markArgs...)
+
 	for _, v := range views {
 		text := v.sb.String()
-		covered := make([]bool, len(text))
-		for _, val := range values {
-			with, ok := repl[val]
-			if !ok || val == "" {
+		marked := marker.Replace(text)
+		if len(marked) == len(text) && marked == text {
+			continue
+		}
+		at := 0 // offset in text of the start of rest
+		for rest := marked; ; {
+			open := strings.IndexByte(rest, 0)
+			if open < 0 {
+				break
+			}
+			at += open
+			rest = rest[open+1:]
+			end := strings.IndexByte(rest, 0)
+			if end < 0 {
+				break
+			}
+			idx, err := strconv.Atoi(rest[:end])
+			rest = rest[end+1:]
+			if err != nil || idx < 0 || idx >= len(values) {
+				break
+			}
+			val := values[idx]
+			a, b := at, at+len(val)
+			at = b
+			with := repl[val]
+
+			k0, k1 := boundarySpanRange(v.spans, a, b)
+			if k0 < 0 || (k0 == k1 && v.spans[k0].at <= a && b <= v.spans[k0].end) {
 				continue
 			}
-			sliceable := slice && len(with) == len(val)
-			for from := 0; from+len(val) <= len(text); {
-				i := strings.Index(text[from:], val)
-				if i < 0 {
+
+			pieces := make([]boundaryPiece, 0, k1-k0+1)
+			cut := slice && len(with) == len(val)
+			for pass := 0; pass < 2; pass++ {
+				pieces = pieces[:0]
+				first := true
+				for k := k0; k <= k1; k++ {
+					s := v.spans[k]
+					lo, hi := s.at, s.end
+					if a > lo {
+						lo = a
+					}
+					if b < hi {
+						hi = b
+					}
+					if lo >= hi {
+						continue
+					}
+					p := boundaryPiece{tok: s.tok, lo: s.dec + (lo - s.at), hi: s.dec + (hi - s.at)}
+					switch {
+					case cut:
+						p.with = with[lo-a : hi-a]
+					case first:
+						p.with = with
+					}
+					first = false
+					pieces = append(pieces, p)
+				}
+				if !cut {
 					break
 				}
-				a, b := from+i, from+i+len(val)
-				from = a + 1
-
-				k0, k1 := boundarySpanRange(v.spans, a, b)
-				if k0 < 0 || (k0 == k1 && v.spans[k0].at <= a && b <= v.spans[k0].end) {
-					continue
-				}
-				if anyCovered(covered, a, b) {
-					continue
-				}
-
-				pieces := make([]boundaryPiece, 0, k1-k0+1)
-				cut := sliceable
-				for pass := 0; pass < 2; pass++ {
-					pieces = pieces[:0]
-					first := true
-					for k := k0; k <= k1; k++ {
-						s := v.spans[k]
-						lo, hi := s.at, s.end
-						if a > lo {
-							lo = a
-						}
-						if b < hi {
-							hi = b
-						}
-						if lo >= hi {
-							continue
-						}
-						p := boundaryPiece{tok: s.tok, lo: s.dec + (lo - s.at), hi: s.dec + (hi - s.at)}
-						switch {
-						case cut:
-							p.with = with[lo-a : hi-a]
-						case first:
-							p.with = with
-						}
-						first = false
-						pieces = append(pieces, p)
-					}
-					if !cut {
-						break
-					}
-					// A slice that cuts a multi-byte character is not text; give the whole replacement
-					// to the first node instead.
-					valid := true
-					for _, p := range pieces {
-						if !utf8.ValidString(p.with) {
-							valid = false
-							break
-						}
-					}
-					if valid {
-						break
-					}
-					cut = false
-				}
-
+				// A slice that cuts a multi-byte character is not text; give the whole replacement
+				// to the first node instead.
+				valid := true
 				for _, p := range pieces {
-					if p.with == toks[p.tok].decoded[p.lo:p.hi] {
-						continue // a slice that keeps the node's bytes (a kept digit) needs no rewrite
+					if !utf8.ValidString(p.with) {
+						valid = false
+						break
 					}
-					subs[p.tok] = append(subs[p.tok], subEdit{lo: p.lo, hi: p.hi, with: p.with})
-					if partsFor[val] == nil {
-						partsFor[val] = make(map[string]bool)
-					}
-					partsFor[val][toks[p.tok].part] = true
 				}
-				for j := a; j < b; j++ {
-					covered[j] = true
+				if valid {
+					break
 				}
+				cut = false
+			}
+
+			for _, p := range pieces {
+				if p.with == toks[p.tok].decoded[p.lo:p.hi] {
+					continue // a slice that keeps the node's bytes (a kept digit) needs no rewrite
+				}
+				subs[p.tok] = append(subs[p.tok], subEdit{lo: p.lo, hi: p.hi, with: p.with})
+				if partsFor[val] == nil {
+					partsFor[val] = make(map[string]bool)
+				}
+				partsFor[val][toks[p.tok].part] = true
 			}
 		}
 	}
