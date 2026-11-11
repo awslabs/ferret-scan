@@ -29,7 +29,9 @@ import (
 // with the simple strategy, the replacement in the first node and the rest of the value removed from the
 // others; with a replacement as long as the value (format-preserving, and a same-length synthetic), each
 // node gets its own slice of it, so a masked cell stays a cell of the same width. The separator itself is
-// not in any node and needs no rewrite.
+// not in any node and needs no rewrite. A covered spreadsheet cell is retyped as text (an inline string,
+// an OpenDocument string cell), because an application shows a typed cell from its value, not from the
+// text the scanner reads.
 //
 // The views are a MODEL of the reader, and they are not the check. scannerview.go reads the copy back
 // through the reader itself and refuses the write if a reported value is still there, so a shape this
@@ -46,6 +48,12 @@ type boundaryToken struct {
 	// result), so the copy stays a valid sheet whatever the replacement looks like, and a shared string --
 	// which other cells may show -- is never edited for a value that only some of them are part of.
 	cell *xlsxCell
+
+	// odfCell is the start tag of the OpenDocument table cell the text sits in, if any. A spreadsheet
+	// application shows a typed cell from its office:value attribute, not from the paragraph the scanner
+	// reads, so a cell whose text is rewritten is also retyped as a string cell and loses those attributes;
+	// otherwise the copy would show the original number while every check here read it as gone.
+	odfCell *[2]int
 }
 
 // xlsxCell locates the two pieces of a <c> element a rewrite touches.
@@ -121,10 +129,12 @@ func (v *boundaryView) addSeparator(sep byte) {
 }
 
 // elementView builds the view of a part whose text the scanner takes from the character data inside
-// every `local` element, with a space after each one: a:t for slides, text:p for OpenDocument.
-func elementView(part string, content []byte, local string, toks *[]boundaryToken) (*boundaryView, bool) {
+// every `local` element, with a space after each one: a:t for slides, text:p for OpenDocument. With cells
+// set, each token also records the OpenDocument table cell it sits in (see boundaryToken.odfCell).
+func elementView(part string, content []byte, local string, cells bool, toks *[]boundaryToken) (*boundaryView, bool) {
 	v := &boundaryView{collapse: true}
 	depth := 0
+	var open [][2]int // the table cells enclosing the current position, innermost last
 	dec := xml.NewDecoder(bytes.NewReader(content))
 	for {
 		start := int(dec.InputOffset())
@@ -141,20 +151,45 @@ func elementView(part string, content []byte, local string, toks *[]boundaryToke
 			if t.Name.Local == local {
 				depth++
 			}
+			if cells && (t.Name.Local == "table-cell" || t.Name.Local == "covered-table-cell") {
+				open = append(open, [2]int{start, end})
+			}
 		case xml.EndElement:
 			if t.Name.Local == local && depth > 0 {
 				depth--
 				v.addSeparator(' ')
 			}
+			if cells && (t.Name.Local == "table-cell" || t.Name.Local == "covered-table-cell") && len(open) > 0 {
+				open = open[:len(open)-1]
+			}
 		case xml.CharData:
 			if depth > 0 && len(t) > 0 {
 				k := len(*toks)
-				*toks = append(*toks, boundaryToken{part: part, start: start, end: end, decoded: string(t)})
+				tk := boundaryToken{part: part, start: start, end: end, decoded: string(t)}
+				if len(open) > 0 {
+					c := open[len(open)-1]
+					tk.odfCell = &c
+				}
+				*toks = append(*toks, tk)
 				v.addText(k, string(t))
 			}
 		}
 	}
 	return v, true
+}
+
+// odfValueAttrRe and odfValueTypeRe find the attributes that type an OpenDocument cell and hold its value
+// apart from its text.
+var (
+	odfValueAttrRe = regexp.MustCompile(`\soffice:(?:value|date-value|time-value|boolean-value|string-value)\s*=\s*(?:"[^"]*"|'[^']*')`)
+	odfValueTypeRe = regexp.MustCompile(`(\s(?:office|calcext):value-type\s*=\s*)(?:"[^"]*"|'[^']*')`)
+)
+
+// asODFStringCell returns a table cell's start tag retyped as a string cell, without the attributes that
+// hold a value apart from its text.
+func asODFStringCell(tag []byte) []byte {
+	out := odfValueAttrRe.ReplaceAll(tag, nil)
+	return odfValueTypeRe.ReplaceAll(out, []byte(`${1}"string"`))
 }
 
 // sharedCellRe is the scanner's own test for a shared-string cell, applied to the same bytes (the
@@ -384,7 +419,7 @@ func boundaryViews(files map[string][]byte, names []string, docType OfficeDocume
 					strings.HasPrefix(lower, "ppt/slidemasters/")) {
 				continue
 			}
-			if v, ok := elementView(name, files[name], "t", &toks); ok {
+			if v, ok := elementView(name, files[name], "t", false, &toks); ok {
 				views = append(views, v)
 			}
 		}
@@ -393,7 +428,7 @@ func boundaryViews(files map[string][]byte, names []string, docType OfficeDocume
 			if lower := strings.ToLower(name); lower != "content.xml" && lower != "styles.xml" {
 				continue
 			}
-			if v, ok := elementView(name, files[name], "p", &toks); ok {
+			if v, ok := elementView(name, files[name], "p", true, &toks); ok {
 				views = append(views, v)
 			}
 		}
@@ -573,6 +608,7 @@ func rewriteAcrossBoundaries(contents *OfficeZipContents, docType OfficeDocument
 	}
 
 	edits := make(map[string][]spanEdit)
+	retyped := make(map[string]map[int]bool) // part -> start of each ODF cell tag already retyped
 	order := make([]int, 0, len(subs))
 	for k := range subs {
 		order = append(order, k)
@@ -598,6 +634,16 @@ func rewriteAcrossBoundaries(contents *OfficeZipContents, docType OfficeDocument
 			with = buf.Bytes()
 		}
 		edits[t.part] = append(edits[t.part], spanEdit{srcStart: t.start, srcEnd: t.end, with: with})
+		if c := t.odfCell; c != nil && decoded != t.decoded {
+			if retyped[t.part] == nil {
+				retyped[t.part] = make(map[int]bool)
+			}
+			if !retyped[t.part][c[0]] {
+				retyped[t.part][c[0]] = true
+				tag := contents.Files[t.part][c[0]:c[1]]
+				edits[t.part] = append(edits[t.part], spanEdit{srcStart: c[0], srcEnd: c[1], with: asODFStringCell(tag)})
+			}
+		}
 	}
 	for _, name := range names {
 		if es := edits[name]; len(es) > 0 {

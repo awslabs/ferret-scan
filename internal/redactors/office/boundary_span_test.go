@@ -209,3 +209,41 @@ func TestASliceThatWouldCutACharacterFallsBackToTheFirstNode(t *testing.T) {
 		t.Errorf("the replacement was not given whole to the first node:\n%s", out)
 	}
 }
+
+// TestANumericODSCellIsRetypedWhenItsTextIsRewritten: LibreOffice shows a float cell from office:value,
+// not from the paragraph the scanner reads, so rewriting only the paragraph would leave the number on
+// screen. A covered cell becomes a string cell; an uncovered one keeps its type and value.
+func TestANumericODSCellIsRetypedWhenItsTextIsRewritten(t *testing.T) {
+	num := func(v string) string {
+		return `<table:table-cell office:value-type="float" office:value="` + v + `" calcext:value-type="float">` +
+			`<text:p>` + v + `</text:p></table:table-cell>`
+	}
+	content := `<office:document-content ` + spanODFNS + ` xmlns:calcext="urn:org:documentfoundation:names:experimental:calc:xmlns:calcext:1.0">` +
+		`<office:body><office:spreadsheet><table:table><table:table-row>` +
+		num("600") + num("600") + num("1250") + num("42") +
+		`</table:table-row></table:table></office:spreadsheet></office:body></office:document-content>`
+	contents := &OfficeZipContents{Files: map[string][]byte{"content.xml": []byte(content)}, Order: []string{"content.xml"}}
+	got := rewriteAcrossBoundaries(contents, DocumentTypeODF, []string{"600 600 1250"},
+		map[string]string{"600 600 1250": "[PHONE-REDACTED]"}, false)
+	if len(got["600 600 1250"]) != 1 {
+		t.Fatalf("rewriteAcrossBoundaries placed nothing: %v", got)
+	}
+	out := string(contents.Files["content.xml"])
+	for _, want := range []string{
+		`<table:table-cell office:value-type="string" calcext:value-type="string"><text:p>[PHONE-REDACTED]</text:p></table:table-cell>`,
+		`<table:table-cell office:value-type="string" calcext:value-type="string"><text:p></text:p></table:table-cell>`,
+		num("42"),
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("content.xml lacks %s:\n%s", want, out)
+		}
+	}
+	for _, gone := range []string{`office:value="600"`, `office:value="1250"`} {
+		if strings.Contains(out, gone) {
+			t.Errorf("content.xml still holds %s, which LibreOffice would display", gone)
+		}
+	}
+	if !xmlIsWellFormed(out) {
+		t.Errorf("the rewritten part is not well-formed:\n%s", out)
+	}
+}
