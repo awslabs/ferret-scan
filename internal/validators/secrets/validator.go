@@ -439,7 +439,7 @@ func NewValidator() *Validator {
 			"api", "key", "secret", "token", "password", "passwd", "pass", "pwd",
 			"passphrase", "auth", "credential", "private", "access", "session",
 			"bearer", "oauth", "jwt", "signature", "salt", "nonce", "seed",
-			"entropy", "connectionstring",
+			"entropy", "connectionstring", "authorization",
 		},
 
 		negativeKeywords: []string{
@@ -899,6 +899,18 @@ func (v *Validator) validateContentCtx(ctx stdctx.Context, content string, origi
 		// specific, higher-confidence AWS_SECRET_ACCESS_KEY row replaces the
 		// generic API_KEY_OR_SECRET row for that span instead of joining it.
 		lineResults = mergeBySpanKeepStrongest(lineResults, awsResults)
+
+		// #902 Part A: HTTP authentication credential carriers (Basic/Proxy/Bearer headers, the
+		// npmrc _auth line, the .netrc password field, curl -u). Appended like the URI user-info
+		// source and for the same reasons: structural (its grammar position is the corroboration, so
+		// the M24 cap and the hex cap do not apply and the threshold is 50), never gated (#753), and
+		// additive -- a candidate whose span lies inside a finding another path already reported is
+		// dropped, so a quoted `auth_token = "Bearer <jwt>"` keeps the keyword path's single whole
+		// finding and a `Bearer ghp_...` run keeps the provider literal's GITHUB_TOKEN. See
+		// http_auth.go.
+		if auths := v.findHTTPAuthCredentials(line, originalPath); len(auths) > 0 {
+			lineResults = v.appendHTTPAuthResults(lineResults, auths, line, lineNum, originalPath, content, contextInsights, lineHasShellVars, envType, isShellScript, govKeyLine)
+		}
 
 		// #766: a password or token in URI user info. A separate, ADDITIVE source: it runs outside
 		// containsSecretIndicators (so none of that function's arms changes, and a line it skips,
