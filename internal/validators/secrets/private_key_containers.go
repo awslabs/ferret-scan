@@ -5,6 +5,7 @@ package secrets
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -295,26 +296,30 @@ func (v *Validator) appendPrivateKeyContainers(matches []detector.Match, nMultiL
 	if len(containers) == 0 {
 		return matches
 	}
+	slices.SortFunc(containers, func(a, b keyContainer) int { return a.start - b.start })
 	byLine := make(map[int][]int, len(matches))
 	for i, m := range matches {
 		byLine[m.LineNumber] = append(byLine[m.LineNumber], i)
 	}
-	line, at := 1, 0
-	for _, c := range containers {
-		line += strings.Count(content[at:c.start], "\n")
-		at = c.start
-		text := content[c.start:c.end]
-		covered := false
-		for _, i := range byLine[line] {
-			if strings.Contains(matches[i].Text, text) {
-				covered = true
-				break
+	line, at, perLine := 1, 0, 0
+	var same map[string]bool // texts of the findings on the current line
+	for k, c := range containers {
+		if n := strings.Count(content[at:c.start], "\n"); n > 0 || k == 0 {
+			line, perLine, same = line+n, 0, make(map[string]bool, len(byLine[line+n]))
+			for _, i := range byLine[line] {
+				same[matches[i].Text] = true
 			}
 		}
-		if covered {
+		at = c.start
+		perLine++
+		text := content[c.start:c.end]
+		if same[text] || (perLine <= containerCoverScanLimit && containerEnclosed(matches, byLine[line], text)) {
 			continue
 		}
-		confidence, checks := v.calculateEnhancedConfidenceWithCacheAndEnv(text, content, contextInsights, isShellScript, envType)
+		// Scored like the PEM pass, with the container itself as the line hint: a container is a
+		// specific pattern, so the nearby-keyword answer cannot move its score, and locating it in
+		// the content (what an empty hint does) would cost one content scan per container.
+		confidence, _, checks := v.calculateEnhancedConfidenceWithCacheAndEnvAndLine(text, content, text, lineKeywordUnknown, contextInsights, isShellScript, envType, false, 0)
 		matches = append(matches, detector.Match{
 			Text:       text,
 			LineNumber: line,
@@ -336,22 +341,46 @@ func (v *Validator) appendPrivateKeyContainers(matches []detector.Match, nMultiL
 	return matches
 }
 
+// containerCoverScanLimit bounds the enclosure test per line. shortcut: past this many containers
+// on one line, a container is reported even when a wider finding already holds it (a duplicate, the
+// leak-safe side), because findings carry no column here and the text test costs the finding's
+// length per container; upgrade when per-line findings carry their span.
+const containerCoverScanLimit = 64
+
+// containerEnclosed reports whether a finding on the container's first line holds the container's
+// bytes inside a wider text, like a .ppk held whole in a JSON string under "private_key".
+func containerEnclosed(matches []detector.Match, onLine []int, text string) bool {
+	for _, i := range onLine {
+		if t := matches[i].Text; len(t) > len(text) && strings.Contains(t, text) {
+			return true
+		}
+	}
+	return false
+}
+
 // dropPerLineCopiesOfPEM removes, from matches[nMultiLine:], every finding that sits on a line a
-// multi-line finding spans and whose text equals, contains or is contained in that finding's.
+// multi-line finding spans and whose text equals, contains or is contained in that finding's. A
+// finding on one line can only lie inside the multi-line finding's segment ON that line, so that
+// segment is what it is compared with: each comparison costs one line, not the whole PEM, and a
+// PEM-shaped block of many lines that each carry a finding stays linear.
 func dropPerLineCopiesOfPEM(matches []detector.Match, nMultiLine int) []detector.Match {
-	spans := make(map[int][]int, nMultiLine) // line -> indices of multi-line findings covering it
+	type seg struct {
+		idx  int    // multi-line finding
+		text string // its text on this line
+	}
+	spans := make(map[int][]seg, nMultiLine)
 	for i := 0; i < nMultiLine; i++ {
 		m := matches[i]
-		last := m.LineNumber + strings.Count(m.Text, "\n")
-		for l := m.LineNumber; l <= last; l++ {
-			spans[l] = append(spans[l], i)
+		for k, s := range strings.Split(m.Text, "\n") {
+			spans[m.LineNumber+k] = append(spans[m.LineNumber+k], seg{i, s})
 		}
 	}
 	kept := matches[:nMultiLine]
 	for _, p := range matches[nMultiLine:] {
 		copyOf := false
-		for _, i := range spans[p.LineNumber] {
-			if t := matches[i].Text; strings.Contains(t, p.Text) || strings.Contains(p.Text, t) {
+		for _, s := range spans[p.LineNumber] {
+			whole := matches[s.idx].Text
+			if strings.Contains(s.text, p.Text) || (len(s.text) == len(whole) && strings.Contains(p.Text, whole)) {
 				copyOf = true
 				break
 			}
