@@ -144,18 +144,19 @@ func (v *Validator) continuesAsName(line string, i int) bool {
 // isListBoundaryCommaForm reports whether a comma-form candidate takes the comma of a list.
 //
 //   - The surname is the LAST word of the item before it: the word directly before the candidate is a
-//     capitalised name the data knows. "Will Smith, May Chen" is two items, not "Smith, May Chen" with
-//     a stray "Will" in front, because "Will Smith" is itself a name. A label in that position
-//     ("Patient Torres, Michael") is not a name, so the genuine form after a label is kept.
+//     capitalised name the data knows, so that word and the surname are a name of their own and the
+//     comma ends it. A label in that position (patient, contact, employee) is no name, so the genuine
+//     form after a label is kept.
 //
 //   - Or, for the single-word form only, the given name is followed by the next item: a comma, "and",
-//     "or" or "&" and a capitalised name the data knows. "Houston, Madison, Jackson" is three items. The
-//     next word has to be a name for the same reason as above: "Torres, Michael, Finance" is a genuine
-//     form followed by a department, and "Torres, Michael, MD" by a suffix, and both are kept.
+//     "or" or "&" and a capitalised name the data knows, as in a list of single-word cities. The next
+//     word has to be a name for the same reason as above: a genuine form followed by a department or
+//     by a suffix such as MD is kept.
 //
 // What the issue literally proposes, rejecting the form whenever the part after the comma reads as a
 // name by itself, is not used on its own: a middle name is very often a surname too, so it would reject
-// "Torres, Michael James" and leave "Torres" in cleartext beside a redacted "Michael James".
+// the genuine three-word form and leave its surname in cleartext beside a redacted given and middle
+// name. TestGenuineCommaFormsKeepTheirConfidence pins those cases.
 func (v *Validator) isListBoundaryCommaForm(line string, c PatternMatch) bool {
 	if !commaFormPatterns[c.Pattern.Name] {
 		return false
@@ -177,8 +178,8 @@ func (v *Validator) inNameData(word string) bool {
 }
 
 // dropListBoundaryCandidates removes the comma-form candidates that take the comma of a list (see
-// isListBoundaryCommaForm). The names the list holds are still candidates of their own: dropping
-// "Smith, May Chen" leaves "Will Smith" and "May Chen" to be scored and reported on their own terms.
+// isListBoundaryCommaForm). The names the list holds are still candidates of their own: dropping the
+// span across the comma leaves the name on each side of it to be scored and reported on its own terms.
 //
 // Both findNames* paths call it on findPatternCandidates' result. It filters in place.
 func (v *Validator) dropListBoundaryCandidates(line string, candidates []PatternMatch) []PatternMatch {
