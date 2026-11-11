@@ -36,6 +36,8 @@ registry yet; the detection itself is unaffected.
 - [AWS_SECRET_ACCESS_KEY](#aws_secret_access_key)
 - [AZURE_RESOURCE_ID](#azure_resource_id)
 - [BUSINESS](#business)
+- [CARD_SECURITY_CODE](#card_security_code)
+- [CARD_TRACK_DATA](#card_track_data)
 - [CERTIFICATE](#certificate)
 - [CHI_NUMBER](#chi_number)
 - [CLOUD_RESOURCE_ID](#cloud_resource_id)
@@ -267,6 +269,22 @@ A cloud provider resource identifier (e.g. AWS ARN, Azure resource ID, GCP resou
 An email address was detected in the scanned content. Email addresses can be considered personally identifiable information (PII) and may need to be protected depending on your compliance requirements.
 
 *What to do:* Email addresses can be considered PII in many regulatory frameworks (GDPR, CCPA, etc.). Consider whether this email address should be present in the code or if it should be stored in a secure configuration system. If this is a test email or example, consider using example.com domain or clearly marking it as test data.
+
+## CARD_SECURITY_CODE
+
+**Card Security Code Detected**
+
+A labelled card security code (CVV2, CVC2, CID or similar) was detected in the scanned content. The code is printed on the card to prove the card is present, so with the card number it is enough for a card-not-present payment.
+
+*What to do:* PCI DSS v4.0 Requirement 3.3.1.2 forbids retaining the card verification code after authorisation, even encrypted. Delete it rather than masking or tokenising it, and check the form, log or export that captured it. A code reported at LOW had no card within three lines.
+
+## CARD_TRACK_DATA
+
+**Card Track Data Detected**
+
+A full magnetic-stripe track (ISO/IEC 7813 Track 1 or Track 2) or a chip card's Track 2 Equivalent Data (EMV tag 57) was detected in the scanned content. A track carries the card number together with its expiry date, service code and discretionary data, and Track 1 also the cardholder's name; it is the data needed to clone a card's stripe.
+
+*What to do:* PCI DSS v4.0 Requirement 3.3.1.1 forbids retaining the full contents of any track after authorisation, even encrypted. Delete the track rather than masking or tokenising it, find the process that wrote it (a card reader log, a debug dump, a keyboard-wedge capture) and stop it, and treat the card as exposed.
 
 ## CERTIFICATE
 

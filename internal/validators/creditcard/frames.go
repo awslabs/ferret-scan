@@ -30,8 +30,9 @@ import (
 //   - its PAN, when the PAN pattern did not already report one at the same bytes: a Track 2 PAN
 //     after `;` or a delimiter is reported there today and is left exactly as it is, so no existing
 //     finding moves and none is duplicated;
-//   - the frame itself, Text from the first byte of the frame to its last, under the PAN's own type
-//     and with Metadata[cardFrameKey] naming the frame, when the frame's structure is valid.
+//   - the frame itself, Text from the first byte of the frame to its last, as trackDataType with
+//     Metadata[cardFrameKey] naming the frame and Metadata["card_type"] the PAN's brand, when the
+//     frame's structure is valid.
 //
 // The PAN needs isValidLength and Luhn, as every PAN does. The expiry month, the service code and
 // the format's maximum length gate only the frame finding, so a Luhn-valid PAN inside a frame
@@ -43,6 +44,18 @@ import (
 // cardFrameKey is the Metadata key naming the frame a finding's Text covers. It is set only on
 // frame and security-code findings, never on a finding whose Text is a PAN alone.
 const cardFrameKey = "card_frame"
+
+// The types of a frame finding and of a security-code finding (#905). Neither is a card brand, so
+// neither is in the redactors' creditCardTypes: the card mask writes back every non-digit byte and a
+// value's last four digits, which kept a Track 1's cardholder name under format_preserving and
+// synthetic while the frame was reported under its PAN's brand. Under their own types simple writes
+// their own placeholder, format_preserving masks every byte, and synthetic writes a frame whose PAN
+// is Luhn-invalid (replacement's frame arm). --checks CREDIT_CARD still reports both: the check is
+// the validator's, not the type's.
+const (
+	trackDataType    = "CARD_TRACK_DATA"
+	securityCodeType = "CARD_SECURITY_CODE"
+)
 
 // The values of Metadata[cardFrameKey].
 const (
@@ -158,10 +171,13 @@ func (v *Validator) appendFrameMatches(matches []detector.Match, frames []frameH
 		}
 		meta := cardMetadata(cardType, vendor, checks, impact, originalPath, false)
 		meta[cardFrameKey] = f.kind
+		// card_type names the brand. vendor is left off: --explain builds its subject from vendor
+		// before the type, and "a Visa card track data" misnames a frame as a kind of card.
+		delete(meta, "vendor")
 		matches = append(matches, detector.Match{
 			Text:       line[f.start:f.end],
 			LineNumber: lineNum + 1,
-			Type:       cardType,
+			Type:       trackDataType,
 			Confidence: confidence,
 			Filename:   originalPath,
 			Validator:  "creditcard",

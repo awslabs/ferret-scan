@@ -115,8 +115,12 @@ func TestEachFrameIsReportedWholeWithItsPAN(t *testing.T) {
 				t.Fatalf("%q: want exactly one frame finding, got %d of %d findings: %+v", tc.line, len(frames), len(ms), ms)
 			}
 			f := frames[0]
-			if f.Text != tc.frame || f.Metadata["card_frame"] != tc.kind || f.Type != tc.typ {
-				t.Errorf("frame finding %s %q card_frame=%v; want %s %q card_frame=%s", f.Type, f.Text, f.Metadata["card_frame"], tc.typ, tc.frame, tc.kind)
+			if f.Text != tc.frame || f.Metadata["card_frame"] != tc.kind || f.Type != "CARD_TRACK_DATA" || f.Metadata["card_type"] != tc.typ {
+				t.Errorf("frame finding %s %q card_frame=%v card_type=%v; want CARD_TRACK_DATA %q card_frame=%s card_type=%s",
+					f.Type, f.Text, f.Metadata["card_frame"], f.Metadata["card_type"], tc.frame, tc.kind, tc.typ)
+			}
+			if _, ok := f.Metadata["vendor"]; ok {
+				t.Errorf("frame finding carries vendor %v; --explain would read it as a kind of card", f.Metadata["vendor"])
 			}
 			if len(others) != 1 || others[0].Text != tc.pan || others[0].Type != tc.typ {
 				t.Errorf("want exactly one %s finding for the PAN %s beside the frame, got %+v", tc.typ, tc.pan, others)

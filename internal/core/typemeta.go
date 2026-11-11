@@ -362,6 +362,8 @@ var knownDetectionTypes = []string{
 	"METADATA",              // family type, emitted directly by its validator
 	"SOCIAL_MEDIA_CLUSTER",  // SOCIAL_MEDIA cluster consolidation type
 	"ITIN",                  // SSN sub-type: the IRS Individual Taxpayer Identification Number (#884)
+	"CARD_TRACK_DATA",       // CREDIT_CARD: a whole magnetic-stripe track or EMV tag 57 value (#905)
+	"CARD_SECURITY_CODE",    // CREDIT_CARD: a labelled CVV2/CVC2/CID (#905)
 }
 
 // KnownTypes returns every detection type this tool can report, sorted.

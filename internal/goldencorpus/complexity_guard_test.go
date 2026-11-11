@@ -126,6 +126,30 @@ var complexityTargets = []struct {
 		wantMatchGrowth: true,
 		threshold:       5 * time.Second,
 	},
+	{
+		// #905's card frames on one dense line: a keyboard-wedge Track 1 + Track 2 pair and a tag 57
+		// value inside TLV, six findings per repetition (each frame and its PAN). The frame
+		// matchers run at every '^', '=' and "57" on the line, so a per-frame rescan of the line
+		// would show here.
+		name: "creditcard_frames",
+		new:  func() validatorUnderTest { return creditcard.NewValidator() },
+		unit: "%B4532015112830366^PUBLIC/JOHN Q^2812101000000000000?;4532015112830366=2812101000000000? " +
+			"5713" + "4532015112830366D28121010000000000000F ",
+		minMatches:      1200,
+		wantMatchGrowth: true,
+		threshold:       5 * time.Second,
+	},
+	{
+		// #905's labelled security codes on one dense line, each beside a card: a code's own work
+		// (its label match, the line's hard-negative test, its pairing) must not rescan the line,
+		// which is what the line-scoped hard-negative test computed once per line protects.
+		name:            "creditcard_security_codes",
+		new:             func() validatorUnderTest { return creditcard.NewValidator() },
+		unit:            "card 4532015112830366 cvv 123 ",
+		minMatches:      600,
+		wantMatchGrowth: true,
+		threshold:       5 * time.Second,
+	},
 	// The 13 remaining text-mode validators (METADATA excluded — it scans
 	// extracted file metadata, not text windows). Each unit is a dense,
 	// match-bearing line; keyword-gated validators (dob, driverslicense,
