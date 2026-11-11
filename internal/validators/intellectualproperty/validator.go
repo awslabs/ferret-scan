@@ -1009,6 +1009,7 @@ func (v *Validator) detectPatternsByLine(ctx stdctx.Context, content string, ori
 			{"trade_secret", v.regexTradeSecret},
 		}
 
+		var quotedList []int // indices into lineMatches[lineNum] of quoted list elements
 		for _, p := range ipPatterns {
 			ipType, regex := p.ipType, p.regex
 			// Skip disabled IP sub-types
@@ -1024,6 +1025,16 @@ func (v *Validator) detectPatternsByLine(ctx stdctx.Context, content string, ori
 			for _, loc := range regex.FindAllStringIndex(line, -1) {
 				matchStart, matchEnd := loc[0], loc[1]
 				match := line[matchStart:matchEnd]
+				if isNonNoticeMatch(ipType, line, matchStart, matchEnd) {
+					var ok bool
+					if matchStart, matchEnd, ok = laterCopyrightNotice(ipType, regex, line, matchStart, matchEnd); !ok {
+						continue // #934: regex syntax, prose or an atom name, not a notice
+					}
+					match = line[matchStart:matchEnd]
+				}
+				if isQuotedListElement(line, matchStart, matchEnd) {
+					quotedList = append(quotedList, len(lineMatches[lineNum]))
+				}
 
 				confidence, checks := v.CalculateConfidence(match)
 
@@ -1078,6 +1089,9 @@ func (v *Validator) detectPatternsByLine(ctx stdctx.Context, content string, ori
 					},
 				})
 			}
+		}
+		if len(quotedList) >= 2 {
+			dropQuotedListMatches(lineMatches, lineNum, quotedList)
 		}
 	}
 
