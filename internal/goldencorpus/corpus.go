@@ -743,23 +743,27 @@ var Cases = []Case{
 	{
 		Name: "overlap_groups_render_once",
 		Description: "#773: findings whose spans share bytes on one line are ONE write over their union. " +
-			"Line 1 crosses an address and two names (partial + contained): the whole union is masked, " +
-			"neither `77 August` (the head .txt used to strand) nor `, Boise` (the tail Office stranded) " +
-			"survives. Line 2 is two crossing names of one type. Line 3 is PASSPORT and SSN on the same " +
-			"9 digits (identical): `*********` -- the SSN's last four are masked because the PASSPORT " +
-			"rendering hides them, at any file size (sort.Slice's tie order changed at 13 findings). " +
-			"Line 4 is a name inside an address (contained, widest wins). Line 5 is SECRETS and EMAIL on " +
+			"Every overlap here is between two GENUINE findings: the case used to be built on a street " +
+			"read as a name and a list read as `Surname, Given`, which #935 and #936 stop reporting. " +
+			"Lines 1 and 2 are one titled name read two ways, `Dr. <given> <middle>` and " +
+			"`<given> <middle> <surname>` (partial): the whole union is masked, neither the title's head " +
+			"(what .txt used to strand) nor the surname's tail (what Office stranded) survives; line 2 is " +
+			"the same shape in UTF-8. Line 3 is PASSPORT and SSN on the same 9 digits (identical): " +
+			"`*********` -- the SSN's last four are masked because the PASSPORT rendering hides them, at " +
+			"any file size (sort.Slice's tie order changed at 13 findings). Line 4 is a card inside its " +
+			"own magnetic-stripe track frame (contained, widest wins). Line 5 is SECRETS and EMAIL on " +
 			"the same bytes: the higher-confidence secret's label, no byte kept. Decoys that must render " +
 			"exactly as before: line 6 is an IP containing a date (the IP keeps its two octets, #687's " +
 			"call), line 7 a phone containing an SSN (both keep the same last four), line 8 two disjoint " +
-			"values on one line. All values synthetic: 512010001 is area 512, the names and addresses are " +
-			"repo fixtures, the card has a computed Luhn digit, the password is a fixed alphabet walk.",
+			"values on one line. All values synthetic: 512010001 is area 512, Jane Ann Doe is the " +
+			"placeholder name and the other names repo fixtures, the card has a computed Luhn digit and " +
+			"the track frame a zero discretionary field, the password is a fixed alphabet walk.",
 		Checks: []string{"PASSPORT", "SSN", "PHYSICAL_ADDRESS", "PERSON_NAME", "PHONE", "IP_ADDRESS",
 			"DATE_OF_BIRTH", "CREDIT_CARD", "SECRETS", "EMAIL"},
-		Input: "Residence: 77 August Lane, Boise ID 83702\n" +
-			"Renée Müller, José García, François Lefèvre\n" +
+		Input: "Signed: Dr. Jane Ann Doe\n" +
+			"Dr. Renée Müller García signed\n" +
 			"Passport number: 512010001\n" +
-			"Located at 100 Martin Luther King Blvd\n" +
+			"Track 1: %B4532015112830366^DOE/JANE^2912101000000000000000?\n" +
 			"password = \"Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org\"\n" +
 			"server 203.12.19.85 reached\n" +
 			"call +1 449-87-4100\n" +
@@ -1271,9 +1275,11 @@ var Cases = []Case{
 			"of one city plus the next as Surname, Given at 99. Line 7 holds the region names " +
 			"measured on the public corpus. main @ 2fb4719 reports 10 findings here, 4 HIGH; the " +
 			"fix reports none. Lines 1 and 2 keep the words PERSON_NAME and person: they are the " +
-			"positive context (+24) that lifted the repository's copies to HIGH. Street names " +
-			"(\"77 August Lane\") are not in this case: overlap_groups_render_once uses them as " +
-			"crossing fixtures.",
+			"positive context (+24) that lifted the repository's copies to HIGH. Lines 8-9 are " +
+			"street names (#935's second half): the words between a house number and a street type, " +
+			"and a street type plus the town after it read as `Surname, Given`. main @ 3aa380e " +
+			"reports `August Lane` 92, `Lane, Boise` 67 and `Martin Luther King` 93 there; the fix " +
+			"reports none, and the address validator still reports both streets when it runs.",
 		Checks: []string{"PERSON_NAME"},
 		Input: "\"Hong Kong\" and \"Middle East\" as PERSON_NAME at confidence 92-100, read from workbook labels\n" +
 			"PERSON_NAME \"Flushing Meadows<ENDASH>Corona\" is a park; so is Flushing Meadows-Corona\n" +
@@ -1281,7 +1287,9 @@ var Cases = []Case{
 			"a false positive (NEM MIN, EI LUO) the old path produced by mis-decoding escapes\n" +
 			"Iberian and Latin American: San Francisco, Santa Clara, Sao Paulo, Puerto Vallarta,\n" +
 			"Ciudad Juarez, Villa Nueva, Bahia Blanca, Isla Mujeres, Monte Plata.\n" +
-			"Customer region: North East; shipping desk: Russian Far East\n",
+			"Customer region: North East; shipping desk: Russian Far East\n" +
+			"Residence: 77 August Lane, Boise ID 83702\n" +
+			"Located at 100 Martin Luther King Blvd\n",
 	},
 	{
 		Name: "medical_hex_member_ids",
