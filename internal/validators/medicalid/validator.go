@@ -730,7 +730,7 @@ func (v *Validator) evaluateNPI(match, line, lowerLine string, lc medicalLineCon
 		confidence = intrinsicValueFloor
 	}
 
-	return detector.Match{
+	return capPublishedExampleNPI(detector.Match{ // #930
 		Text:       match,
 		LineNumber: lineNum + 1,
 		Type:       "NPI",
@@ -755,7 +755,7 @@ func (v *Validator) evaluateNPI(match, line, lowerLine string, lc medicalLineCon
 				"not_test_data":     !lc.testData,
 			},
 		},
-	}, true
+	}), true
 }
 
 // evaluateDEA checks a DEA number candidate and returns a match if valid.

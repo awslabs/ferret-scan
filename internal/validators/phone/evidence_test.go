@@ -240,7 +240,7 @@ func TestUncorroboratedMatchesPublishTheirCeiling(t *testing.T) {
 		{"name,phone,city\nJane Roe,415-555-0123,Boston\n", 15.0},
 		{"Call 415-555-0123\n", 15.0},
 		{"Phone: 297-201-0001\n", nil},
-		{"+44 161 496 0958\n", nil},
+		{"+44 161 498 0958\n", nil},  // Manchester, outside its drama block (#930)
 		{"+44 20 7946 0958\n", 15.0}, // Ofcom's London drama block (#930)
 	}
 	for _, c := range cases {

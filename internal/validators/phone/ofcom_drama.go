@@ -6,20 +6,21 @@ package phone
 import "strings"
 
 // ofcomDramaPrefixes are the first seven digits of the UK national significant number (the number
-// after the trunk "0" or the "+44") of the three Ofcom ranges reserved for TV and radio drama that
-// #930 measured at HIGH 100, each a block of 1,000 numbers that Ofcom does not allocate
-// (https://www.ofcom.org.uk/phones-and-broadband/phone-numbers/numbers-for-drama):
+// after the trunk "0" or the "+44") of the Ofcom ranges reserved for TV and radio drama that #930
+// measured at HIGH 100, each a block of 1,000 numbers that Ofcom does not allocate
+// (https://www.ofcom.org.uk/phones-and-broadband/phone-numbers/numbers-for-drama; the same table
+// is reproduced at https://en.wikipedia.org/wiki/Fictitious_telephone_number, read 2026-11-11):
 //
 //	020 7946 0000 .. 020 7946 0999   London
 //	01632 960000  .. 01632 960999    no area: Ofcom's choice for any area code it does not list
 //	07700 900000  .. 07700 900999    mobile
+//	0161 496 0000 .. 0161 496 0999   Manchester (#930: "Phone: 0161 496 0815" read PHONE 100)
 //
 // Ofcom publishes a block for several other area codes too (0113, 0114, 0115, 0116, 0117, 0118,
-// 0121, 0131, 0141, 0151, 0161, 0191, 028, 029 and the non-geographic ranges). They are the same
-// class and are not listed here: the score corpus holds "0161 496 0000" (Manchester's block) as a
-// real UK number that must stay HIGH (tp__real_uk_numbers_survive_the_length_bound), so widening
-// the list needs that corpus case changed first.
-var ofcomDramaPrefixes = []string{"2079460", "1632960", "7700900"}
+// 0121, 0131, 0141, 0151, 0191, 028, 029 and the non-geographic ranges). They are the same class;
+// shortcut: they are not listed yet because #930 measured only these four, add each with a test
+// (the scorecorpus and goldencorpus hold none of them as a positive).
+var ofcomDramaPrefixes = []string{"2079460", "1632960", "7700900", "1614960"}
 
 // mayBeReservedFictional is the cheap pre-filter in front of isReservedFictionalNumber: true when
 // cleanNew (cleanPhoneNumber of the match) can hold a reserved number at all. The digits that
