@@ -336,8 +336,8 @@ var commonWordNamesMap = map[string]bool{
 // Only the GIVEN half is filtered, and only when the word is NOT itself a known
 // name. The list is deliberately COMPLETE — it includes the modal "will"/"may",
 // the article "an", the pronoun "he" and the quantifier "many" — and the name
-// databases arbitrate the collisions, because every one of those is also a real
-// person's name: Will Smith, May Chen, An Nguyen, He Zhang, Many (a surname).
+// databases arbitrate the collisions, because every one of those is also part of a
+// real person's name: "will", "may", "an" and "he" are given names, "many" a surname.
 // isFunctionWordGiven consults the databases FIRST and defers to them, so the word
 // list only rejects what the data has no opinion about.
 //
@@ -376,8 +376,8 @@ var commonWordNamesMap = map[string]bool{
 //	San Francisco (80)  Saint Louis (80)  St Paul (80)
 //	Mount Vernon (80)   Port Arthur (80)  La Paz (80)
 //
-// Real people score 100 in the same run — Robin Yang, David Ward, Marco Rossi, Will Smith, May Chen,
-// Grace Hopper — so the two populations are already separated by 20 points and this only has to reject
+// Real people's two-token names score 100 in the same run (measured on a list of them when this
+// was written), so the two populations are already separated by 20 points and this only has to reject
 // the lower one. Single-token city names ("Austin", "Madison") were never findings: these patterns
 // require two tokens.
 //
