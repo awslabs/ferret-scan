@@ -751,7 +751,6 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 	}
 	scanID, err := ws.scans.put(session, &storedScan{
 		matches:    allMatches,
-		suppressed: suppressedMatches,
 		settings:   confidence + "|" + checks,
 		confidence: confidenceFilter,
 	})
@@ -1066,7 +1065,7 @@ func (ws *WebServer) runFullCLIScan(ctx context.Context, filePath, originalFilen
 // explanation, the context keywords and the typed metadata, so the export differed from the CLI's
 // report of the same findings; and the whole result set had to fit the 1 MiB JSON cap, so 782
 // findings answered HTTP 400. Now the request carries ids, the cap holds, and the formatter receives
-// exactly the matches, suppressed matches and confidence filter the scan produced: the body is
+// exactly the matches and confidence filter the scan produced: the body is
 // formatters.Export of that scan, as the CLI renders it. It carries no scope block or stats yet:
 // internal/formatters/scope_sites_test.go allowlists this function as having no scan of its own, and
 // moving it off that list (with Scan and Stats set) is a follow-up outside this package.
@@ -1133,17 +1132,12 @@ func (ws *WebServer) handleExport(responseWriter http.ResponseWriter, request *h
 	// One report has one confidence filter and one scope, so scans run with different settings are
 	// not merged into one.
 	var matches []detector.Match
-	var suppressed []detector.SuppressedMatch
 	for _, s := range scans {
 		if s.settings != scans[0].settings {
 			ws.sendError(responseWriter, "scan_ids name scans run with different confidence or checks; export them separately")
 			return
 		}
 		matches = append(matches, s.matches...)
-		suppressed = append(suppressed, s.suppressed...)
-	}
-	if suppressed == nil {
-		suppressed = []detector.SuppressedMatch{}
 	}
 
 	// No SourceRoot, as in handleScan: every Filename is already the uploaded name. See
@@ -1155,7 +1149,9 @@ func (ws *WebServer) handleExport(responseWriter http.ResponseWriter, request *h
 		ShowMatch:       exportRequest.ShowMatch,
 	}
 
-	output, err := formatter.Format(matches, suppressed, formatterOptions)
+	// No suppressed findings, as before and as the CLI without --show-suppressed: the UI lists them
+	// apart and has no switch to export them.
+	output, err := formatter.Format(matches, []detector.SuppressedMatch{}, formatterOptions)
 	if err != nil {
 		ws.sendError(responseWriter, fmt.Sprintf("Failed to format results: %v", err))
 		return

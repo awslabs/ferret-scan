@@ -44,10 +44,9 @@ type scanStore struct {
 
 // storedScan is one /scan's result, as the server ran it.
 type storedScan struct {
-	session    string
-	created    time.Time
-	matches    []detector.Match
-	suppressed []detector.SuppressedMatch
+	session string
+	created time.Time
+	matches []detector.Match
 	// settings is the scan's own confidence and checks; /export refuses to merge scans that disagree,
 	// because one report has one confidence filter and one scope.
 	settings   string
@@ -103,7 +102,7 @@ func (s *scanStore) put(session string, entry *storedScan) (string, error) {
 	entry.session = session
 	entry.created = s.now()
 	s.expireLocked()
-	n := len(entry.matches) + len(entry.suppressed)
+	n := len(entry.matches)
 	for len(s.order) > 0 && (len(s.order) >= maxStoredScans || s.findings+n > maxStoredFindings) {
 		s.dropLocked(s.order[0])
 	}
@@ -147,7 +146,7 @@ func (s *scanStore) expireLocked() {
 
 func (s *scanStore) dropLocked(id string) {
 	if e, ok := s.entries[id]; ok {
-		s.findings -= len(e.matches) + len(e.suppressed)
+		s.findings -= len(e.matches)
 		delete(s.entries, id)
 	}
 	for i, v := range s.order {
