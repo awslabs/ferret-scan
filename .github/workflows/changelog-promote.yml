@@ -64,6 +64,30 @@ jobs:
           TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: ./scripts/promote-changelog.sh "${TAG}"
 
+      # #954: the promotion moves every fragment's lines into CHANGELOG.md and deletes the fragment, and
+      # pushes the older CHANGELOG.md lines down. The ledger's rules name a file and a line, so without
+      # this step every rule on a fragment or below the new section stops matching and the next push to
+      # main reads red (40 HIGH after v2.6.0). --regenerate re-anchors the moved CHANGELOG.md rules and
+      # pairs each fragment rule with the same value at its new place, carrying its reason (the
+      # rename-aware pairing in scripts/self-scan.sh). A HIGH finding in the promoted text that had no
+      # rule before is a new decision, not the release's to approve: the job fails before committing,
+      # and the tag stays released without the promotion until a pull request decides it.
+      - name: Carry the ledger rules the promotion moved
+        run: |
+          if git diff --quiet HEAD -- CHANGELOG.md; then
+            echo "No promotion; the ledger stays as it is."
+            exit 0
+          fi
+          ledger=.ferret-scan-suppressions.yaml
+          ./scripts/self-scan.sh --regenerate "${RUNNER_TEMP}/ledger.yaml" --out "${RUNNER_TEMP}/regenerate"
+          new=$(sed -n 's/^new=//p' "${RUNNER_TEMP}/regenerate/regenerate.env")
+          if [ "${new}" != 0 ]; then
+            echo "::error title=self-scan ledger::the promotion has ${new:-an unknown number of} HIGH finding(s) no ledger rule covered before it (listed above as new); decide each in a pull request, then re-run this workflow"
+            exit 1
+          fi
+          cp "${RUNNER_TEMP}/ledger.yaml" "${ledger}"
+          ./scripts/self-scan.sh --scope tree --mode block --out "${RUNNER_TEMP}/gate"
+
       # Backstop for the PR-time check (changelog-check.yml). A no-op promotion is correct when the
       # release really changed nothing user-visible, and a silent loss of the release notes when it
       # did not — v2.5.3 was the second kind, and this step had nothing to say. A warning, not a
@@ -101,8 +125,9 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # changelog.d: the script already `git rm`ed the rendered fragments; README.md stays.
-          git add -- CHANGELOG.md changelog.d
+          # changelog.d: the script already `git rm`ed the rendered fragments; README.md stays. The
+          # ledger is the one the step above regenerated.
+          git add -- CHANGELOG.md changelog.d .ferret-scan-suppressions.yaml
           git commit -m "chore(changelog): promote [Unreleased] to ${TAG} [skip ci]"
           # goreleaser[bot] pushes the brew formula to main in the same minute; retry over it.
           for attempt in 1 2 3 4 5; do

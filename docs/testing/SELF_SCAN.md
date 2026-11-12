@@ -164,16 +164,25 @@ scripts/self-scan.sh --regenerate "$TMPDIR/ledger.yaml"
 
 The candidate it writes is the current ledger plus a DISABLED rule, with the generator's placeholder
 reason, for every HIGH finding of either gate that no rule covers. Every other rule is kept byte for byte,
-so the diff shows only what changed. The summary lists three groups:
+so the diff shows only what changed. The summary lists four groups:
 
 - **new**: review each one. Give it a reason of one of the two kinds and set `enabled: true`, or, for a
   real value, delete the rule and remove the value.
 - **rewritten**: rules the binary re-anchored to the finding they moved with (once #918 is merged; it
   pairs a stale rule with its moved finding one to one), or migrated to the current hash formula. Their
   reasons are unchanged; check that each still fits.
-- **stale**: rules no finding matched. Without re-anchoring, a moved finding appears as a stale rule
-  plus a new one: copy the reason across and delete the stale rule. A stale rule whose finding is gone
-  (the value was removed, or a detector fix landed) is deleted.
+- **renamed**: a stale rule whose file no longer exists in the checkout, paired with a new rule of the
+  same type, confidence and line text (#954). The stale rule's line is read from `HEAD` when the
+  deletion is not committed yet, else from the commit before the one that deleted the file. The rule
+  keeps its id, reason, `enabled` and `created_at`; `hash`, `last_seen_at`, `filename` and
+  `line_number` are the new finding's. Two stale rules with the same line text and different reasons
+  are ambiguous: the summary says so and the finding stays **new**.
+- **stale**: rules no finding matched. A moved finding the binary did not re-anchor and the pairing
+  did not rename appears as a stale rule plus a new one: copy the reason across and delete the stale
+  rule. A stale rule whose finding is gone (the value was removed, or a detector fix landed) is deleted.
+
+The counts are also written as `name=value` lines to `regenerate.env` in the `--out` directory (`kept`,
+`rewritten`, `renamed`, `new`, `stale`, `ambiguous`), for a caller that acts on them.
 
 Then copy the candidate over the ledger and run `make self-scan` until it is green. Generation runs twice
 on purpose: in one pass, a second finding on the same line can take over a rule just written for the
@@ -181,7 +190,12 @@ first (the generator migrates a rule it matched through an older hash formula), 
 the rule the first finding lacks.
 
 A release moves every line of `CHANGELOG.md` (`scripts/promote-changelog.sh` inserts the new section
-below `[Unreleased]`), so the release pull request regenerates the ledger for the rules that sit in it.
+below `[Unreleased]`) and moves every `changelog.d/` fragment's lines into it. No pull request carries
+that: the release workflow (`.github/workflows/changelog-promote.yml`) runs `--regenerate` after the
+promotion, which re-anchors the moved `CHANGELOG.md` rules and renames the fragment rules, copies the
+candidate over the ledger, checks the tree gate reads HIGH 0, and commits the ledger with the
+promotion. A HIGH finding in the promoted text that no rule covered before fails the job before it
+commits: it is a decision for a pull request, not for the release.
 
 ## CI
 
