@@ -13,6 +13,74 @@
                 },
                 "contextRegion": {
                   "snippet": {
+                    "text": "Track 1: \nTrack 1: %B4532015112830366^DOE/JANE^2912101000000000000000?"
+                  },
+                  "startLine": 4
+                },
+                "region": {
+                  "endColumn": 61,
+                  "snippet": {
+                    "text": "Track 1: %B4532015112830366^DOE/JANE^2912101000000000000000?"
+                  },
+                  "startColumn": 10,
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Card Track Data Detected in <golden:overlap_groups_render_once> at line 4 (confidence: 100.0% - HIGH). Matched text: '%B4532015112830366^DOE/JANE^2912101000000000000...'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "96b4bced083a908602a90770b1e20c7fdf86c6f17da23bcfbde85b44ddf2779c"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "card_frame": "track1",
+              "card_type": "VISA",
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 15,
+              "original_confidence": 100,
+              "original_file": "<golden:overlap_groups_render_once>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": true,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": true,
+                "vendor": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 100,
+          "ruleId": "CARD_TRACK_DATA"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
                     "text": "server \nserver 203.12.19.85 reached\n reached"
                   },
                   "startLine": 6
@@ -30,6 +98,9 @@
           ],
           "message": {
             "text": "IP Address Detected in <golden:overlap_groups_render_once> at line 6 (confidence: 100.0% - HIGH). Matched text: '203.12.19.85'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "ce4d1722e9bd7f0acebb921bed1965ce1c0791d708829acbb9f21f3956a84c86"
           },
           "properties": {
             "confidence": 100,
@@ -101,6 +172,9 @@
           "message": {
             "text": "Passport Number Detected in <golden:overlap_groups_render_once> at line 3 (confidence: 100.0% - HIGH). Matched text: '512010001'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "57d65aad41a27de6546c38548fc6e231888404a1da1664d6481cbfe915f3a6ca"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -147,6 +221,96 @@
                 },
                 "contextRegion": {
                   "snippet": {
+                    "text": "Dr. Renée Müller García signed\n García signed"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 19,
+                  "snippet": {
+                    "text": "Dr. Renée Müller García signed"
+                  },
+                  "startColumn": 1,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 2 (confidence: 100.0% - HIGH). Matched text: 'Dr. Renée Müller'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "9357df03ca602176a113ad1d744cc0917198335f69aebc9d28877259093316b6"
+          },
+          "properties": {
+            "confidence": 100,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 0,
+              "context_keywords": null,
+              "cultural_context": [
+                "western",
+                "formal"
+              ],
+              "name_components": {
+                "Cultural": [
+                  "western",
+                  "formal"
+                ],
+                "FirstName": "Renée",
+                "FullName": "Dr. Renée Müller",
+                "LastName": "Müller",
+                "MiddleName": "",
+                "Pattern": "name_with_title",
+                "Suffix": "",
+                "Title": "Dr."
+              },
+              "original_confidence": 100,
+              "pattern": "name_with_title",
+              "pattern_priority": 8,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "validation_checks": {
+                "both_names_known": true,
+                "has_known_name_component": true,
+                "has_middle_name": false,
+                "has_suffix": false,
+                "has_title": true,
+                "known_first_name": true,
+                "known_last_name": true,
+                "not_business_name": true,
+                "not_technical_term": true,
+                "not_test_data": true,
+                "proper_case": true,
+                "reasonable_length": true,
+                "valid_pattern": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "PERSON_NAME"
+          },
+          "rank": 80,
+          "ruleId": "PERSON_NAME"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
                     "text": "call \ncall +1 449-87-4100"
                   },
                   "startLine": 7
@@ -164,6 +328,9 @@
           ],
           "message": {
             "text": "Phone Number Detected in <golden:overlap_groups_render_once> at line 7 (confidence: 100.0% - HIGH). Matched text: '+1 449-87-4100'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "0b6b1e8640db1ec9bba67abd60f72f6d05699e6d505b91961b90400e165c33ff"
           },
           "properties": {
             "confidence": 100,
@@ -237,6 +404,9 @@
           "message": {
             "text": "Credit Card Number Detected in <golden:overlap_groups_render_once> at line 8 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "08ac8ed6a49b8f12aab41dccef59b02d7782da8116733342503487f10b1b91bf"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -284,173 +454,26 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "Renée \nRenée Müller, José García, François Lefèvre\n, François Lefèvre"
-                  },
-                  "startLine": 2
-                },
-                "region": {
-                  "endColumn": 30,
-                  "snippet": {
-                    "text": "Renée Müller, José García, François Lefèvre"
-                  },
-                  "startColumn": 8,
-                  "startLine": 2
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 2 (confidence: 99.0% - HIGH). Matched text: 'Müller, José García'"
-          },
-          "properties": {
-            "confidence": 99,
-            "confidenceLevel": "HIGH",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
-              "context_impact": 0,
-              "context_keywords": null,
-              "cultural_context": [
-                "formal",
-                "database",
-                "directory"
-              ],
-              "name_components": {
-                "Cultural": [
-                  "formal",
-                  "database",
-                  "directory"
-                ],
-                "FirstName": "José",
-                "FullName": "Müller, José García",
-                "LastName": "Müller",
-                "MiddleName": "García",
-                "Pattern": "last_comma_first_middle",
-                "Suffix": "",
-                "Title": ""
-              },
-              "original_confidence": 99,
-              "pattern": "last_comma_first_middle",
-              "pattern_priority": 8,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
-              "validation_checks": {
-                "both_names_known": true,
-                "has_known_name_component": true,
-                "has_middle_name": true,
-                "has_suffix": false,
-                "has_title": false,
-                "known_first_name": true,
-                "known_last_name": true,
-                "not_business_name": true,
-                "not_technical_term": true,
-                "not_test_data": true,
-                "proper_case": true,
-                "reasonable_length": true,
-                "valid_pattern": true
-              },
-              "validation_path": "document"
-            },
-            "validator": "PERSON_NAME"
-          },
-          "rank": 79.5,
-          "ruleId": "PERSON_NAME"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:overlap_groups_render_once>"
-                },
-                "contextRegion": {
-                  "snippet": {
-                    "text": "Residence: \nResidence: 77 August Lane, Boise ID 83702\n, Boise ID 83702"
+                    "text": "Signed: Dr. \nSigned: Dr. Jane Ann Doe"
                   },
                   "startLine": 1
                 },
                 "region": {
-                  "endColumn": 26,
+                  "endColumn": 25,
                   "snippet": {
-                    "text": "Residence: 77 August Lane, Boise ID 83702"
+                    "text": "Signed: Dr. Jane Ann Doe"
                   },
-                  "startColumn": 12,
+                  "startColumn": 13,
                   "startLine": 1
                 }
               }
             }
           ],
           "message": {
-            "text": "Physical Address Detected in <golden:overlap_groups_render_once> at line 1 (confidence: 95.0% - HIGH). Matched text: '77 August Lane'"
+            "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 1 (confidence: 93.0% - HIGH). Matched text: 'Jane Ann Doe'"
           },
-          "properties": {
-            "confidence": 95,
-            "confidenceLevel": "HIGH",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
-              "original_confidence": 95,
-              "original_file": "<golden:overlap_groups_render_once>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
-              "source": "preprocessed_content",
-              "validation_checks": {
-                "no_negative_context": true,
-                "not_false_positive": true,
-                "street_type_suffix": true
-              },
-              "validation_path": "document"
-            },
-            "positiveKeywords": [
-              "residence"
-            ],
-            "validator": "physical_address"
-          },
-          "rank": 72.5,
-          "ruleId": "US_STREET_ADDRESS"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:overlap_groups_render_once>"
-                },
-                "contextRegion": {
-                  "snippet": {
-                    "text": "Located at 100 \nLocated at 100 Martin Luther King Blvd\n Blvd"
-                  },
-                  "startLine": 4
-                },
-                "region": {
-                  "endColumn": 34,
-                  "snippet": {
-                    "text": "Located at 100 Martin Luther King Blvd"
-                  },
-                  "startColumn": 16,
-                  "startLine": 4
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 4 (confidence: 93.0% - HIGH). Matched text: 'Martin Luther King'"
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "6aaa1d1d0414dfdfd388173022eb054ec1ad27adb338f48fbec75ff862c0da80"
           },
           "properties": {
             "confidence": 93,
@@ -473,10 +496,10 @@
                   "hispanic",
                   "compound"
                 ],
-                "FirstName": "Martin",
-                "FullName": "Martin Luther King",
-                "LastName": "King",
-                "MiddleName": "Luther",
+                "FirstName": "Jane",
+                "FullName": "Jane Ann Doe",
+                "LastName": "Doe",
+                "MiddleName": "Ann",
                 "Pattern": "three_part_name",
                 "Suffix": "",
                 "Title": ""
@@ -523,26 +546,29 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "Residence: 77 \nResidence: 77 August Lane, Boise ID 83702\n, Boise ID 83702"
+                    "text": "Dr. \nDr. Renée Müller García signed\n signed"
                   },
-                  "startLine": 1
+                  "startLine": 2
                 },
                 "region": {
-                  "endColumn": 26,
+                  "endColumn": 27,
                   "snippet": {
-                    "text": "Residence: 77 August Lane, Boise ID 83702"
+                    "text": "Dr. Renée Müller García signed"
                   },
-                  "startColumn": 15,
-                  "startLine": 1
+                  "startColumn": 5,
+                  "startLine": 2
                 }
               }
             }
           ],
           "message": {
-            "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 1 (confidence: 92.0% - HIGH). Matched text: 'August Lane'"
+            "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 2 (confidence: 93.0% - HIGH). Matched text: 'Renée Müller García'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "fb3d953d99015f45221ef1b259dfca44f3d57516f5a4f46914c7598332ba3014"
           },
           "properties": {
-            "confidence": 92,
+            "confidence": 93,
             "confidenceLevel": "HIGH",
             "metadata": {
               "confidence_adjustment": 0,
@@ -553,115 +579,26 @@
               "context_keywords": null,
               "cultural_context": [
                 "western",
-                "english",
-                "european"
+                "hispanic",
+                "compound"
               ],
               "name_components": {
                 "Cultural": [
                   "western",
-                  "english",
-                  "european"
-                ],
-                "FirstName": "August",
-                "FullName": "August Lane",
-                "LastName": "Lane",
-                "MiddleName": "",
-                "Pattern": "basic_western_name",
-                "Suffix": "",
-                "Title": ""
-              },
-              "original_confidence": 92,
-              "pattern": "basic_western_name",
-              "pattern_priority": 5,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
-              "validation_checks": {
-                "both_names_known": true,
-                "has_known_name_component": true,
-                "has_middle_name": false,
-                "has_suffix": false,
-                "has_title": false,
-                "known_first_name": true,
-                "known_last_name": true,
-                "not_business_name": true,
-                "not_technical_term": true,
-                "not_test_data": true,
-                "proper_case": true,
-                "reasonable_length": true,
-                "valid_pattern": true
-              },
-              "validation_path": "document"
-            },
-            "validator": "PERSON_NAME"
-          },
-          "rank": 76,
-          "ruleId": "PERSON_NAME"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:overlap_groups_render_once>"
-                },
-                "contextRegion": {
-                  "snippet": {
-                    "text": "Renée Müller, José García, François Lefèvre\n, José García, François Lefèvre"
-                  },
-                  "startLine": 2
-                },
-                "region": {
-                  "endColumn": 15,
-                  "snippet": {
-                    "text": "Renée Müller, José García, François Lefèvre"
-                  },
-                  "startColumn": 1,
-                  "startLine": 2
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 2 (confidence: 92.0% - HIGH). Matched text: 'Renée Müller'"
-          },
-          "properties": {
-            "confidence": 92,
-            "confidenceLevel": "HIGH",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
-              "context_impact": 0,
-              "context_keywords": null,
-              "cultural_context": [
-                "western",
-                "english",
-                "european"
-              ],
-              "name_components": {
-                "Cultural": [
-                  "western",
-                  "english",
-                  "european"
+                  "hispanic",
+                  "compound"
                 ],
                 "FirstName": "Renée",
-                "FullName": "Renée Müller",
-                "LastName": "Müller",
-                "MiddleName": "",
-                "Pattern": "basic_western_name",
+                "FullName": "Renée Müller García",
+                "LastName": "García",
+                "MiddleName": "Müller",
+                "Pattern": "three_part_name",
                 "Suffix": "",
                 "Title": ""
               },
-              "original_confidence": 92,
-              "pattern": "basic_western_name",
-              "pattern_priority": 5,
+              "original_confidence": 93,
+              "pattern": "three_part_name",
+              "pattern_priority": 6,
               "semantic_context": {
                 "FinancialData": 0,
                 "MedicalData": 0,
@@ -672,7 +609,7 @@
               "validation_checks": {
                 "both_names_known": true,
                 "has_known_name_component": true,
-                "has_middle_name": false,
+                "has_middle_name": true,
                 "has_suffix": false,
                 "has_title": false,
                 "known_first_name": true,
@@ -688,7 +625,7 @@
             },
             "validator": "PERSON_NAME"
           },
-          "rank": 76,
+          "rank": 76.5,
           "ruleId": "PERSON_NAME"
         },
         {
@@ -718,6 +655,9 @@
           ],
           "message": {
             "text": "Secret or API Key Detected in <golden:overlap_groups_render_once> at line 5 (confidence: 85.0% - MEDIUM). Matched text: 'Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "a8900bc64ccb9287465409722c80fd9b0976287d497d0d64340d0c3b2db5aabc"
           },
           "properties": {
             "confidence": 85,
@@ -765,26 +705,98 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "Residence: 77 August \nResidence: 77 August Lane, Boise ID 83702\n ID 83702"
+                    "text": "Track 1: %B\nTrack 1: %B4532015112830366^DOE/JANE^2912101000000000000000?\n^DOE/JANE^29121010000000000000"
+                  },
+                  "startLine": 4
+                },
+                "region": {
+                  "endColumn": 28,
+                  "snippet": {
+                    "text": "Track 1: %B4532015112830366^DOE/JANE^2912101000000000000000?"
+                  },
+                  "startColumn": 12,
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Credit Card Number Detected in <golden:overlap_groups_render_once> at line 4 (confidence: 75.0% - MEDIUM). Matched text: '4532015112830366'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "012d7223c4695c1663c49bccd6c5e7ba211136632026ebf4fbd9d07eb6df7986"
+          },
+          "properties": {
+            "confidence": 75,
+            "confidenceLevel": "MEDIUM",
+            "metadata": {
+              "card_type": "VISA",
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 75,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Government",
+              "context_impact": 0,
+              "original_confidence": 75,
+              "original_file": "<golden:overlap_groups_render_once>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": true,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": true,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "Visa"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 87.5,
+          "ruleId": "VISA"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:overlap_groups_render_once>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Signed: \nSigned: Dr. Jane Ann Doe\n Doe"
                   },
                   "startLine": 1
                 },
                 "region": {
-                  "endColumn": 33,
+                  "endColumn": 21,
                   "snippet": {
-                    "text": "Residence: 77 August Lane, Boise ID 83702"
+                    "text": "Signed: Dr. Jane Ann Doe"
                   },
-                  "startColumn": 22,
+                  "startColumn": 9,
                   "startLine": 1
                 }
               }
             }
           ],
           "message": {
-            "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 1 (confidence: 67.0% - MEDIUM). Matched text: 'Lane, Boise'"
+            "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 1 (confidence: 65.0% - MEDIUM). Matched text: 'Dr. Jane Ann'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "774ae90e81adcffc0e2f18c0b102667592cbc6d39d920cff0b5c3d5d82414cd0"
           },
           "properties": {
-            "confidence": 67,
+            "confidence": 65,
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
@@ -794,26 +806,24 @@
               "context_impact": 0,
               "context_keywords": null,
               "cultural_context": [
-                "formal",
-                "database",
-                "directory"
+                "western",
+                "formal"
               ],
               "name_components": {
                 "Cultural": [
-                  "formal",
-                  "database",
-                  "directory"
+                  "western",
+                  "formal"
                 ],
-                "FirstName": "Boise",
-                "FullName": "Lane, Boise",
-                "LastName": "Lane",
+                "FirstName": "Jane",
+                "FullName": "Dr. Jane Ann",
+                "LastName": "Ann",
                 "MiddleName": "",
-                "Pattern": "last_comma_first",
+                "Pattern": "name_with_title",
                 "Suffix": "",
-                "Title": ""
+                "Title": "Dr."
               },
-              "original_confidence": 67,
-              "pattern": "last_comma_first",
+              "original_confidence": 65,
+              "pattern": "name_with_title",
               "pattern_priority": 8,
               "semantic_context": {
                 "FinancialData": 0,
@@ -827,9 +837,10 @@
                 "has_known_name_component": true,
                 "has_middle_name": false,
                 "has_suffix": false,
-                "has_title": false,
-                "known_first_name": false,
-                "known_last_name": true,
+                "has_title": true,
+                "known_first_name": true,
+                "known_last_name": false,
+                "known_last_name_unverified": true,
                 "not_business_name": true,
                 "not_technical_term": true,
                 "not_test_data": true,
@@ -841,69 +852,8 @@
             },
             "validator": "PERSON_NAME"
           },
-          "rank": 63.5,
+          "rank": 62.5,
           "ruleId": "PERSON_NAME"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:overlap_groups_render_once>"
-                },
-                "contextRegion": {
-                  "snippet": {
-                    "text": "Located at \nLocated at 100 Martin Luther King Blvd"
-                  },
-                  "startLine": 4
-                },
-                "region": {
-                  "endColumn": 39,
-                  "snippet": {
-                    "text": "Located at 100 Martin Luther King Blvd"
-                  },
-                  "startColumn": 12,
-                  "startLine": 4
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "Physical Address Detected in <golden:overlap_groups_render_once> at line 4 (confidence: 65.0% - MEDIUM). Matched text: '100 Martin Luther King Blvd'"
-          },
-          "properties": {
-            "confidence": 65,
-            "confidenceLevel": "MEDIUM",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
-              "original_confidence": 65,
-              "original_file": "<golden:overlap_groups_render_once>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
-              "source": "preprocessed_content",
-              "validation_checks": {
-                "no_negative_context": true,
-                "not_false_positive": true,
-                "street_type_suffix": true
-              },
-              "validation_path": "document"
-            },
-            "positiveKeywords": [
-              "located at"
-            ],
-            "validator": "physical_address"
-          },
-          "rank": 57.5,
-          "ruleId": "US_STREET_ADDRESS"
         },
         {
           "level": "error",
@@ -932,6 +882,9 @@
           ],
           "message": {
             "text": "Social Security Number Detected in <golden:overlap_groups_render_once> at line 7 (confidence: 60.0% - MEDIUM). Matched text: '449-87-4100'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "2cd50e89041879736744ece2b17586bd4f71337b6759bf432a7f32bf67d75cfc"
           },
           "properties": {
             "confidence": 60,
@@ -996,6 +949,9 @@
           "message": {
             "text": "Social Security Number Detected in <golden:overlap_groups_render_once> at line 3 (confidence: 50.0% - LOW). Matched text: '512010001'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "8d224612965e16cf2699c00e833dcea4a704c3cec4822fceafc04abc0bf0580e"
+          },
           "properties": {
             "confidence": 50,
             "confidenceLevel": "LOW",
@@ -1058,6 +1014,9 @@
           ],
           "message": {
             "text": "Email Address Detected in <golden:overlap_groups_render_once> at line 5 (confidence: 40.0% - LOW). Matched text: 'Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "8cfd1f32065c9248ff367421184a1b627e39600096ba7a157dd7694965f43aa8"
           },
           "properties": {
             "confidence": 40,
@@ -1129,6 +1088,9 @@
           ],
           "message": {
             "text": "Phone Number Detected in <golden:overlap_groups_render_once> at line 8 (confidence: 15.0% - LOW). Matched text: '212-555-0142'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "20d3bb5dd8a20c46c3ee4d07321401d66a52b1c40ab2dbfd0f49d44a45b44b2a"
           },
           "properties": {
             "confidence": 15,
@@ -1206,6 +1168,9 @@
           "message": {
             "text": "Date of Birth Detected in <golden:overlap_groups_render_once> at line 6 (confidence: 5.0% - LOW). Matched text: '12.19.85'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "9eea79905ded2efb29ef9c0dab4f8d70112f547f7f58e890407a511af1f0e3b2"
+          },
           "properties": {
             "confidence": 5,
             "confidenceLevel": "LOW",
@@ -1267,6 +1232,19 @@
               "id": "BUSINESS",
               "shortDescription": {
                 "text": "Email Address Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A full magnetic-stripe track (ISO/IEC 7813 Track 1 or Track 2) or a chip card's Track 2 Equivalent Data (EMV tag 57) was detected in the scanned content. A track carries the card number together with its expiry date, service code and discretionary data, and Track 1 also the cardholder's name; it is the data needed to clone a card's stripe."
+              },
+              "help": {
+                "text": "PCI DSS v4.0 Requirement 3.3.1.1 forbids retaining the full contents of any track after authorisation, even encrypted. Delete the track rather than masking or tokenising it, find the process that wrote it (a card reader log, a debug dump, a keyboard-wedge capture) and stop it, and treat the card as exposed."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#card_track_data",
+              "id": "CARD_TRACK_DATA",
+              "shortDescription": {
+                "text": "Card Track Data Detected"
               }
             },
             {
@@ -1345,19 +1323,6 @@
               "id": "SSN",
               "shortDescription": {
                 "text": "Social Security Number Detected"
-              }
-            },
-            {
-              "fullDescription": {
-                "text": "A physical postal address — a street address, a PO box, a rural route or a US military (APO/FPO/DPO) address — was detected in the scanned content. An address locates a person, and a military address additionally reveals a unit assignment."
-              },
-              "help": {
-                "text": "Remove the address or replace it with a documented example. An address is most sensitive in combination with a name or an account identifier, so check what sits beside it before judging severity. A military APO/FPO/DPO address should be treated as more sensitive than a commercial one because it can disclose a unit's location and posting."
-              },
-              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#us_street_address",
-              "id": "US_STREET_ADDRESS",
-              "shortDescription": {
-                "text": "Physical Address Detected"
               }
             },
             {

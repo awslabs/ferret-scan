@@ -37,6 +37,9 @@
           "message": {
             "text": "Email Address Detected in settings.json at line 2 (confidence: 36.0% - LOW). Matched text: 'admin@example.com'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "0ae03eb954e93c734785a00c3926073ddb9399e0efbac0149a8081e8cb477d14"
+          },
           "properties": {
             "confidence": 36,
             "confidenceLevel": "LOW",

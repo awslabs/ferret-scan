@@ -37,6 +37,9 @@
           "message": {
             "text": "Social Security Number Detected in notes.txt at line 3 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "831c2d7d4e8dc7df90897f27315383ac14fcd3f415202ee7a057bc3380fb2e50"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -104,6 +107,9 @@
           "message": {
             "text": "Credit Card Number Detected in notes.txt at line 4 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "abf8df90b02bb36096f1f3eef9a1137f416e0fe6b4cae9c99d2db59212251c65"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -169,6 +175,9 @@
           ],
           "message": {
             "text": "Email Address Detected in notes.txt at line 1 (confidence: 33.0% - LOW). Matched text: 'john.doe@example.com'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "75a35ee5547b61f46dea8b5996e0d8cc89914a2190667358cf4a7f22d1314e01"
           },
           "properties": {
             "confidence": 33,
@@ -245,6 +254,9 @@
           "message": {
             "text": "Secret or API Key Detected in notes.txt at line 2 (confidence: 15.0% - LOW). Matched text: 'AKIAIOSFODNN7EXAMPLE'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "5919a9140157462a0b792b3a100a9319a795dc2efc2f51b8a985ebfb63268bd9"
+          },
           "properties": {
             "confidence": 15,
             "confidenceLevel": "LOW",
@@ -310,6 +322,9 @@
           ],
           "message": {
             "text": "Phone Number Detected in notes.txt at line 1 (confidence: 15.0% - LOW). Matched text: '212-555-0142'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "51c04c41a1c769ad4303f30326196710f575d2bab58103cc90cfa9572f1a7087"
           },
           "properties": {
             "confidence": 15,

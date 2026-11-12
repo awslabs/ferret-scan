@@ -29,6 +29,9 @@
           "message": {
             "text": "Potential Intellectual Property Detected in <golden:ip_consolidation_long_line> at line 1 (confidence: 100.0% - HIGH). Matched text: '© 2026, Amazon Web Services, Inc. or its affil...'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "02b9137d70d500a211c9537efa53394060e4a698766f7f0ac248d813061d1c76"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",

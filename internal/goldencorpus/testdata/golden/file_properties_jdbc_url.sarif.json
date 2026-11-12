@@ -37,6 +37,9 @@
           "message": {
             "text": "Secret or API Key Detected in application.properties at line 1 (confidence: 85.0% - MEDIUM). Matched text: '9NZzXZrztbPDDrR6'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "89ce6c1346435987c3096c3cb508a0a5d97560da7bb8399bc404c939579a45fa"
+          },
           "properties": {
             "confidence": 85,
             "confidenceLevel": "MEDIUM",
@@ -101,6 +104,9 @@
           ],
           "message": {
             "text": "Secret or API Key Detected in application.properties at line 2 (confidence: 85.0% - MEDIUM). Matched text: 'tqpDgKMrV7zFDRzn'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "5f1d65633c316381cfaf66fb2f5b64506c7ae5a297dd5d0d0114b8b9c0602acf"
           },
           "properties": {
             "confidence": 85,

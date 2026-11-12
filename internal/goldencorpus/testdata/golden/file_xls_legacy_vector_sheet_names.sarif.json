@@ -37,6 +37,9 @@
           "message": {
             "text": "Social Security Number Detected in sheetnames.xls at line 3 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "98d63324813710e7750a82d7a8eff0699b37e516331b77f789f4126b07dda3eb"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -98,6 +101,9 @@
           ],
           "message": {
             "text": "Sensitive Metadata Detected in sheetnames.xls at line 1 (confidence: 55.0% - LOW). Matched text: 'Fairbanks Holdings'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "26b9e84a0fa3cb84066ac5a635b852214cdc1a861e0a22a050bde0d8211b26fe"
           },
           "properties": {
             "confidence": 55,

@@ -37,6 +37,9 @@
           "message": {
             "text": "Social Security Number Detected in notreally.doc at line 2 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "b2881447a5b736132c6aec98a201f709645d2fd59ed29ad8ec18493fb33517a6"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",

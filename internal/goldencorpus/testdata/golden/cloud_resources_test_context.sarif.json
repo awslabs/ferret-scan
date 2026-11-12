@@ -31,6 +31,9 @@
           "message": {
             "text": "Cloud Resource Identifier Detected in <golden:cloud_resources_test_context> at line 1 (confidence: 95.0% - HIGH). Matched text: 'arn:aws:iam::123456789012:role/PaymentsAdmin'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "088ba8045e008bc432888bcf9f3608068fbfcf69a405c424145081af855ddd3e"
+          },
           "properties": {
             "confidence": 95,
             "confidenceLevel": "HIGH",
@@ -95,6 +98,9 @@
           ],
           "message": {
             "text": "Cloud Resource Identifier Detected in <golden:cloud_resources_test_context> at line 2 (confidence: 75.0% - MEDIUM). Matched text: 'arn:aws:iam::123456789012:role/PaymentsAdmin'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "7efeba0461aa58f08bbd5d269bb8c3efc17417b911e09ccb36eb4f0a3895c4fa"
           },
           "properties": {
             "confidence": 75,
