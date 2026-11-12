@@ -128,13 +128,23 @@ type SARIFRule struct {
 
 // SARIFResult represents a single result (finding) from the analysis
 type SARIFResult struct {
-	RuleID       string                 `json:"ruleId"`
-	Level        string                 `json:"level"`
-	Message      SARIFMessage           `json:"message"`
-	Locations    []SARIFLocation        `json:"locations,omitempty"`
-	Properties   map[string]interface{} `json:"properties,omitempty"`
-	Suppressions []SARIFSuppression     `json:"suppressions,omitempty"`
-	Rank         float64                `json:"rank,omitempty"`
+	RuleID    string          `json:"ruleId"`
+	Level     string          `json:"level"`
+	Message   SARIFMessage    `json:"message"`
+	Locations []SARIFLocation `json:"locations,omitempty"`
+	// PartialFingerprints carries the finding's line-move-stable identity
+	// under suppressions.FindingIdentityFingerprintName, so a consumer can
+	// recognise the same finding across runs after edits that only moved its
+	// line (SARIF 2.1.0 §3.27.17). It does not displace GitHub's own key: the
+	// upload-sarif action adds primaryLocationLineHash to this map when it is
+	// absent (codeql-action src/fingerprints.ts). GitHub documents that it reads
+	// partialFingerprints but not which vendor keys its alert matching weighs,
+	// so this key is for consumers that opt into it (ASH's suppressions, report
+	// differs).
+	PartialFingerprints map[string]string      `json:"partialFingerprints,omitempty"`
+	Properties          map[string]interface{} `json:"properties,omitempty"`
+	Suppressions        []SARIFSuppression     `json:"suppressions,omitempty"`
+	Rank                float64                `json:"rank,omitempty"`
 }
 
 // SARIFLocation represents the location of a result

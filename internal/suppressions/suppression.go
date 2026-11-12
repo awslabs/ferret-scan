@@ -314,6 +314,42 @@ func (sm *SuppressionManager) generateFindingHash(match detector.Match) string {
 	return sm.findingHashVersion(match, hashVersionCurrent)
 }
 
+// FindingIdentityFingerprintName is the partialFingerprints key the SARIF
+// formatter writes a finding's identity under. The /v1 suffix is SARIF's
+// versioned-fingerprint convention: a change to the fingerprint formula takes
+// a new suffix, never a new value under this one, so a consumer that stored a
+// fingerprint can always tell which formula produced it.
+const FindingIdentityFingerprintName = "ferretFindingIdentity/v1"
+
+// fingerprintHasher exists only to reach the identity formula from the
+// package-level fingerprint function: identityParts and hashSensitiveData
+// read no manager state, so the zero value is safe here.
+var fingerprintHasher = &SuppressionManager{}
+
+// FindingIdentityFingerprint is a finding's identity for SARIF consumers:
+// sha256 over the current-formula identity composite (generateFindingHash's)
+// with the line number left out. Leaving the line out is the point — it is
+// the invariance re-anchoring derives for rule files after the fact
+// (reanchor.go recomputes the hash at other lines to find a moved finding),
+// baked in up front: an edit that only moves the finding to another line
+// changes nothing in this value, so a consumer that keyed a decision on it
+// (ASH's suppressions, a report differ) keeps matching. The invariance is
+// exactly re-anchoring's: an edit inside a multi-line context window still
+// changes it. Two findings that agree on type, line text, basename, context
+// windows and matched value share one fingerprint wherever they sit — three
+// copies of one line are one identity, the case reanchor.go refuses as
+// ambiguous, published here as-is (a consumer that must tell copies apart
+// combines it with the result's location). The value digests the secret and its surroundings, it does not
+// contain them — the property that lets rule files carry the per-line hashes
+// today — but it is unsalted and emitted per finding, so a report carrying it
+// is testable offline against candidate values: a fingerprinted report carries
+// the sensitivity of its findings.
+func FindingIdentityFingerprint(match detector.Match) string {
+	head, tail := fingerprintHasher.identityParts(match, hashVersionCurrent)
+	sum := sha256.Sum256([]byte(head + tail))
+	return hex.EncodeToString(sum[:])
+}
+
 // hashVersion identifies a finding-hash formula. Old rule files carry hashes computed
 // by an older formula, and they have to keep working: an operator's suppression file is
 // a record of decisions they already made, not a cache we may invalidate.
