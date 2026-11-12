@@ -2378,13 +2378,13 @@ func main() {
 		unmatchedRules.beforeGeneration()
 	}
 
-	// Generate suppression rules if requested
+	var generationErr error // a refusal or failed save ends the run non-zero (#880); see generationExitCode
 	if finalConfig.generateSuppressions {
 		if len(allMatches) > 0 {
 			reason := "Auto-generated suppression rule (disabled by default)"
-			err := suppressionManager.GenerateSuppressionRules(allMatches, reason, false)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: Failed to generate suppression rules: %v\n", err)
+			generationErr = suppressionManager.GenerateSuppressionRules(allMatches, reason, false)
+			if generationErr != nil {
+				fmt.Fprintf(os.Stderr, "Error: Failed to generate suppression rules: %v\n", generationErr)
 			} else {
 				suppressions.WriteGenerationReport(os.Stderr, suppressionManager.LastGeneration())
 				fmt.Fprintf(os.Stderr, "Edit the suppression file to enable specific rules by setting 'enabled: true'\n")
@@ -2817,14 +2817,14 @@ func main() {
 		// The SAME decision that produced the message the user just read, escalated for a tool
 		// malfunction. Nothing here re-derives the finding policy.
 		exitCode := precommitDecision.WithToolError(hasErrors).ExitCode
-		os.Exit(resolveIncompleteExitCode(exitCode, finalConfig.failOnIncomplete, coverageGaps))
+		os.Exit(generationExitCode(resolveIncompleteExitCode(exitCode, finalConfig.failOnIncomplete, coverageGaps), generationErr != nil))
 	}
 
 	// Default behavior: exit 0 (findings are reported in output, not via exit code)
 	// unless --fail-on-incomplete escalates a cut-short scan to code 3. Distinct
 	// code lets CI tell "incomplete coverage" apart from clean (0), error (1), and
 	// no-files (2). Settable via --fail-on-incomplete or config fail_on_incomplete.
-	os.Exit(resolveIncompleteExitCode(0, finalConfig.failOnIncomplete, coverageGaps))
+	os.Exit(generationExitCode(resolveIncompleteExitCode(0, finalConfig.failOnIncomplete, coverageGaps), generationErr != nil))
 }
 
 // parseConfidenceLevels delegates to core.ParseConfidenceLevels to avoid code duplication between CLI and web modes.
