@@ -229,49 +229,49 @@ rules:
         finding_type: SSN
         line_number: "3358"
     - id: SUP-00000062
-      hash: 3a79dcc87207894473a53d3271dd0fda96f3c2c2c1e3e55a9c80b1cfbbd88b15 # pragma: allowlist secret
+      hash: abb6b4574d6ae628d479ba58d3163132fa6dfce421653c676e0d022c6e3a80e1 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "95.00"
         filename: configuration.md
         finding_type: AWS_ARN
-        line_number: "676"
+        line_number: "682"
     - id: SUP-00000063
-      hash: 611aa2e864a0389b4ac77f155022301ba03f30416e0a6a8d700e8f6b67f866b3 # pragma: allowlist secret
+      hash: 07793465b3e257a0c2eccbaf02dc9b43bee161fee9c80c6f138bef37326df61a # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "95.00"
         filename: configuration.md
         finding_type: GCP_RESOURCE_NAME
-        line_number: "678"
+        line_number: "684"
     - id: SUP-00000064
-      hash: 91ac213225a207ba9641056ef87a841748841ba50036504bb1f38cd4af266752 # pragma: allowlist secret
+      hash: 979b85a8094b3a17b60c6fe8e1a32ac43453e9ec43d4822f78c07618a36e3669 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "90.00"
         filename: configuration.md
         finding_type: IBM_CRN
-        line_number: "680"
+        line_number: "686"
     - id: SUP-00000065
-      hash: 7f21101159a75157a7c909d52941673b1ab73fc5eecab11a390409d831531a51 # pragma: allowlist secret
+      hash: ccac2d649f053936fd6ac042d48eafbc1649fba2af8b481c3869b57bacd2ed8a # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "90.00"
         filename: configuration.md
         finding_type: ALIBABA_ARN
-        line_number: "681"
+        line_number: "687"
     - id: SUP-00000066
       hash: 79c7e6bb81c8e0f570d06f2720a9c77ad83612039e7f542cae93c8c54f4e0335 # pragma: allowlist secret
       reason: "detector FP: #934"
@@ -295,71 +295,71 @@ rules:
         finding_type: INTELLECTUAL_PROPERTY
         line_number: "959"
     - id: SUP-00000068
-      hash: b39959586b1357ab913fc5ce3ff7cc5a567567d0c19bd3b0d086149d2540d22e # pragma: allowlist secret
+      hash: a2d8fc57a65c8d142bbf931d00ba2f877126f629bd2736e22d9b1e230c70e1e6 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "92.00"
         filename: configuration.md
         finding_type: PERSON_NAME
-        line_number: "1067"
+        line_number: "1073"
     - id: SUP-00000069
-      hash: e01e926045fee7d8f3ff56f57cb9e8ae070d141591389f005f5c6f17530672df # pragma: allowlist secret
+      hash: 80e11767166bb5acd6bf2d1e9397145deac2174580954990c9722c088307560d # pragma: allowlist secret
       reason: "detector FP: #931"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "100.00"
         filename: configuration.md
         finding_type: API_KEY_OR_SECRET
-        line_number: "640"
+        line_number: "646"
     - id: SUP-00000070
-      hash: 7e5705e2af5551d32526a603c2e476519377e7200c8daa26b9ac94abf2a1e9e1 # pragma: allowlist secret
+      hash: fbecd4d5f8d047e3add4c112110b8bd4fa257d6503d0ead2fdb2118ea3a130f5 # pragma: allowlist secret
       reason: "detector FP: #931"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "100.00"
         filename: configuration.md
         finding_type: API_KEY_OR_SECRET
-        line_number: "649"
+        line_number: "655"
     - id: SUP-00000071
-      hash: 2290c7c3509a0865331c3fd7efac330a9fb325dde6dc1940b7c59ba132213ad3 # pragma: allowlist secret
+      hash: d9c9bafa1c92a1f30c5ce38e1608f73a5bb557efbbd15813a73a55872b01c98b # pragma: allowlist secret
       reason: "detector FP: #931"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "100.00"
         filename: configuration.md
         finding_type: API_KEY_OR_SECRET
-        line_number: "650"
+        line_number: "656"
     - id: SUP-00000072
-      hash: e070d4ef839e33a88282095ad479b3f04d55eeb73d76b01a690d6a1d48f47053 # pragma: allowlist secret
+      hash: b72a9c7023cb9f016d84018ae1aadca7b45218465e4d8a1a2fdbe1c66b5ed0b2 # pragma: allowlist secret
       reason: "detector FP: #931"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "100.00"
         filename: configuration.md
         finding_type: API_KEY_OR_SECRET
-        line_number: "651"
+        line_number: "657"
     - id: SUP-00000073
-      hash: 7c2029dd27ef1b8d7007c1a53dfb77088c6a7114f3128ad8c2db928824326fd2 # pragma: allowlist secret
+      hash: c0ad4d8ca071fe2463509c502be48d05c211677d5923308b8742d7e5eee45eab # pragma: allowlist secret
       reason: "detector FP: #931"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "100.00"
         filename: configuration.md
         finding_type: API_KEY_OR_SECRET
-        line_number: "959"
+        line_number: "965"
     - id: SUP-00000074
       hash: 31598d2e47a6a0af3580c6cd299851a48365dcb39ebcc7158c8ca16a062c373a # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
@@ -702,27 +702,27 @@ rules:
         finding_type: SSN
         line_number: "112"
     - id: SUP-00000105
-      hash: 5b2f344bf90e4f877342da96b44dd1e991fd7fd8abcf9e16f21f0c8ddc2f7053 # pragma: allowlist secret
+      hash: 3d1d40966d5dad4b7ce49770ab76f9ce82f3affcb9e532d6fe206bdff7278b6d # pragma: allowlist secret
       reason: "detector FP: #933"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T13:24:18.343365782Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "95.00"
         filename: README-Suppressions.md
         finding_type: API_KEY_OR_SECRET
-        line_number: "154"
+        line_number: "186"
     - id: SUP-00000106
-      hash: 97a2be9945878e31c5fe1dcd88e5f914d071f7f4452d3ea87aad2a9709bf6ced # pragma: allowlist secret
+      hash: d793e98bb3c0a0fc2b9d4468e91773598fcb5425f2c9c995a60d522cd23c17c6 # pragma: allowlist secret
       reason: "detector FP: #933"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T13:24:18.343365782Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "95.00"
         filename: README-Suppressions.md
         finding_type: API_KEY_OR_SECRET
-        line_number: "171"
+        line_number: "203"
     - id: SUP-00000107
       hash: d95aa66f1dcd740766570d0b87123452b071b400e8f0a9162a8ba0915b027a68 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
@@ -768,16 +768,16 @@ rules:
         finding_type: BUSINESS
         line_number: "81"
     - id: SUP-00000111
-      hash: db6c2e93ed5397d0479ed40a8cafdbf7a55042e9b380c7c67664a265773eb022 # pragma: allowlist secret
+      hash: e1a310713300cb10e3da74418ecd6ddf49c3ea55839cc841ec24474d2df2f438 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "100.00"
         filename: README-Redaction.md
         finding_type: INTELLECTUAL_PROPERTY
-        line_number: "391"
+        line_number: "401"
     - id: SUP-00000112
       hash: 17abd63833c9782ddc5ed8f89559034d151b87cd611216e3c5db52b6420cf9f6 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
@@ -856,16 +856,16 @@ rules:
         finding_type: PERSON_NAME
         line_number: "94"
     - id: SUP-00000119
-      hash: 90210caeb751dcf312f9939e6452367f5121e48b4c538ed9a09551aebb68701e # pragma: allowlist secret
+      hash: 241b88e43e19aa9faad01e983159542718cc029cf45110c7560cd3ae50649a31 # pragma: allowlist secret
       reason: "detector FP: #935"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "92.00"
         filename: README-Redaction.md
         finding_type: PERSON_NAME
-        line_number: "309"
+        line_number: "319"
     - id: SUP-00000120
       hash: 1829140fd84704e17c12d5f6e31f3e2b8a1d5c695745976aadcee3ba5ecb52f0 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
@@ -944,16 +944,16 @@ rules:
         finding_type: INTELLECTUAL_PROPERTY
         line_number: "168"
     - id: SUP-00000127
-      hash: 65600778757c70dda69da041712a853b2dd3415e5dddd542e96daa107c86bb08 # pragma: allowlist secret
+      hash: a0b3994b716bdf26284a1e5e2ea63e20879a413f84a82962c095c60144bf5483 # pragma: allowlist secret
       reason: "detector FP: #931"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "90.00"
         filename: ferret.yaml
         finding_type: API_KEY_OR_SECRET
-        line_number: "168"
+        line_number: "171"
     - id: SUP-00000128
       hash: fcd89f959f1a08e79d80ed809f7e8ec69cc9f91fe9ff24c59c6e612748c24eb8 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
@@ -2198,159 +2198,159 @@ rules:
         finding_type: US_STREET_ADDRESS
         line_number: "1024"
     - id: SUP-00000241
-      hash: 3ee2f93434eb0f89a6abc9d9d7f8b411ba6b1985fdaaa59401d0b8027c17eb05 # pragma: allowlist secret
+      hash: 7b952c109bca3c2eba24210b3c33db4535a101b89cab980c4fd6d269e7594f32 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "95.00"
         filename: README.md
         finding_type: VISA
-        line_number: "29"
+        line_number: "32"
     - id: SUP-00000242
-      hash: 9545fb9ecb4b501c6569615ce407c003bf60740931264a8396641889f6928196 # pragma: allowlist secret
+      hash: 14f6eb48738521647319ef0eaab4f9416eb115bada42a4fe73aa0cab92868c83 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "100.00"
         filename: README.md
         finding_type: VISA
-        line_number: "30"
+        line_number: "33"
     - id: SUP-00000243
-      hash: 7962a843c05431e884f2665c56638ba5db990cb0467899b1b6746c97413ebf9f # pragma: allowlist secret
+      hash: ed35e1081f2dc8ec8b1a699dfb2f2229cc269213cb3f5e0e20e38e4dbd225465 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "95.00"
         filename: README.md
         finding_type: VISA
-        line_number: "113"
+        line_number: "161"
     - id: SUP-00000244
-      hash: 42ac92af8fe51d457113ce0b001ba11391a6af1ffe2c9f5b2ededc88c2973711 # pragma: allowlist secret
+      hash: 9841f5f5546b1d3c4163026084aaa821956f080fb6646d72c461ebe22e686642 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "95.00"
         filename: README.md
         finding_type: MASTERCARD
-        line_number: "114"
+        line_number: "162"
     - id: SUP-00000245
-      hash: 207a011210ee1b137e9688700a68393bd441e3f07127c57788ff5532c4656fc1 # pragma: allowlist secret
+      hash: 00ac110acd69aeae0dfe2024a648b63d58fd8909a7669876e8499fb7458fa510 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "100.00"
         filename: README.md
         finding_type: VISA
-        line_number: "118"
+        line_number: "166"
     - id: SUP-00000246
-      hash: 7c6dabceea419e6a2d247f12a2970c6fb1110750a24e21cc395ca67572b53d30 # pragma: allowlist secret
+      hash: f2951424e616d69677f30c8284331c70eb3c5e9d4a45144a30539779ebe28ceb # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "100.00"
         filename: README.md
         finding_type: MASTERCARD
-        line_number: "119"
+        line_number: "167"
     - id: SUP-00000247
-      hash: 7795de80b79b3873f636093df10bc40f7158bda2103b72b28f50de13386a9219 # pragma: allowlist secret
+      hash: d5d1e03dc3665421d66ad9604eea78e9875396056962a24683f8e6b042924f6d # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "100.00"
         filename: README.md
         finding_type: VISA
-        line_number: "124"
-    - id: SUP-00000248
-      hash: e24be23ea43d97949fab5cd4aa213b25c0a99a0e0b2e3f2d52299485ffb90f84 # pragma: allowlist secret
-      reason: "fixture: validator README example of what this check reports"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: README.md
-        finding_type: VISA
-        line_number: "128"
-    - id: SUP-00000249
-      hash: d44826fb0b3fccd18ae30f0643fef6bcf923b50f5797880c892207d48817a3ee # pragma: allowlist secret
-      reason: "fixture: validator README example of what this check reports"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: README.md
-        finding_type: MASTERCARD
-        line_number: "129"
-    - id: SUP-00000250
-      hash: 14bb11c02d1ad6d5cb857bfcf2826f1a33a220ea3f55c2eed1cff5a74694267b # pragma: allowlist secret
-      reason: "fixture: validator README example of what this check reports"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: README.md
-        finding_type: VISA
-        line_number: "169"
-    - id: SUP-00000251
-      hash: b3f2a13ea8426d3fd646ee5260bb85bcd78e4a29a3e3b0cfe8c37662e0006c6a # pragma: allowlist secret
-      reason: "fixture: validator README example of what this check reports"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: README.md
-        finding_type: VISA
-        line_number: "170"
-    - id: SUP-00000252
-      hash: 0a637eaac496cdf1e4ff62022f7035e61ad5d919d157f5dd0bbc9c9673e937b2 # pragma: allowlist secret
-      reason: "fixture: validator README example of what this check reports"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: README.md
-        finding_type: VISA
-        line_number: "171"
-    - id: SUP-00000253
-      hash: 828fd2632975c53a2def5789be97e51762591bc0269aa7879338c140d0f9977a # pragma: allowlist secret
-      reason: "fixture: validator README example of what this check reports"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: README.md
-        finding_type: MASTERCARD
         line_number: "172"
-    - id: SUP-00000254
-      hash: 7864a88680a86d740830babfd23e2909153727e6cc7de4d0a53771ff917cd2f7 # pragma: allowlist secret
+    - id: SUP-00000248
+      hash: 7527f9613d0363fec595eb9b7cd909c179dfee4ce9a4a8e6b319c815d5569ea2 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
+      metadata:
+        confidence: "100.00"
+        filename: README.md
+        finding_type: VISA
+        line_number: "176"
+    - id: SUP-00000249
+      hash: e4bf5bc861d7702995f9a2089617d91403790448ecb94994a7f999a159128a1f # pragma: allowlist secret
+      reason: "fixture: validator README example of what this check reports"
+      enabled: true
+      created_at: 2026-11-09T19:55:15.405018783Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
+      metadata:
+        confidence: "100.00"
+        filename: README.md
+        finding_type: MASTERCARD
+        line_number: "177"
+    - id: SUP-00000250
+      hash: 60e24eb2731362f399958cad0035b4be03c102d2299dd55f10b8e6a8e8ad4e99 # pragma: allowlist secret
+      reason: "fixture: validator README example of what this check reports"
+      enabled: true
+      created_at: 2026-11-09T19:55:15.405018783Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
+      metadata:
+        confidence: "100.00"
+        filename: README.md
+        finding_type: VISA
+        line_number: "217"
+    - id: SUP-00000251
+      hash: ce8a4c0a66717dc23c5f0606bf4e63591ab321aaee0c77f36ba9dbc5f84c0f99 # pragma: allowlist secret
+      reason: "fixture: validator README example of what this check reports"
+      enabled: true
+      created_at: 2026-11-09T19:55:15.405018783Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
+      metadata:
+        confidence: "100.00"
+        filename: README.md
+        finding_type: VISA
+        line_number: "218"
+    - id: SUP-00000252
+      hash: d4145364f8fa9f4f3c4204254a395a67e8c6da296bd8c719c004f9fcba14986f # pragma: allowlist secret
+      reason: "fixture: validator README example of what this check reports"
+      enabled: true
+      created_at: 2026-11-09T19:55:15.405018783Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
+      metadata:
+        confidence: "100.00"
+        filename: README.md
+        finding_type: VISA
+        line_number: "219"
+    - id: SUP-00000253
+      hash: ef6f6dd8ac1f7fd4b2b4950835e58e7c34f21472d158ba51e8d766088584c29d # pragma: allowlist secret
+      reason: "fixture: validator README example of what this check reports"
+      enabled: true
+      created_at: 2026-11-09T19:55:15.405018783Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
+      metadata:
+        confidence: "100.00"
+        filename: README.md
+        finding_type: MASTERCARD
+        line_number: "220"
+    - id: SUP-00000254
+      hash: ae2f8b3528a09d6c7499e26c69d87ac9da5fde96d3c2d4495627c55322b97f50 # pragma: allowlist secret
+      reason: "fixture: validator README example of what this check reports"
+      enabled: true
+      created_at: 2026-11-09T19:55:15.405018783Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "92.00"
         filename: README.md
         finding_type: PERSON_NAME
-        line_number: "128"
+        line_number: "176"
     - id: SUP-00000255
       hash: 2d9b96655880dbd8774e992abe84269bbe0fda0c6be4e4382ac6a6284b839f31 # pragma: allowlist secret
       reason: "detector FP: #930"
@@ -4013,38 +4013,38 @@ rules:
         finding_type: OTPAUTH_URI
         line_number: "21"
     - id: SUP-00000406
-      hash: 35c750d0ef60ee4b0b2fd2964919c70fc3155bb3bf2fe55560ef05a3f3b48019 # pragma: allowlist secret
+      hash: 8a50fd4727037670ac6e89cf828c535a50f0bbec50f8ed7f6a77dcf7ce55ff4f # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: README.md
-        finding_type: PHONE
-        line_number: "50"
-    - id: SUP-00000407
-      hash: d1c0c27d66d63fc01b082d7b7f912b9720e9257c66bbc7bf65857adf8dfb6fa4 # pragma: allowlist secret
-      reason: "fixture: validator README example of what this check reports"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "100.00"
         filename: README.md
         finding_type: PHONE
         line_number: "55"
-    - id: SUP-00000408
-      hash: a8518bff7128ea2c92ca26107393bb59299a109005562ff72c27fc6f070b9d16 # pragma: allowlist secret
+    - id: SUP-00000407
+      hash: fd3b64ec07ab6843f1af8c30169eecd4fef455651acab7c416178fc9211af705 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
       metadata:
         confidence: "100.00"
         filename: README.md
         finding_type: PHONE
-        line_number: "58"
+        line_number: "60"
+    - id: SUP-00000408
+      hash: 731a810744a8eeb4f7648635364f3306d19df5ac565c1fbde4437807415a8d72 # pragma: allowlist secret
+      reason: "fixture: validator README example of what this check reports"
+      enabled: true
+      created_at: 2026-11-09T19:55:15.405018783Z
+      last_seen_at: 2026-11-12T00:40:40.437408584Z
+      metadata:
+        confidence: "100.00"
+        filename: README.md
+        finding_type: PHONE
+        line_number: "63"
     - id: SUP-00000409
       hash: f06723c9d66d97129c8b3b3678a7697fe225c6d02a359662c76f9d6c11b119f0 # pragma: allowlist secret
       reason: "fixture: --help example of what this check reports"
