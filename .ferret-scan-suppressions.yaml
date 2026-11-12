@@ -6641,7 +6641,7 @@ rules:
         filename: file_wide_context_test.go
         finding_type: API_KEY_OR_SECRET
         line_number: "40"
-    - id: SUP-00000706
+    - id: SUP-00000707
       hash: f4967a2da71abeb5107d54f08955bfc09c414925f0aaf338e5debb82f1f2a7c9 # pragma: allowlist secret
       reason: "fixture: the #785 six-line file's callback tokens, which TestTrailingNewlineDoesNotDecideWhetherAFileReports asserts are detected"
       enabled: true
@@ -6652,7 +6652,7 @@ rules:
         filename: file_wide_context_test.go
         finding_type: API_KEY_OR_SECRET
         line_number: "40"
-    - id: SUP-00000707
+    - id: SUP-00000708
       hash: 70bf380d5cad0d15dbb6530a46d19fa2b26fbb8ac2092933dfe1c3826104188a # pragma: allowlist secret
       reason: "fixture: the #785 six-line file's callback tokens, which TestTrailingNewlineDoesNotDecideWhetherAFileReports asserts are detected"
       enabled: true
