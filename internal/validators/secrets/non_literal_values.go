@@ -41,9 +41,11 @@ var (
 	// their negations. Beside a regex operator, it makes the value a regex.
 	reRegexClassEscape = regexp.MustCompile(`\\{1,2}[bBsSdDwW]`)
 
-	// reRedactionMarker is the `simple` strategy's marker, `[<TYPE>-REDACTED]` (TYPE in upper case,
-	// with `_` or `-` inside: `[API_KEY_OR_SECRET-REDACTED]`, `[CREDIT-CARD-REDACTED]`).
-	reRedactionMarker = regexp.MustCompile(`^\[[A-Z][A-Z0-9_]*(?:-[A-Z0-9_]+)*-REDACTED\]$`)
+	// reRedactionMarker is the redactor's marker, `[<TYPE>-REDACTED]` (TYPE in upper case, with `_`
+	// or `-` inside: `[API_KEY_OR_SECRET-REDACTED]`, `[CREDIT-CARD-REDACTED]`), and the synthetic
+	// strategy's private-key marker with its 8-hex nonce, `[PRIVATE-KEY-REDACTED-1e28e700]`
+	// (internal/redactors/replacement/replacement.go).
+	reRedactionMarker = regexp.MustCompile(`^\[[A-Z][A-Z0-9_]*(?:-[A-Z0-9_]+)*-REDACTED(?:-[0-9a-f]{8})?\]$`)
 
 	// reIdentWord is one identifier word in a conventional case: snake_case, UPPER_SNAKE,
 	// camelCase or PascalCase, digits only at the end of a word.

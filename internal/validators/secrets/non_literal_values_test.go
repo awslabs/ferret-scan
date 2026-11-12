@@ -31,6 +31,7 @@ func TestNonLiteralValueShapes(t *testing.T) {
 		"[API_KEY_OR_SECRET-REDACTED]",
 		"[CREDIT-CARD-REDACTED]",
 		`[SSH_PRIVATE_KEY-REDACTED]\n`,
+		`[PRIVATE-KEY-REDACTED-1e28e700]\n`,
 		"****-****-****-****",
 		"**** **** **** ****",
 		"glpat-xxxxxxxxxxxxxxxxxxxx",
