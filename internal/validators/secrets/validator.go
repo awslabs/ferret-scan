@@ -760,6 +760,11 @@ func (v *Validator) validateContentCtx(ctx stdctx.Context, content string, origi
 
 	// Then check line by line for other patterns
 	lines := strings.Split(content, "\n")
+	// #933: the detect-secrets allowlist pragma's words are not a label for the value beside them.
+	// Blanked in place (same length), so spans and line numbers are unchanged. See allowlist_pragma.go.
+	for i, l := range lines {
+		lines[i] = blankAllowlistPragma(l)
+	}
 
 	// #746 shape (c): a YAML block sequence puts the key on one line and each credential on its
 	// own later line, so no single line carries both and the per-line patterns have nothing to
