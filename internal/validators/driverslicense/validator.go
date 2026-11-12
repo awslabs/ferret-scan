@@ -114,7 +114,6 @@ type Validator struct {
 	pattern          string
 	positiveKeywords []string
 	negativeKeywords []string
-	stateKeywords    []string
 	regex            *regexp.Regexp
 	observer         observability.Observer
 }
@@ -144,11 +143,6 @@ func NewValidator() *Validator {
 			"business", "plate", "immigration", "construction", "key",
 			"expires", "expiry", "renew", "mailed", "activation",
 			"work permit",
-		},
-		stateKeywords: []string{
-			"california", "texas", "florida", "new york", "new jersey",
-			"pennsylvania", "illinois", "ohio", "georgia", "north carolina",
-			"michigan", "wisconsin",
 		},
 	}
 
