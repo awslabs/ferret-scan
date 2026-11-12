@@ -963,6 +963,8 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 		}
 	}
 
+	// currentIdentity holds every finding's current-formula hash, filled before pass 1: refresh reads it.
+	currentIdentity := make(map[string]bool, len(matches))
 	// refresh records that rule idx identifies a finding whose current-formula hash is findingHash.
 	refresh := func(idx int, findingHash string) {
 		// Update last_seen_at for existing rule. Written through the live
@@ -974,7 +976,14 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 		// here: an explicit write, by the run that just saw its finding. Its other fields stay.
 		// The current formula is tried first, so a rule that differs from findingHash matched
 		// through an older one. A rule the loader refused (#866) is left as it is (#885).
-		if rule.Hash != findingHash && rule.NotApplied == "" && !migrated[idx] {
+		//
+		// A rule whose hash is ANOTHER finding's current-formula identity is that finding's rule
+		// and is never migrated away from it. Two findings of one run can meet that way: the
+		// multi-line PEM pass's finding carries no context, and a keyword copy of the same key on
+		// the same line does, so the copy's empty-context compatibility candidate IS the PEM
+		// finding's current hash. Migrating moved the PEM finding's own rule onto the copy, and the
+		// PEM finding was left with no rule (#981: 36 of 36 on 2fb4719).
+		if rule.Hash != findingHash && rule.NotApplied == "" && !migrated[idx] && !currentIdentity[rule.Hash] {
 			rule.Hash = findingHash
 			existingHashes[findingHash] = idx
 			migrated[idx] = true
@@ -1007,11 +1016,16 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 	// current formula.
 	identities := make([]string, len(matches)) // each finding's current-formula hash
 	ruled := make([]bool, len(matches))        // a rule identifies the finding
+	allCandidates := make([][]string, len(matches))
+	for i, match := range matches {
+		allCandidates[i] = sm.findingHashCandidates(match)
+		identities[i] = allCandidates[i][0]
+		currentIdentity[identities[i]] = true
+	}
 	var unruled []int
 	var unruledCandidates [][]string
-	for i, match := range matches {
-		candidates := sm.findingHashCandidates(match)
-		identities[i] = candidates[0]
+	for i := range matches {
+		candidates := allCandidates[i]
 		if idx := lookup(candidates); idx >= 0 {
 			refresh(idx, identities[i])
 			ruled[i] = true
