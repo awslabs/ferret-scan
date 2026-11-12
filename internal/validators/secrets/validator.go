@@ -1478,6 +1478,47 @@ func compileUnquotedPatterns() []*regexp.Regexp {
 	return patterns
 }
 
+// queryParamOpener reports whether line[i], the byte before an assignment's key, opens a URL query
+// or fragment parameter: `?` or `&`, or a `#` glued to what precedes it (`cb#access_token=`, #932).
+// A `#` at the start of the line or after a space comments the assignment out, and its value is
+// taken whole.
+func queryParamOpener(line string, i int) bool {
+	switch line[i] {
+	case '?', '&':
+		return true
+	case '#':
+		return i > 0 && line[i-1] != ' ' && line[i-1] != '\t'
+	}
+	return false
+}
+
+// escapedBreakCut returns where an unquoted value captured at line[start:end] really ends: at a
+// two-byte `\n`, `\r` or `\t` escape that is followed by the end of the capture, another escape, or
+// a `key=`/`key:` (#932). Inside a quoted source string such an escape is a line break, so the
+// greedy capture `x\nuser=y` holds one value and the start of the next record, and `...KEY\n` holds
+// a value and the break after it. An escape inside a value with no record after it is kept.
+func escapedBreakCut(line string, start, end int) int {
+	for i := start; i+1 < end; i++ {
+		if line[i] != '\\' || (line[i+1] != 'n' && line[i+1] != 'r' && line[i+1] != 't') {
+			continue
+		}
+		rest := line[i+2 : end]
+		// The key test reads at most escapedBreakKeyMax bytes, so a value holding many escapes
+		// costs its own length times a constant, not its length squared.
+		if rest == "" || rest[0] == '\\' || escapedBreakKey.MatchString(rest[:min(len(rest), escapedBreakKeyMax)]) {
+			return i
+		}
+	}
+	return end
+}
+
+// escapedBreakKey is a record key at the start of what follows an escaped line break.
+// shortcut: a key longer than escapedBreakKeyMax bytes is not recognised (the value then runs on, as
+// on main); upgrade if a longer key is measured.
+var escapedBreakKey = regexp.MustCompile(`^[A-Za-z_][\w.-]*[=:]`)
+
+const escapedBreakKeyMax = 64
+
 // queryParamSeparator is a run of `&` that begins a new query-string parameter: followed by a
 // key and `=`. A bare `&` inside a credential (`P&ss...`) does not match. The run is taken whole
 // so that an empty parameter (`a=1&&b=2`) does not leave a trailing `&` on the previous value.
@@ -1743,17 +1784,24 @@ func (v *Validator) keywordCandidates(line string) []candidate {
 	// plausibleUnquotedSecret and the quoted ones must not — quotes are evidence of intent.
 	for _, pattern := range v.unquotedPatterns {
 		for _, m := range pattern.FindAllStringSubmatchIndex(line, -1) {
-			if len(m) <= 3 || m[2] < 0 || m[3]-m[2] < 8 {
+			if len(m) <= 3 || m[2] < 0 {
+				continue
+			}
+			// #932: the value ends at an escaped line break that starts the next record.
+			m[3] = escapedBreakCut(line, m[2], m[3])
+			if m[3]-m[2] < 8 {
 				continue
 			}
 			keyStart := m[0]
 			for keyStart > 0 && isQueryKeyByte(line[keyStart-1]) {
 				keyStart--
 			}
-			if keyStart == 0 || strings.IndexByte("?&", line[keyStart-1]) < 0 {
-				// Not a query-string parameter: the value is taken whole, as before #758, because
-				// outside a query string a credential may contain `&x=`. `;` delimits connection
-				// strings and a leading `#` or `;` marks a commented-out assignment, so neither counts.
+			if keyStart == 0 || !queryParamOpener(line, keyStart-1) {
+				// Not a query-string or fragment parameter: the value is taken whole, as before #758,
+				// because outside a query string a credential may contain `&x=`. `;` delimits
+				// connection strings and a leading `#` or `;` marks a commented-out assignment, so
+				// neither counts; a `#` glued to a URL opens a fragment's parameters
+				// (queryParamOpener, #932).
 				if value := line[m[2]:m[3]]; plausibleUnquotedSecret(value) {
 					matches = append(matches, candidate{text: value, start: m[2], end: m[3], gateable: true})
 				}
