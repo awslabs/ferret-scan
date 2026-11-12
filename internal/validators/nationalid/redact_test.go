@@ -7,9 +7,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors/replacement"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/nationalid"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/ssn"
 )
 
 // labelled builds one labelled, valid value per type at test time from the validator's own scan of a
@@ -97,6 +99,46 @@ func TestRedactionArmsKeepNothingAndNeverReDetect(t *testing.T) {
 		b, _ := replacement.Generate(bare, typ, redactors.RedactionSynthetic, scope)
 		if nationalid.Key(a) != nationalid.Key(b) {
 			t.Errorf("%s: %q and %q took different replacements %q, %q", typ, value, bare, a, b)
+		}
+	}
+}
+
+// TestSyntheticCopyIsNotAnSSNEither: a national ID often shares its span with an SSN finding (a bare
+// SIN under "Employee SIN:", the first nine digits of "CPF: XXXXXXXXX-XX"), and the overlap group then
+// writes the national ID's replacement for both. Rescanning the synthetic line with the SSN validator
+// as well must find nothing. Before the "000" lead, random leading digits re-detected as SSN 50.
+func TestSyntheticCopyIsNotAnSSNEither(t *testing.T) {
+	nv, sv := nationalid.NewValidator(), ssn.NewValidator()
+	labels := map[string]string{
+		nationalid.TypeBRCPF: "CPF: ", nationalid.TypeCLRUT: "RUT: ", nationalid.TypeARCUIL: "CUIL: ",
+		nationalid.TypeCASIN: "Employee SIN: ", nationalid.TypeMXCURP: "CURP: ",
+	}
+	for typ, value := range positives(t) {
+		bare := strings.Map(func(r rune) rune {
+			if r < 0x80 && isAlnum(byte(r)) {
+				return r
+			}
+			return -1
+		}, value)
+		for _, v := range []string{value, bare} {
+			for n := 0; n < 2000; n++ {
+				syn, err := replacement.Generate(v, typ, redactors.RedactionSynthetic, redactors.NewSyntheticScope())
+				if err != nil {
+					t.Fatal(err)
+				}
+				line := labels[typ] + syn
+				for _, val := range []interface {
+					ValidateContent(string, string) ([]detector.Match, error)
+				}{nv, sv} {
+					ms, err := val.ValidateContent(line, "x.txt")
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(ms) != 0 {
+						t.Fatalf("%s: synthetic line %q re-detects as %s %v", typ, line, ms[0].Type, ms[0].Confidence)
+					}
+				}
+			}
 		}
 	}
 }
