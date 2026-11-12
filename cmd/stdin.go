@@ -272,6 +272,7 @@ func runStdinScan(in stdinScanInputs) int {
 	// fixture after a line inserted at the top: 5 results, 0 suppressed, 5 rules re-anchored, on both
 	// paths). Generating first also leaves the manager's record of which rules matched holding the hashes
 	// generation migrated to the current formula, which matching after it would not.
+	generationFailed := false
 	if finalCfg.generateSuppressions {
 		generationNotes := io.Writer(os.Stderr)
 		if stdinStderrCarriesFindings(finalCfg, in.outputFile) {
@@ -280,7 +281,10 @@ func runStdinScan(in stdinScanInputs) int {
 		if len(allMatches) > 0 {
 			reason := "Auto-generated suppression rule (disabled by default)"
 			if err := suppressionManager.GenerateSuppressionRules(allMatches, reason, false); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: Failed to generate suppression rules: %v\n", err)
+				// A refusal or a failed write is --file's: an Error line, and the run ends non-zero once
+				// the report is out (#880). See generationExitCode.
+				generationFailed = true
+				fmt.Fprintf(os.Stderr, "Error: Failed to generate suppression rules: %v\n", err)
 			} else {
 				suppressions.WriteGenerationReport(generationNotes, suppressionManager.LastGeneration())
 				fmt.Fprintln(generationNotes, "Edit the suppression file to enable specific rules by setting 'enabled: true'")
@@ -422,7 +426,7 @@ func runStdinScan(in stdinScanInputs) int {
 		if isFlagSet("redaction-output-dir") {
 			fmt.Fprintln(os.Stderr, "Note: --redaction-output-dir is not supported with --stdin and will be ignored; the redacted content is written to stdout")
 		}
-		return runStdinRedaction(in, finalCfg, content, unsuppressedMatches, suppressedMatches, precommitConfig, stdinEncoding, incompleteCount, report)
+		return generationExitCode(runStdinRedaction(in, finalCfg, content, unsuppressedMatches, suppressedMatches, precommitConfig, stdinEncoding, incompleteCount, report), generationFailed)
 	}
 
 	// Resolve formatter.
@@ -476,9 +480,9 @@ func runStdinScan(in stdinScanInputs) int {
 	// scan's coverage was cut short, but never downgrades a non-zero verdict.
 	if precommitConfig != nil {
 		exitCode := precommit.Resolve(unsuppressedMatches, precommitConfig).WithToolError(false).ExitCode
-		return resolveIncompleteExitCode(exitCode, finalCfg.failOnIncomplete, incompleteCount)
+		return generationExitCode(resolveIncompleteExitCode(exitCode, finalCfg.failOnIncomplete, incompleteCount), generationFailed)
 	}
-	return resolveIncompleteExitCode(0, finalCfg.failOnIncomplete, incompleteCount)
+	return generationExitCode(resolveIncompleteExitCode(0, finalCfg.failOnIncomplete, incompleteCount), generationFailed)
 }
 
 // runStdinPreprocessOnly emits the stdin buffer in the same format
