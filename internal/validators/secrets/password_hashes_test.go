@@ -218,7 +218,8 @@ func TestPasswordHashDecoys(t *testing.T) {
 func TestPasswordHashKeepsExistingFinding(t *testing.T) {
 	v := NewValidator()
 	r := rand.New(rand.NewSource(9023))
-	h := hashSchemes["sha512crypt"](r, 1)
+	// Every `$` in it is followed by a digit, so main's shell-variable veto let it through.
+	h := "$6$" + tSalt(r, 1, 16) + "$" + tRand(r, "0123456789", 1) + tRand(r, tC64, 85)
 	ms, _ := v.ValidateContent("password: \""+h+"\"\n", "vars.yaml")
 	if len(ms) != 1 {
 		t.Fatalf("want exactly one finding, got %+v", ms)
