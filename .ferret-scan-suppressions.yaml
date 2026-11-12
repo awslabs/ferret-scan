@@ -2572,93 +2572,93 @@ rules:
         finding_type: BUSINESS
         line_number: "46"
     - id: SUP-00000275
-      hash: ebc449c6e7831f51dd9a53de62be63439c2580f045fa00ee9467dc77da1427cc # pragma: allowlist secret
+      hash: 8c86c1c8a0c8d98153519bb4e355a98bb124edfbd8fef04625ab8c44a7991f55 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:36:14.395286872Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: DRIVERS_LICENSE
-        line_number: "674"
+        line_number: "668"
     - id: SUP-00000276
-      hash: b088aafd6186d5e1139a04d6f6362a3e8983612b786f4197fed2184e1b1f88dc # pragma: allowlist secret
+      hash: 1a5bc263f2ac030f84231591a5144039f38da390a7cdc5125c54a0baa64e14a3 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:36:14.395286872Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: DRIVERS_LICENSE
-        line_number: "677"
+        line_number: "671"
     - id: SUP-00000277
-      hash: 6876c72ead4c68a2b90f06665a7ea2944879555a5a7a712ea190c98dfe0be895 # pragma: allowlist secret
+      hash: 29cbd33e5e2b2c9a22e70a7331b7e247489e6ffb674718fe482753b32b02f0b7 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:36:14.395286872Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: DRIVERS_LICENSE
-        line_number: "921"
+        line_number: "915"
     - id: SUP-00000278
-      hash: 16c4b949ce4658a54a46c8fc967f39635a09766448056735cab341a94367d915 # pragma: allowlist secret
+      hash: cd726c1e52af5204074e36a63e9386a22622f54bf39c71857d50d7ec3b03ce40 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:36:14.395286872Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: DRIVERS_LICENSE
-        line_number: "1082"
+        line_number: "1076"
     - id: SUP-00000279
-      hash: d869d2bab15a98024e63e9126de2607326521eea03d0a2444699ee6f9e2d245c # pragma: allowlist secret
+      hash: c2a73263b03b94ee8e4291c1273fd1738c8ba5fc83a6d2a1f23356c7a789b9a9 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:36:14.395286872Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: DRIVERS_LICENSE
-        line_number: "1083"
+        line_number: "1077"
     - id: SUP-00000280
-      hash: 9aaddd4d5a89e4b4299f4806c9325b96432d6a0def0066e1a51e2b0eff5e6352 # pragma: allowlist secret
+      hash: 262d2251c7e539b97a48d588de00c85db886f803c6ec58285fa62f465bed99c2 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:36:14.395286872Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: DRIVERS_LICENSE
-        line_number: "1084"
+        line_number: "1078"
     - id: SUP-00000281
-      hash: 31fcbc9f69114f75d35808d5f294e0cca74fbea90d7221866c4db083b7891f45 # pragma: allowlist secret
+      hash: 1c22810f22ae5df628f75ea63e450f499d4f118b37ea2db22c6a4fae1c05c62a # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:36:14.395286872Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: DRIVERS_LICENSE
-        line_number: "1085"
+        line_number: "1079"
     - id: SUP-00000282
-      hash: a14ce13d1807ae404c7a12d9a2872897190b633424e4f260a19f93048d45da07 # pragma: allowlist secret
+      hash: 11624a02572cfbc3913bc0d7d46f98d82fe0d53d4c66905bb837db348a1b3b29 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-12T00:36:14.395286872Z
       metadata:
         confidence: "95.00"
         filename: validator.go
         finding_type: DRIVERS_LICENSE
-        line_number: "1086"
+        line_number: "1080"
     - id: SUP-00000283
       hash: a5693ab21b33e00a76637a247440608d53f55c1692119b6451b22cd076a0a156 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
