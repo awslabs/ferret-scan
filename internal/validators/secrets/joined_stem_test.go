@@ -118,10 +118,11 @@ func TestJoinedStemPathSkip(t *testing.T) {
 			}
 		}
 	}
-	// Corroborated by a positive keyword on main, and still reported.
+	// Reported on main through a positive keyword; a rooted path is not a literal credential, so
+	// since #931 it reports nothing (non_literal_values.go).
 	for _, line := range []string{"private_key=/etc/ssl/private/server.key", "private-key=/etc/ssl/private/server.key", "apikey=~/keys/id_ed25519.pub"} {
-		if n := count(t, line+"\n"); n != 1 {
-			t.Errorf("%s: %d finding(s), want the one main reports", line, n)
+		if n := count(t, line+"\n"); n != 0 {
+			t.Errorf("%s: %d finding(s), want none (#931)", line, n)
 		}
 	}
 	// A joined-stem value that is no rooted path is lifted.
