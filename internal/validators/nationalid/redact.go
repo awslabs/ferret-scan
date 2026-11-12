@@ -44,7 +44,7 @@ func Key(value string) string { return canonical(value) }
 // until it does not. intn(n) returns a uniform integer in [0, n).
 //
 // A replacement of the all-digit types also starts with "000". A national ID often sits on the same
-// span as an SSN finding, or an SSN finding covers its first nine digits ("CPF: 234567890-92"), and
+// span as an SSN finding, or an SSN finding covers its first nine digits (an undotted CPF), and
 // the overlap group then writes this replacement for both; random leading digits re-detected as an
 // SSN in 4 of 5 synthetic runs of a four-line file. Area 000 is never an SSN or an ITIN, a SIN never
 // starts with 0, a RUT body never does and no CUIL prefix is 00, so the replacement is none of them.
