@@ -67,8 +67,8 @@ document-level +20 a CSV receives cannot lift them:
 
 - 85 for a match nothing corroborates (no evidence above and not written in the `+` form);
 - 15 for a reserved fictional number: NANP's 555-0100 to 555-0199, and Ofcom's drama ranges
-  `020 7946 0000`-`0999`, `01632 960000`-`960999` and `07700 900000`-`900999`, written nationally or
-  with `+44`/`0044`;
+  `020 7946 0000`-`0999`, `0161 496 0000`-`0999`, `01632 960000`-`960999` and `07700 900000`-`900999`,
+  written nationally or with `+44`/`0044`;
 - 15 for a number in the `+`, `00` or `(+` form that the E.164 gate refuses, with
   `valid_country=false`: its country code is unassigned, it has more than 15 digits, it writes a
   `(0)` its code's plan does not use, or its national length is not one the plan allows. Phone
