@@ -38,6 +38,12 @@ var (
 	// Canada, current series: 1 letter, 6 digits, 2 letters (Wikipedia,
 	// "Canadian passport"). The legacy 2 letters + 6 digits is "Canada".
 	reCanadaCurrentPassport = regexp.MustCompile(`^[A-Z]\d{6}[A-Z]{2}$`)
+	// France: 2 digits, 2 letters, 5 digits. Source: France Titres (ANTS), the
+	// issuing agency, answering on the government's Services Publics+ site
+	// (plus.transformation.gouv.fr/experiences/4124633_passeport, 2023-10-31):
+	// "Le numéro de l'ancien passeport à renseigner se compose de 9 caractères -
+	// (2 chiffres, 2 lettres, 5 chiffres)."
+	reFrancePassport = regexp.MustCompile(`^\d{2}[A-Z]{2}\d{5}$`)
 
 	// MRZ and generic character validation
 	reMRZChars     = regexp.MustCompile(`^[A-Z0-9<]+$`)
@@ -154,6 +160,7 @@ func NewValidator() *Validator {
 		// candidate fails isGermanPassport and stays the US bucket's.
 		"Germany":       `\b[CFGHJKLMNPRTVWXYZ][0-9][0-9CFGHJKLMNPRTVWXYZ]{7}\b`,
 		"CanadaCurrent": `\b[A-Z]\d{6}[A-Z]{2}\b`,
+		"France":        `\b\d{2}[A-Z]{2}\d{5}\b`,
 		// Removed overly broad Generic pattern - it was causing too many false positives
 		// Machine Readable Zone (ICAO 9303). Line 1 of a TD3 passport MRZ is
 		// "P" + document-type filler + 3-letter issuing state + name field,
@@ -223,7 +230,7 @@ func NewValidator() *Validator {
 	// layout that must satisfy five check digits), and putting it ahead of the
 	// national formats stops "US" or "EU" claiming a substring of a line-2 MRZ
 	// and reporting a fragment instead of the whole line.
-	patternOrder := []string{"MRZ_TD3_L2", "MRZ_TD3", "MRZ", "US", "UK", "Canada", "EU", "CanadaCurrent", "Germany"}
+	patternOrder := []string{"MRZ_TD3_L2", "MRZ_TD3", "MRZ", "US", "UK", "Canada", "EU", "CanadaCurrent", "Germany", "France"}
 
 	// The national shapes above with their letters widened to both ASCII cases, so
 	// "Passport Number: gk123456" and "Gk123456" are candidates at all (#888): the
@@ -245,6 +252,7 @@ func NewValidator() *Validator {
 		// label for every case (nationalBuckets).
 		"Germany":       `\b[CFGHJKLMNPRTVWXYZcfghjklmnprtvwxyz][0-9][0-9CFGHJKLMNPRTVWXYZcfghjklmnprtvwxyz]{7}\b`,
 		"CanadaCurrent": `\b[A-Za-z]\d{6}[A-Za-z]{2}\b`,
+		"France":        `\b\d{2}[A-Za-z]{2}\d{5}\b`,
 	}
 
 	compiledPatterns := make(map[string]*regexp.Regexp, len(patterns))
@@ -1874,6 +1882,18 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 			checks["length"] = false
 		}
 
+	case "France":
+		// French passport: 2 digits, 2 letters, 5 digits (#888 Part 3; source on
+		// reFrancePassport). Gated by the label like the other national buckets.
+		if !reFrancePassport.MatchString(cleanMatch) {
+			confidence -= 30
+			checks["format"] = false
+		}
+		if len(cleanMatch) != 9 {
+			confidence -= 20
+			checks["length"] = false
+		}
+
 	case "MRZ", "MRZ_TD3":
 		// Machine Readable Zone (ICAO 9303) line 1:
 		// "P" + document-type sub-code + 3-letter issuing-state code + name field.
@@ -2072,10 +2092,10 @@ func isGermanPassport(s string) bool {
 // Measured on the #888 national decoys with only the existing context rules,
 // 12 of 12 reported at 77.5-100; behind the label, none.
 //
-// France (2 digits, 2 letters, 5 digits) is deliberately absent: no primary
-// source for the layout was found (#888), and the shape is too common in
-// invoice and batch references to add on a guess.
-var nationalBuckets = map[string]bool{"Germany": true, "CanadaCurrent": true}
+// France (2 digits, 2 letters, 5 digits) is the shape invoice, batch and case
+// references take ("Passport renewal invoice 24FR00317"), which is why it needs
+// the label most of all.
+var nationalBuckets = map[string]bool{"Germany": true, "CanadaCurrent": true, "France": true}
 
 // determineCountry tries to identify the country format based on the match pattern
 func (v *Validator) determineCountry(match string) string {
@@ -2098,6 +2118,8 @@ func (v *Validator) determineCountry(match string) string {
 		return "CanadaCurrent"
 	} else if isGermanPassport(cleanMatch) {
 		return "Germany"
+	} else if reFrancePassport.MatchString(cleanMatch) {
+		return "France"
 	} else if strings.HasPrefix(cleanMatch, "P") && len(cleanMatch) > 40 {
 		if len(cleanMatch) == 44 {
 			return "MRZ_TD3"

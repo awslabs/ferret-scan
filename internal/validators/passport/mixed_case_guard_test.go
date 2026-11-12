@@ -61,7 +61,8 @@ func TestValuePatternsAreASCIIOnly(t *testing.T) {
 	all = append(all,
 		named{"anchor US", reUSPassport}, named{"anchor UK", reUKPassport},
 		named{"anchor Canada", reCanadaPassport}, named{"anchor EU", reEUPassport},
-		named{"anchor CanadaCurrent", reCanadaCurrentPassport}, named{"anchor Germany", reGermanPassport})
+		named{"anchor CanadaCurrent", reCanadaCurrentPassport}, named{"anchor Germany", reGermanPassport},
+		named{"anchor France", reFrancePassport})
 	for _, n := range all {
 		if strings.Contains(n.re.String(), "(?i)") {
 			t.Errorf("%s is %s: a value pattern must not use (?i)", n.name, n.re)
@@ -97,6 +98,7 @@ var caseExemplars = map[string]struct{ upper, mixed []string }{
 	// it is the documented DE / CA-current overlap (TestGermanCanadaOverlapRule).
 	"CanadaCurrent": {upper: []string{"R123456KX", "A100001BC"}, mixed: []string{"r123456kx", "R123456kx"}},
 	"Germany":       {upper: []string{"C1234567K", "C01X00T47", "L0R9T3CFG"}, mixed: []string{"c1234567k", "C1234567k"}},
+	"France":        {upper: []string{"12CF34567", "05AB00001"}, mixed: []string{"12cf34567", "12Cf34567"}},
 }
 
 // uppercaseOnlyBuckets are the patterns that deliberately have no mixed-case form.
@@ -174,6 +176,7 @@ func TestNationalAnchorsAreDisjoint(t *testing.T) {
 		"US": reUSPassport.MatchString, "UK": reUKPassport.MatchString,
 		"Canada": reCanadaPassport.MatchString, "EU": reEUPassport.MatchString,
 		"CanadaCurrent": reCanadaCurrentPassport.MatchString, "Germany": isGermanPassport,
+		"France": reFrancePassport.MatchString,
 	}
 	for owner := range anchors {
 		ex := caseExemplars[owner]

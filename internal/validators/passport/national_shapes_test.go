@@ -9,8 +9,8 @@ import (
 	"testing"
 )
 
-// #888 Part 3: the German digit-second and current-Canadian shapes, the German
-// MRZ issuing-state code "D<<", and the guards every bucket must pass.
+// #888 Part 3: the German digit-second, current-Canadian and French shapes, the
+// German MRZ issuing-state code "D<<", and the guards every bucket must pass.
 
 // TestNationalShapesReportedBehindALabel: each national shape is reported, in
 // its own bucket, wherever a passport label vouches for it.
@@ -26,6 +26,10 @@ func TestNationalShapesReportedBehindALabel(t *testing.T) {
 		{"CA current form label", "Passport Number: R123456KX\n", "R123456KX", "CanadaCurrent"},
 		{"CA current CSV column", "name,passport_number,country\nB. Roe,A100001BC,CA\n", "A100001BC", "CanadaCurrent"},
 		{"DE CSV column", "name,passport_number,country\nA. Roe,C1234567K,DE\n", "C1234567K", "Germany"},
+		{"FR form label", "Passport Number: 12CF34567\n", "12CF34567", "France"},
+		{"FR prose", "my passport no is 12CF34567 thanks\n", "12CF34567", "France"},
+		{"FR CSV column", "name,passport_number,country\nC. Roe,12CF34567,FR\n", "12CF34567", "France"},
+		{"FR lowercase", "passport: 12cf34567\n", "12cf34567", "France"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -66,8 +70,6 @@ func TestNationalShapeDecoysStayUnreported(t *testing.T) {
 		"passport API build C7JK2M9X4 promoted",
 		// A label after the value is not covered, as for mixed case.
 		"C1234567K (passport number)",
-		// France is deferred: no primary source for the layout.
-		"Passport Number: 12CF34567",
 	}
 	for _, d := range decoys {
 		if got := scanPassport(t, d+"\n"); len(got) != 0 {
