@@ -158,6 +158,30 @@ var Cases = []Case{
 			"Contacto: +56 912703456\n",
 	},
 	{
+		Name: "nationalid_americas",
+		Description: "#884 Part B: the five Americas national IDs (synthetic, check-digit-valid, seed 884, " +
+			"none a published example). Lines 1-7 are positives, each beside its own label: a dotted CPF " +
+			"under 'CPF nº', a dotted RUT, a bare RUN, a dashed CUIL, a spaced SIN, a leading-9 dashed SIN " +
+			"under the long form, and a CURP. Lines 8-14 are decoys that must stay empty: the same CPF with " +
+			"no label, the CPF with a failing check digit under its label, and the #884 collision lines " +
+			"(Spanish 'sin', 'Sinónimo', English 'NAS' and lowercase 'run').",
+		Checks: []string{"NATIONAL_ID"},
+		Input: "CPF nº 172.984.064-77\n" +
+			"RUT: 6.001.216-4\n" +
+			"RUN 6001216-4\n" +
+			"CUIL 20-12173870-9\n" +
+			"Employee SIN: 613 891 563\n" +
+			"Social Insurance Number: 916-635-287\n" +
+			"CURP: GOMR850412MJCMNL00\n" +
+			"Pedido 172.984.064-77\n" +
+			"CPF: 172.984.064-78\n" +
+			"Pago sin recargo: 613 891 563\n" +
+			"Sinónimo 613 891 563\n" +
+			"backup to the NAS 613 891 563\n" +
+			"run 6001216-4 times\n" +
+			"RFC 7231 section 6\n",
+	},
+	{
 		Name:        "creditcard_brands",
 		Description: "Luhn-valid cards across brands; locks brand classification in Match.Type.",
 		Checks:      []string{"CREDIT_CARD"},

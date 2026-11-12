@@ -1,0 +1,193 @@
+{
+  "results": [
+    {
+      "confidence": 95,
+      "confidence_level": "HIGH",
+      "filename": "<golden:nationalid_americas>",
+      "line_number": 1,
+      "metadata": {
+        "check_digit_valid": true,
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "country": "BR",
+        "original_confidence": 95,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_path": "document"
+      },
+      "text": "172.984.064-77",
+      "type": "BR_CPF",
+      "validator": "nationalid"
+    },
+    {
+      "confidence": 95,
+      "confidence_level": "HIGH",
+      "filename": "<golden:nationalid_americas>",
+      "line_number": 5,
+      "metadata": {
+        "check_digit_valid": true,
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "country": "CA",
+        "original_confidence": 95,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_path": "document"
+      },
+      "text": "613 891 563",
+      "type": "CA_SIN",
+      "validator": "nationalid"
+    },
+    {
+      "confidence": 95,
+      "confidence_level": "HIGH",
+      "filename": "<golden:nationalid_americas>",
+      "line_number": 6,
+      "metadata": {
+        "check_digit_valid": true,
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "country": "CA",
+        "original_confidence": 95,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_path": "document"
+      },
+      "text": "916-635-287",
+      "type": "CA_SIN",
+      "validator": "nationalid"
+    },
+    {
+      "confidence": 95,
+      "confidence_level": "HIGH",
+      "filename": "<golden:nationalid_americas>",
+      "line_number": 2,
+      "metadata": {
+        "check_digit_valid": true,
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "country": "CL",
+        "original_confidence": 95,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_path": "document"
+      },
+      "text": "6.001.216-4",
+      "type": "CL_RUT",
+      "validator": "nationalid"
+    },
+    {
+      "confidence": 95,
+      "confidence_level": "HIGH",
+      "filename": "<golden:nationalid_americas>",
+      "line_number": 7,
+      "metadata": {
+        "check_digit_valid": true,
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "country": "MX",
+        "original_confidence": 95,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_path": "document"
+      },
+      "text": "GOMR850412MJCMNL00",
+      "type": "MX_CURP",
+      "validator": "nationalid"
+    },
+    {
+      "confidence": 90,
+      "confidence_level": "HIGH",
+      "filename": "<golden:nationalid_americas>",
+      "line_number": 4,
+      "metadata": {
+        "check_digit_valid": true,
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "country": "AR",
+        "original_confidence": 90,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_path": "document"
+      },
+      "text": "20-12173870-9",
+      "type": "AR_CUIL",
+      "validator": "nationalid"
+    },
+    {
+      "confidence": 90,
+      "confidence_level": "HIGH",
+      "filename": "<golden:nationalid_americas>",
+      "line_number": 3,
+      "metadata": {
+        "check_digit_valid": true,
+        "confidence_adjustment": 0,
+        "context_confidence": 0.5,
+        "context_doctype": "Unknown",
+        "context_domain": "HR_Payroll",
+        "country": "CL",
+        "original_confidence": 90,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0
+        },
+        "source": "preprocessed_content",
+        "validation_path": "document"
+      },
+      "text": "6001216-4",
+      "type": "CL_RUT",
+      "validator": "nationalid"
+    }
+  ]
+}

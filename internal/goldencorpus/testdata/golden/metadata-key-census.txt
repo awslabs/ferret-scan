@@ -41,6 +41,17 @@ API_KEY_OR_SECRET	keys=14	band=1
 	source
 	validation_checks
 	validation_path
+AR_CUIL	keys=10	band=1
+	check_digit_valid
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	country
+	original_confidence
+	semantic_context
+	source
+	validation_path
 AWS_ACCESS_KEY	keys=14	band=1
 	confidence_adjustment
 	confidence_ceiling
@@ -84,6 +95,17 @@ AWS_SECRET_ACCESS_KEY	keys=13	band=1
 	source
 	validation_checks
 	validation_path
+BR_CPF	keys=10	band=1
+	check_digit_valid
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	country
+	original_confidence
+	semantic_context
+	source
+	validation_path
 BUSINESS	keys=15	band=2
 	confidence_adjustment
 	context_confidence
@@ -113,6 +135,28 @@ CARD_TRACK_DATA	keys=13	band=1
 	semantic_context
 	source
 	validation_checks
+	validation_path
+CA_SIN	keys=10	band=1
+	check_digit_valid
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	country
+	original_confidence
+	semantic_context
+	source
+	validation_path
+CL_RUT	keys=10	band=1
+	check_digit_valid
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	country
+	original_confidence
+	semantic_context
+	source
 	validation_path
 DATE_OF_BIRTH	keys=11	band=1
 	confidence_adjustment
@@ -322,6 +366,17 @@ MRN	keys=10	band=1
 	subtype
 	validation_checks
 	validation_path
+MX_CURP	keys=10	band=1
+	check_digit_valid
+	confidence_adjustment
+	context_confidence
+	context_doctype
+	context_domain
+	country
+	original_confidence
+	semantic_context
+	source
+	validation_path
 OTP_SECRET	keys=11	band=1
 	confidence_adjustment
 	context_confidence
@@ -481,7 +536,7 @@ VISA	keys=14	band=1
 	vendor
 # histogram of key counts across all findings carrying metadata
 # 9 keys: 3 findings (band 1)
-# 10 keys: 24 findings (band 1)
+# 10 keys: 31 findings (band 1)
 # 11 keys: 22 findings (band 1)
 # 12 keys: 14 findings (band 1)
 # 13 keys: 102 findings (band 1)
