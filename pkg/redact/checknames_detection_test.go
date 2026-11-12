@@ -28,6 +28,7 @@ var checkFixtures = map[string]string{
 	"INTELLECTUAL_PROPERTY": "CONFIDENTIAL AND PROPRIETARY - Trade Secret - All Rights Reserved.",
 	"IP_ADDRESS":            "Origin server address is 172.217.14.206 behind the load balancer.",
 	"MEDICAL_ID":            "Member ID 1EG4-TE5-MK73 on the Medicare card.",
+	"NATIONAL_ID":           "Employee SIN: " + "123 456 782" + " on the payroll form.",
 	"OTP":                   "totp_uri = \"otpauth://totp/Production:admin@corp.example?secret=NBSWY3DP&issuer=Production\"",
 	"PASSPORT":              "Visa application: passport C87654321, nationality: British",
 	"PERSON_NAME":           "Please forward the claim to Jonathan Whitfield in claims review.",

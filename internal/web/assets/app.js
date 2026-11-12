@@ -720,6 +720,7 @@ function getSelectedChecks() {
     if (document.getElementById('intellectualProperty').checked) checks.push('INTELLECTUAL_PROPERTY');
     if (document.getElementById('ipAddress').checked) checks.push('IP_ADDRESS');
     if (document.getElementById('medicalId').checked) checks.push('MEDICAL_ID');
+    if (document.getElementById('nationalId').checked) checks.push('NATIONAL_ID');
     if (document.getElementById('metadata').checked) checks.push('METADATA');
     if (document.getElementById('otp').checked) checks.push('OTP');
     if (document.getElementById('passport').checked) checks.push('PASSPORT');
@@ -735,7 +736,7 @@ function getSelectedChecks() {
 
 function toggleAllChecks() {
     const allChecked = document.getElementById('allChecks').checked;
-    const checkboxes = ['bankAccount', 'secrets', 'cloudResources', 'creditCard', 'dateOfBirth', 'driversLicense', 'email', 'intellectualProperty', 'ipAddress', 'medicalId', 'metadata', 'otp', 'passport', 'personName', 'phone', 'physicalAddress', 'socialMedia', 'ssn', 'vin'];
+    const checkboxes = ['bankAccount', 'secrets', 'cloudResources', 'creditCard', 'dateOfBirth', 'driversLicense', 'email', 'intellectualProperty', 'ipAddress', 'medicalId', 'nationalId', 'metadata', 'otp', 'passport', 'personName', 'phone', 'physicalAddress', 'socialMedia', 'ssn', 'vin'];
 
     checkboxes.forEach(id => {
         const element = document.getElementById(id);

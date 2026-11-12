@@ -117,7 +117,7 @@ func (h *System) ShowGeneralHelp() {
 	// --checks flag help and the two parseChecksToRun sites in cmd/main.go) are
 	// sourced from core.CheckNames(); this is the one that cannot be. Keep the
 	// no-space comma separators to match historical output.
-	fmt.Fprintln(w, "  --checks\t<checks>\tSpecific checks to run: BANK_ACCOUNT,CLOUD_RESOURCES,CREDIT_CARD,DATE_OF_BIRTH,DRIVERS_LICENSE,EMAIL,INTELLECTUAL_PROPERTY,IP_ADDRESS,MEDICAL_ID,METADATA,OTP,PASSPORT,PERSON_NAME,PHONE,PHYSICAL_ADDRESS,SECRETS,SOCIAL_MEDIA,SSN,VIN,all (default: all; repeatable, values append)")
+	fmt.Fprintln(w, "  --checks\t<checks>\tSpecific checks to run: BANK_ACCOUNT,CLOUD_RESOURCES,CREDIT_CARD,DATE_OF_BIRTH,DRIVERS_LICENSE,EMAIL,INTELLECTUAL_PROPERTY,IP_ADDRESS,MEDICAL_ID,METADATA,NATIONAL_ID,OTP,PASSPORT,PERSON_NAME,PHONE,PHYSICAL_ADDRESS,SECRETS,SOCIAL_MEDIA,SSN,VIN,all (default: all; repeatable, values append)")
 	fmt.Fprintln(w, "\t\t\tNote: INTELLECTUAL_PROPERTY requires configuration for internal URL detection")
 	fmt.Fprintln(w, "\t\t\tNote: METADATA validator now includes enhanced preprocessor-aware validation for images, documents, audio, and video")
 	fmt.Fprintln(w, "  --confidence\t<levels>\tConfidence levels to display: high,medium,low,all (default: all; repeatable, values append)")
