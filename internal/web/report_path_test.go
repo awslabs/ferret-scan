@@ -4,10 +4,8 @@
 package web
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,26 +13,15 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/paths"
 )
 
-// exportFor round-trips a /scan response through /export in the given format, the way the
-// browser does: the results the scan returned are posted back verbatim.
-func exportFor(t *testing.T, format string, results any) string {
+// exportFor exports a scan in the given format the way the browser does since #923: /export is
+// sent the scan_id /scan returned, under the same session, and formats the result the server kept.
+func exportFor(t *testing.T, h http.Handler, cookie *http.Cookie, format string, scanID string) string {
 	t.Helper()
-
-	body, err := json.Marshal(map[string]any{"format": format, "results": results})
-	if err != nil {
-		t.Fatalf("marshal export request: %v", err)
+	code, body := exportIDs(t, h, cookie, format, []string{scanID}, false, false)
+	if code != http.StatusOK {
+		t.Fatalf("/export %s: status %d: %s", format, code, body)
 	}
-
-	ws := NewWebServerWithOptions("0", "127.0.0.1", "", "", nil)
-	req := httptest.NewRequest(http.MethodPost, "/export", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	ws.handleExport(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("/export %s: status %d: %s", format, rec.Code, rec.Body.String())
-	}
-	return rec.Body.String()
+	return body
 }
 
 // The web UI and the CLI must agree about what a report path IS, and the web UI must never
@@ -54,7 +41,8 @@ func exportFor(t *testing.T, format string, results any) string {
 func TestWebReportPathsAreTheUploadedName(t *testing.T) {
 	const ssn = "Employee SSN: 452-11-9384\n"
 
-	scan := scanResponseFor(t, "SSN", [2]string{"payroll.txt", ssn})
+	h := parityServer(t)
+	scan, cookie := sessionScan(t, h, nil, "payroll.txt", []byte(ssn), []string{"SSN"})
 	if !scan.Success || len(scan.Results) != 1 {
 		t.Fatalf("control: success=%v results=%d, want one finding — every assertion below "+
 			"is vacuous without it", scan.Success, len(scan.Results))
@@ -68,7 +56,7 @@ func TestWebReportPathsAreTheUploadedName(t *testing.T) {
 
 	for _, format := range []string{"gitlab-sast", "json", "sarif", "csv"} {
 		t.Run(format, func(t *testing.T) {
-			out := exportFor(t, format, scan.Results)
+			out := exportFor(t, h, cookie, format, scan.ScanID)
 
 			if !strings.Contains(out, "payroll.txt") {
 				t.Errorf("the export does not name the uploaded file at all:\n%s", out)
@@ -93,7 +81,8 @@ func TestWebReportPathsAreTheUploadedName(t *testing.T) {
 // path is where a disagreement would have been least visible, because the operator never
 // sees the temp path the scan actually used.
 func TestWebGitLabDescriptionAgreesWithLocation(t *testing.T) {
-	scan := scanResponseFor(t, "SSN", [2]string{"payroll.txt", "Employee SSN: 452-11-9384\n"})
+	h := parityServer(t)
+	scan, cookie := sessionScan(t, h, nil, "payroll.txt", []byte("Employee SSN: 452-11-9384\n"), []string{"SSN"})
 	if !scan.Success || len(scan.Results) != 1 {
 		t.Fatalf("control: success=%v results=%d, want one finding", scan.Success, len(scan.Results))
 	}
@@ -106,7 +95,7 @@ func TestWebGitLabDescriptionAgreesWithLocation(t *testing.T) {
 			} `json:"location"`
 		} `json:"vulnerabilities"`
 	}
-	if err := json.Unmarshal([]byte(exportFor(t, "gitlab-sast", scan.Results)), &report); err != nil {
+	if err := json.Unmarshal([]byte(exportFor(t, h, cookie, "gitlab-sast", scan.ScanID)), &report); err != nil {
 		t.Fatalf("gitlab-sast export is not JSON: %v", err)
 	}
 	if len(report.Vulnerabilities) != 1 {

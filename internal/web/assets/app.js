@@ -100,6 +100,8 @@ async function processScan(queue) {
     window.suppressedCount = 0;
     window.suppressedFindings = [];
     window.incompleteReasons = [];
+    // The scan_id of every /scan in this run, which is what /export takes (#923).
+    window.scanIds = [];
     const totalFiles = queue.length;
 
     for (let i = 0; i < totalFiles; i++) {
@@ -153,6 +155,10 @@ async function scanSingleFile(file, relativePath) {
 
     if (!data.success) {
         throw new Error(data.error || 'Unknown error occurred');
+    }
+
+    if (data.scan_id) {
+        window.scanIds = (window.scanIds || []).concat([data.scan_id]);
     }
 
     // Store suppressed findings from backend
@@ -607,10 +613,12 @@ function exportResults() {
     exportButton.textContent = 'Exporting...';
     exportButton.disabled = true;
 
-    // Prepare request data
+    // Prepare request data. The server kept each scan's result (#923): send the ids /scan returned,
+    // not the findings, so the export is exactly what the server's scan produced and its size is not
+    // bounded by a request body.
     const requestData = {
         format: format,
-        results: currentResults,
+        scan_ids: window.scanIds || [],
         show_match: showMatch,
         verbose: verbose
     };
@@ -625,7 +633,10 @@ function exportResults() {
     })
         .then(response => {
             if (!response.ok) {
-                throw new Error(`Export failed: ${response.statusText}`);
+                // The server says why (an expired scan, mixed settings); show that, not the status text.
+                return response.json().catch(() => ({})).then(errorData => {
+                    throw new Error(errorData.error || response.statusText);
+                });
             }
 
             // Get filename from Content-Disposition header

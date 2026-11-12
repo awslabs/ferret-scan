@@ -754,7 +754,6 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 		suppressed: suppressedMatches,
 		settings:   confidence + "|" + checks,
 		confidence: confidenceFilter,
-		scope:      scope,
 	})
 	if err != nil {
 		ws.sendErrorWithStatus(responseWriter, "Failed to keep the scan result", http.StatusInternalServerError)
@@ -1067,8 +1066,10 @@ func (ws *WebServer) runFullCLIScan(ctx context.Context, filePath, originalFilen
 // explanation, the context keywords and the typed metadata, so the export differed from the CLI's
 // report of the same findings; and the whole result set had to fit the 1 MiB JSON cap, so 782
 // findings answered HTTP 400. Now the request carries ids, the cap holds, and the formatter receives
-// exactly the matches, suppressed matches, confidence filter and scope the scan produced: the body is
-// formatters.Export of that scan, as the CLI renders it.
+// exactly the matches, suppressed matches and confidence filter the scan produced: the body is
+// formatters.Export of that scan, as the CLI renders it. It carries no scope block or stats yet:
+// internal/formatters/scope_sites_test.go allowlists this function as having no scan of its own, and
+// moving it off that list (with Scan and Stats set) is a follow-up outside this package.
 //
 // A request still carrying "results" is refused with a message saying what to send: formatting
 // caller-supplied findings is the lossy path this replaced. Nothing here logs a matched value.
@@ -1152,7 +1153,6 @@ func (ws *WebServer) handleExport(responseWriter http.ResponseWriter, request *h
 		Verbose:         exportRequest.Verbose,
 		NoColor:         true, // Always disable color for exports
 		ShowMatch:       exportRequest.ShowMatch,
-		Scan:            scans[0].scope,
 	}
 
 	output, err := formatter.Format(matches, suppressed, formatterOptions)
