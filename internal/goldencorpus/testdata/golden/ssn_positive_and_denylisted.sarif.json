@@ -31,6 +31,9 @@
           "message": {
             "text": "Social Security Number Detected in <golden:ssn_positive_and_denylisted> at line 1 (confidence: 60.0% - MEDIUM). Matched text: '449-87-4100'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "29b7169f04ccffb2811027b9c5e1f9a1f8d0e91aaf3456c4dc7510250e9502cd"
+          },
           "properties": {
             "confidence": 60,
             "confidenceLevel": "MEDIUM",

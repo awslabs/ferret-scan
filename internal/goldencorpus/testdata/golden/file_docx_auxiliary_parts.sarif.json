@@ -31,6 +31,9 @@
           "message": {
             "text": "Person Name Detected in aux_parts.docx at line 10 (confidence: 100.0% - HIGH). Matched text: 'Marion Reyes'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "2052847f69a852ec27a235821d45f8553c292bb775cf849fce045a356852b5f8"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -121,6 +124,9 @@
           "message": {
             "text": "Social Security Number Detected in aux_parts.docx at line 3 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "1f3ac798b963226f8277fd3d6ec980a680776179e4b9bb56011f14511831fec5"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -187,6 +193,9 @@
           ],
           "message": {
             "text": "Social Security Number Detected in aux_parts.docx at line 6 (confidence: 100.0% - HIGH). Matched text: '204-11-8830'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "fee4241ca05115fff4bb142899ce0e6a1d0a962878b8402dac853c60d2139c0b"
           },
           "properties": {
             "confidence": 100,
@@ -255,6 +264,9 @@
           "message": {
             "text": "Social Security Number Detected in aux_parts.docx at line 14 (confidence: 100.0% - HIGH). Matched text: '225-66-9014'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "7067ac02a20ae77ef3fd9061b971a6d4d41e06db80b0c727fc23c72253388536"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -316,6 +328,9 @@
           "message": {
             "text": "Sensitive Metadata Detected in aux_parts.docx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "ee053b37e18e4fafec2dcc0ec62670f37542505712db2a203d390124c24a15c9"
+          },
           "properties": {
             "confidence": 60,
             "confidenceLevel": "MEDIUM",
@@ -375,6 +390,9 @@
           ],
           "message": {
             "text": "Sensitive Metadata Detected in aux_parts.docx at line 2 (confidence: 60.0% - MEDIUM). Matched text: 'Ops Reviewer'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "fcf6bb28aa6942bf8a801ed063923a179be8284771e9c7e964433f8e57032322"
           },
           "properties": {
             "confidence": 60,

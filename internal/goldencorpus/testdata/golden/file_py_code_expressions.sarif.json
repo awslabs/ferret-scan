@@ -37,6 +37,9 @@
           "message": {
             "text": "Secret or API Key Detected in src/models.py at line 31 (confidence: 100.0% - HIGH). Matched text: 'TripleEnvS3cretVal99'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "4b4f8c250dcb3448461a2bf5e22b1cb0d51f7d98f4847e1190a3f90c0560f5f6"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -102,6 +105,9 @@
           ],
           "message": {
             "text": "Secret or API Key Detected in src/models.py at line 32 (confidence: 100.0% - HIGH). Matched text: 'TripleEnvPassVal42'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "f7957ae15ecea9a0052704238d5ead6f234b72665d3fdc80656eea6cc80d7394"
           },
           "properties": {
             "confidence": 100,

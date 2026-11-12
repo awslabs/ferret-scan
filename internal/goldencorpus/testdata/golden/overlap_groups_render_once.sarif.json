@@ -31,6 +31,9 @@
           "message": {
             "text": "IP Address Detected in <golden:overlap_groups_render_once> at line 6 (confidence: 100.0% - HIGH). Matched text: '203.12.19.85'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "ce4d1722e9bd7f0acebb921bed1965ce1c0791d708829acbb9f21f3956a84c86"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -101,6 +104,9 @@
           "message": {
             "text": "Passport Number Detected in <golden:overlap_groups_render_once> at line 3 (confidence: 100.0% - HIGH). Matched text: '512010001'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "57d65aad41a27de6546c38548fc6e231888404a1da1664d6481cbfe915f3a6ca"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -164,6 +170,9 @@
           ],
           "message": {
             "text": "Phone Number Detected in <golden:overlap_groups_render_once> at line 7 (confidence: 100.0% - HIGH). Matched text: '+1 449-87-4100'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "0b6b1e8640db1ec9bba67abd60f72f6d05699e6d505b91961b90400e165c33ff"
           },
           "properties": {
             "confidence": 100,
@@ -237,6 +246,9 @@
           "message": {
             "text": "Credit Card Number Detected in <golden:overlap_groups_render_once> at line 8 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "08ac8ed6a49b8f12aab41dccef59b02d7782da8116733342503487f10b1b91bf"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -301,6 +313,9 @@
           ],
           "message": {
             "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 2 (confidence: 99.0% - HIGH). Matched text: 'Müller, José García'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "e7321ce730ea0c0ea87654fe24e93326fb118fe45176665ab6fd545b1ed7bcab"
           },
           "properties": {
             "confidence": 99,
@@ -391,6 +406,9 @@
           "message": {
             "text": "Physical Address Detected in <golden:overlap_groups_render_once> at line 1 (confidence: 95.0% - HIGH). Matched text: '77 August Lane'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "8185be1122422756b18f39eddc7a4a8d438551add06fa2f70b7a87d8be544162"
+          },
           "properties": {
             "confidence": 95,
             "confidenceLevel": "HIGH",
@@ -451,6 +469,9 @@
           ],
           "message": {
             "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 4 (confidence: 93.0% - HIGH). Matched text: 'Martin Luther King'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "b22babac5a1f0b705cb60e66b3d678400e56c6be285f025adbed0d99359e4a7e"
           },
           "properties": {
             "confidence": 93,
@@ -541,6 +562,9 @@
           "message": {
             "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 1 (confidence: 92.0% - HIGH). Matched text: 'August Lane'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "4e24c452381d8197b8a28293b2db77f1fbc4b8533192f935c9fd27480b8d0b78"
+          },
           "properties": {
             "confidence": 92,
             "confidenceLevel": "HIGH",
@@ -629,6 +653,9 @@
           ],
           "message": {
             "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 2 (confidence: 92.0% - HIGH). Matched text: 'Renée Müller'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "fe9257a044c1c40b4e63d2494f4ac19b40fd2f718ceced35cb0f322bce057585"
           },
           "properties": {
             "confidence": 92,
@@ -719,6 +746,9 @@
           "message": {
             "text": "Secret or API Key Detected in <golden:overlap_groups_render_once> at line 5 (confidence: 85.0% - MEDIUM). Matched text: 'Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "a8900bc64ccb9287465409722c80fd9b0976287d497d0d64340d0c3b2db5aabc"
+          },
           "properties": {
             "confidence": 85,
             "confidenceLevel": "MEDIUM",
@@ -782,6 +812,9 @@
           ],
           "message": {
             "text": "Person Name Detected in <golden:overlap_groups_render_once> at line 1 (confidence: 67.0% - MEDIUM). Matched text: 'Lane, Boise'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "ca5c1ccdac10b419486abf2dc66b1defb24b8774adca14779f69f370518f1efa"
           },
           "properties": {
             "confidence": 67,
@@ -872,6 +905,9 @@
           "message": {
             "text": "Physical Address Detected in <golden:overlap_groups_render_once> at line 4 (confidence: 65.0% - MEDIUM). Matched text: '100 Martin Luther King Blvd'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "801ad86723d3619662ca54d13365746a05a95cfcd97c1350e150c291c2e30e64"
+          },
           "properties": {
             "confidence": 65,
             "confidenceLevel": "MEDIUM",
@@ -932,6 +968,9 @@
           ],
           "message": {
             "text": "Social Security Number Detected in <golden:overlap_groups_render_once> at line 7 (confidence: 60.0% - MEDIUM). Matched text: '449-87-4100'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "2cd50e89041879736744ece2b17586bd4f71337b6759bf432a7f32bf67d75cfc"
           },
           "properties": {
             "confidence": 60,
@@ -996,6 +1035,9 @@
           "message": {
             "text": "Social Security Number Detected in <golden:overlap_groups_render_once> at line 3 (confidence: 50.0% - LOW). Matched text: '512010001'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "8d224612965e16cf2699c00e833dcea4a704c3cec4822fceafc04abc0bf0580e"
+          },
           "properties": {
             "confidence": 50,
             "confidenceLevel": "LOW",
@@ -1058,6 +1100,9 @@
           ],
           "message": {
             "text": "Email Address Detected in <golden:overlap_groups_render_once> at line 5 (confidence: 40.0% - LOW). Matched text: 'Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "8cfd1f32065c9248ff367421184a1b627e39600096ba7a157dd7694965f43aa8"
           },
           "properties": {
             "confidence": 40,
@@ -1129,6 +1174,9 @@
           ],
           "message": {
             "text": "Phone Number Detected in <golden:overlap_groups_render_once> at line 8 (confidence: 15.0% - LOW). Matched text: '212-555-0142'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "20d3bb5dd8a20c46c3ee4d07321401d66a52b1c40ab2dbfd0f49d44a45b44b2a"
           },
           "properties": {
             "confidence": 15,
@@ -1205,6 +1253,9 @@
           ],
           "message": {
             "text": "Date of Birth Detected in <golden:overlap_groups_render_once> at line 6 (confidence: 5.0% - LOW). Matched text: '12.19.85'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "9eea79905ded2efb29ef9c0dab4f8d70112f547f7f58e890407a511af1f0e3b2"
           },
           "properties": {
             "confidence": 5,

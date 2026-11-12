@@ -37,6 +37,9 @@
           "message": {
             "text": "Social Security Number Detected in src/nested/config.py at line 2 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "828100cbe5d4dc81ce473b0ac82d96143b06a29fb2ed9cb865733c294339fa82"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -103,6 +106,9 @@
           ],
           "message": {
             "text": "Secret or API Key Detected in src/nested/config.py at line 1 (confidence: 15.0% - LOW). Matched text: 'AKIAIOSFODNN7EXAMPLE'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "b701e402135452b34ed279dd17923b5ecca75c5efab9671c65b48f82463fac1c"
           },
           "properties": {
             "confidence": 15,

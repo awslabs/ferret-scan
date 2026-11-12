@@ -31,6 +31,9 @@
           "message": {
             "text": "Passport Number Detected in <golden:passport_shapes> at line 1 (confidence: 100.0% - HIGH). Matched text: '512345678'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "30c995f50de8d7f0faeffae701201f2b01e6304ace3091090eb0ae581d88f78e"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -95,6 +98,9 @@
           "message": {
             "text": "Passport Number Detected in <golden:passport_shapes> at line 2 (confidence: 100.0% - HIGH). Matched text: '987654321'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "db969fa5f2fe00b7a7345754fb6d2247c2e760d121e8c56f56fa9301170c5f66"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -152,6 +158,9 @@
           ],
           "message": {
             "text": "Passport Number Detected in <golden:passport_shapes> at line 3 (confidence: 80.0% - MEDIUM). Matched text: 'P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "14d7ad1616a8cf95135200e69b22b966b6d6e877800feea74c6adc4a367378f4"
           },
           "properties": {
             "confidence": 80,
