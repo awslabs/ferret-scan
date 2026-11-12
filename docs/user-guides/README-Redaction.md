@@ -131,6 +131,16 @@ its `simple` marker (`[GITHUB_TOKEN-REDACTED]`). Up to v2.5.5 only `EMAIL`, `GMA
 took the email row: the other 21 email types wrote a provider-named placeholder, an all-`*` mask
 with no domain, or a random string with no `@`.
 
+CREDIT_CARD's row is for a card number. Its two other types are redacted whole: a card track
+(`CARD_TRACK_DATA`) becomes `[CARD_TRACK_DATA-REDACTED]` under `simple`, all `*` under
+`format_preserving` (the cardholder name included), and a fake track of the same shape whose PAN fails
+the Luhn check under `synthetic`; a labelled security code (`CARD_SECURITY_CODE`) becomes
+`[CARD_SECURITY_CODE-REDACTED]`, all `*` with its label, or a random string.
+
+The table is per validator. Per format, audio, video and legacy Office (`.doc` `.xls` `.ppt`) take
+`simple` as a same-length `*` mask and refuse `synthetic` (no output, `files_not_redacted`, exit 3
+with `--fail-on-incomplete`); see the notes under [Document Type Support](#document-type-support).
+
 ## Document Type Support
 
 | File Type | Extensions | Redaction Method |

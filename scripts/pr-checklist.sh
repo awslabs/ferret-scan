@@ -168,17 +168,19 @@ fi
 #     and a validator change can add a HIGH to a file this diff never touched, which CI's changed-files
 #     scan cannot see. scripts/self-scan.sh writes a marker under the git dir after a green block-mode
 #     run of the whole tree, recording the checkout's content; this line is RAN only when that content
-#     is this checkout's. N/A only for a diff of docs and tests alone (the tests gate is SECRETS-only, so
-#     a test fixture cannot add a HIGH; a credential in a test can, and `make self-scan` is 15 seconds).
+#     is this checkout's. N/A only for a diff whose every file the self-scan profile excludes
+#     (.ferret-scan/selfscan.yaml: testdata/, the golden and score corpora): the shippable gate scans
+#     every other file, .md and changelog.d/ included, and the tests gate scans *_test.go for SECRETS,
+#     so a docs-only diff can add a HIGH (a doc line quoting a value) and `make self-scan` is 15 seconds.
 ss_marker="$(git rev-parse --git-dir)/self-scan.ok"
 ss_state="$(scripts/self-scan.sh --print-state 2>/dev/null || true)"
 if [ -f "$ss_marker" ] && [ -n "$ss_state" ] && [ "$(sed -n 's/^state=//p' "$ss_marker")" = "$ss_state" ]; then
   ok "15 self-scan" "make self-scan green on this checkout at $(sed -n 's/^when=//p' "$ss_marker")"
-elif echo "$changed" | grep -qvE '(\.md$|^docs/|/testdata/|^changelog\.d/)'; then
+elif echo "$changed" | grep -qvE '(/testdata/|^internal/goldencorpus/corpus\.go$|^internal/scorecorpus/)'; then
   todo "15 self-scan" "run make self-scan (or scripts/self-scan.sh --base origin/main to see only what
                                    this branch added); every HIGH is a decision, see docs/testing/SELF_SCAN.md"
 else
-  na "15 self-scan" "docs only; the self-scan gates read no file in this diff"
+  na "15 self-scan" "every changed file is excluded by .ferret-scan/selfscan.yaml; no self-scan gate reads it"
 fi
 
 # 10. non-vacuity — a new test must fail on the pre-change code.

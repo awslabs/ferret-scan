@@ -5,7 +5,10 @@
 # Or specify with: ferret-scan --config path/to/ferret.yaml
 #
 # CLI reference (all flags): ferret-scan --help
-# Web mode: ferret-scan --web [--port 8080] [--bind 0.0.0.0]
+# Web mode: ferret-scan --web [--port 8080]
+#   Binds 127.0.0.1 by default. The UI has no authentication: to use it from another
+#   machine, forward the port over SSH (ssh -L 8080:127.0.0.1:8080 <host>) rather than
+#   passing --bind 0.0.0.0, which exposes it to every host that can reach this one.
 #
 # Available checks:
 #   CLOUD_RESOURCES, CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS,

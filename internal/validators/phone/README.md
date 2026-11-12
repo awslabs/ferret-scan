@@ -9,6 +9,11 @@ international formats, with various separators (spaces, dashes, dots, parenthese
 - US/Canada toll-free (800, 833, 844, 855, 866, 877, 888)
 - UK domestic and international (`0207 123 4567`, `+44 207 123 4567`)
 - European and global mobile formats (`+33 1 42 34 56 78`, `+49 30 12345678`)
+- International display forms in the `+CC`, `00CC` and `(+CC)` forms, with a `(0)` trunk slot, a
+  bracketed area code or `/` (`+44 (0)20 7946 0958`, `0044 20 7946 0958`, `(+44) 20 7946 0958`,
+  `+44 20/7946 0958`), held to the E.164 gate described below
+- Phone contexts: a `tel:` URI (`href="tel:+13125550142"`), a vCard `TEL` value
+  (`TEL;TYPE=work:+44 20 7946 0958`), after a phone label's `:` or `=`, and inside `(`, `[` or `/`
 - Extensions (`ext`, `extension`, `x` + 1-6 digits)
 
 ## Validation pipeline
@@ -61,7 +66,9 @@ Ceilings apply after everything else and are published as `confidence_ceiling`, 
 document-level +20 a CSV receives cannot lift them:
 
 - 85 for a match nothing corroborates (no evidence above and not written in the `+` form);
-- 15 for a reserved fictional number (555-0100 to 555-0199);
+- 15 for a reserved fictional number: NANP's 555-0100 to 555-0199, and Ofcom's drama ranges
+  `020 7946 0000`-`0999`, `0161 496 0000`-`0999`, `01632 960000`-`960999` and `07700 900000`-`900999`,
+  written nationally or with `+44`/`0044`;
 - 15 for a number in the `+`, `00` or `(+` form that the E.164 gate refuses, with
   `valid_country=false`: its country code is unassigned, it has more than 15 digits, it writes a
   `(0)` its code's plan does not use, or its national length is not one the plan allows. Phone
