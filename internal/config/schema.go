@@ -74,6 +74,7 @@ var validCheckNames = map[string]bool{
 	"IP_ADDRESS":            true,
 	"MEDICAL_ID":            true,
 	"METADATA":              true,
+	"NATIONAL_ID":           true,
 	"OTP":                   true,
 	"PASSPORT":              true,
 	"PERSON_NAME":           true,

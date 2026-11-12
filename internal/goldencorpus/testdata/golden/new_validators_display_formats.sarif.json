@@ -31,6 +31,9 @@
           "message": {
             "text": "Medical Identifier Detected in <golden:new_validators_display_formats> at line 1 (confidence: 95.0% - HIGH). Matched text: '1EG4-TE5-MK73'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "5b2a4c1bb079a06fc51874fbaa2afcf5881f558c693313ed94cc07a32ed13494"
+          },
           "properties": {
             "confidence": 95,
             "confidenceLevel": "HIGH",
@@ -94,6 +97,9 @@
           "message": {
             "text": "Physical Address Detected in <golden:new_validators_display_formats> at line 6 (confidence: 95.0% - HIGH). Matched text: '123 42nd Street'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "2b29b8e2a30e57b44b39a8c1870babef4295d63b5c6250d10014fe24598f3db5"
+          },
           "properties": {
             "confidence": 95,
             "confidenceLevel": "HIGH",
@@ -155,6 +161,9 @@
           ],
           "message": {
             "text": "Date of Birth Detected in <golden:new_validators_display_formats> at line 4 (confidence: 90.0% - HIGH). Matched text: '3/14/87'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "ef80fc82177857e9932322475bcf93ef15c36d9a57975a85cec21c8352c28d5e"
           },
           "properties": {
             "confidence": 90,
@@ -220,6 +229,9 @@
           "message": {
             "text": "Date of Birth Detected in <golden:new_validators_display_formats> at line 4 (confidence: 90.0% - HIGH). Matched text: 'March 14th, 1987'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "b52ea000c130818c53ea81adae564f5068bfb206a9552de44737aa68008542bd"
+          },
           "properties": {
             "confidence": 90,
             "confidenceLevel": "HIGH",
@@ -284,6 +296,9 @@
           "message": {
             "text": "Date of Birth Detected in <golden:new_validators_display_formats> at line 5 (confidence: 90.0% - HIGH). Matched text: '03.14.1987'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "89125c4f8612e70169da9fc54f9942216eb4b5f796b1e39fe71c8d890edb6566"
+          },
           "properties": {
             "confidence": 90,
             "confidenceLevel": "HIGH",
@@ -347,6 +362,9 @@
           "message": {
             "text": "Physical Address Detected in <golden:new_validators_display_formats> at line 7 (confidence: 90.0% - HIGH). Matched text: '1234 US Highway 61'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "4fd6e09f339675a85aab585950718d931cab1042b9e128acaf04769bc1be9505"
+          },
           "properties": {
             "confidence": 90,
             "confidenceLevel": "HIGH",
@@ -408,6 +426,9 @@
           ],
           "message": {
             "text": "Physical Address Detected in <golden:new_validators_display_formats> at line 8 (confidence: 85.0% - MEDIUM). Matched text: '742 evergreen terrace'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "db3ba71472f6ce27d4ab46aa29024bd252bf569136daa3924fd663b92f61229c"
           },
           "properties": {
             "confidence": 85,
@@ -471,6 +492,9 @@
           "message": {
             "text": "Bank Account Identifier Detected in <golden:new_validators_display_formats> at line 2 (confidence: 80.0% - MEDIUM). Matched text: 'DE89 3704 0044 0532 0130 00'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "f01a2c641995f266c32592a3203e0328965ab7a11a054070ed132b13c4e81863"
+          },
           "properties": {
             "confidence": 80,
             "confidenceLevel": "MEDIUM",
@@ -530,6 +554,9 @@
           ],
           "message": {
             "text": "Driver's License Number Detected in <golden:new_validators_display_formats> at line 3 (confidence: 70.0% - MEDIUM). Matched text: 'D123-4567-8901'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "b16442643122199b5ac99bba7b1382999b1f807d39f39311dd2ec508d750a082"
           },
           "properties": {
             "confidence": 70,

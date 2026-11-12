@@ -146,7 +146,11 @@ The first ledger (2026-11-09, `main` at d641fe7) holds 666 rules: 525 `fixture`,
 (across #930–#940) and 6 `public`, covering 672 HIGH findings; the gate then reads `HIGH 0`. The v2.6.0
 promotion then moved 39 of those findings from `changelog.d/` fragments into `CHANGELOG.md` and the
 ledger followed (42 fragment rules out, 39 `CHANGELOG.md` rules in with the same reasons): 663 rules,
-522 `fixture`, 135 `detector FP` and 6 `public`.
+522 `fixture`, 135 `detector FP` and 6 `public`. Wave 8 then fixed the detectors behind #934, #935, #937,
+#938, #939 and #940 and #930's IBAN and Ofcom rows, and removed or reworded fixtures; the 54 rules whose
+finding was gone and the 4 whose finding now reads LOW were deleted, and one `fixture:` rule was added for a
+release note the #966 fix now reads correctly (a bare name beside a titled one): 606 rules, 514 `fixture`,
+86 `detector FP` and 6 `public`.
 Rule IDs are not contiguous after a deletion, and the generator numbers a new rule from the highest ID.
 
 A rule matches a finding by its identity hash: the type, the line, the file's basename, the line number,

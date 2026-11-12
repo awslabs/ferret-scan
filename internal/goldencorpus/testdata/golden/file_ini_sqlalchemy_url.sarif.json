@@ -37,6 +37,9 @@
           "message": {
             "text": "Secret or API Key Detected in alembic.ini at line 3 (confidence: 100.0% - HIGH). Matched text: 'Q7rpn8Wjk8DMn76B'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "37fb45d7f2743262757d5198f41fae45a04e74d9b6f38e84e0e978a5f9c9a70a"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",

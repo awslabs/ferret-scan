@@ -158,6 +158,30 @@ var Cases = []Case{
 			"Contacto: +56 912703456\n",
 	},
 	{
+		Name: "nationalid_americas",
+		Description: "#884 Part B: the five Americas national IDs (synthetic, check-digit-valid, seed 884, " +
+			"none a published example). Lines 1-7 are positives, each beside its own label: a dotted CPF " +
+			"under 'CPF nº', a dotted RUT, a bare RUN, a dashed CUIL, a spaced SIN, a leading-9 dashed SIN " +
+			"under the long form, and a CURP. Lines 8-14 are decoys that must stay empty: the same CPF with " +
+			"no label, the CPF with a failing check digit under its label, and the #884 collision lines " +
+			"(Spanish 'sin', 'Sinónimo', English 'NAS' and lowercase 'run').",
+		Checks: []string{"NATIONAL_ID"},
+		Input: "CPF nº 172.984.064-77\n" +
+			"RUT: 6.001.216-4\n" +
+			"RUN 6001216-4\n" +
+			"CUIL 20-12173870-9\n" +
+			"Employee SIN: 613 891 563\n" +
+			"Social Insurance Number: 916-635-287\n" +
+			"CURP: GOMR850412MJCMNL00\n" +
+			"Pedido 172.984.064-77\n" +
+			"CPF: 172.984.064-78\n" +
+			"Pago sin recargo: 613 891 563\n" +
+			"Sinónimo 613 891 563\n" +
+			"backup to the NAS 613 891 563\n" +
+			"run 6001216-4 times\n" +
+			"RFC 7231 section 6\n",
+	},
+	{
 		Name:        "creditcard_brands",
 		Description: "Luhn-valid cards across brands; locks brand classification in Match.Type.",
 		Checks:      []string{"CREDIT_CARD"},
@@ -743,23 +767,27 @@ var Cases = []Case{
 	{
 		Name: "overlap_groups_render_once",
 		Description: "#773: findings whose spans share bytes on one line are ONE write over their union. " +
-			"Line 1 crosses an address and two names (partial + contained): the whole union is masked, " +
-			"neither `77 August` (the head .txt used to strand) nor `, Boise` (the tail Office stranded) " +
-			"survives. Line 2 is two crossing names of one type. Line 3 is PASSPORT and SSN on the same " +
-			"9 digits (identical): `*********` -- the SSN's last four are masked because the PASSPORT " +
-			"rendering hides them, at any file size (sort.Slice's tie order changed at 13 findings). " +
-			"Line 4 is a name inside an address (contained, widest wins). Line 5 is SECRETS and EMAIL on " +
+			"Every overlap here is between two GENUINE findings: the case used to be built on a street " +
+			"read as a name and a list read as `Surname, Given`, which #935 and #936 stop reporting. " +
+			"Lines 1 and 2 are one titled name read two ways, `Dr. <given> <middle>` and " +
+			"`<given> <middle> <surname>` (partial): the whole union is masked, neither the title's head " +
+			"(what .txt used to strand) nor the surname's tail (what Office stranded) survives; line 2 is " +
+			"the same shape in UTF-8. Line 3 is PASSPORT and SSN on the same 9 digits (identical): " +
+			"`*********` -- the SSN's last four are masked because the PASSPORT rendering hides them, at " +
+			"any file size (sort.Slice's tie order changed at 13 findings). Line 4 is a card inside its " +
+			"own magnetic-stripe track frame (contained, widest wins). Line 5 is SECRETS and EMAIL on " +
 			"the same bytes: the higher-confidence secret's label, no byte kept. Decoys that must render " +
 			"exactly as before: line 6 is an IP containing a date (the IP keeps its two octets, #687's " +
 			"call), line 7 a phone containing an SSN (both keep the same last four), line 8 two disjoint " +
-			"values on one line. All values synthetic: 512010001 is area 512, the names and addresses are " +
-			"repo fixtures, the card has a computed Luhn digit, the password is a fixed alphabet walk.",
+			"values on one line. All values synthetic: 512010001 is area 512, Jane Ann Doe is the " +
+			"placeholder name and the other names repo fixtures, the card has a computed Luhn digit and " +
+			"the track frame a zero discretionary field, the password is a fixed alphabet walk.",
 		Checks: []string{"PASSPORT", "SSN", "PHYSICAL_ADDRESS", "PERSON_NAME", "PHONE", "IP_ADDRESS",
 			"DATE_OF_BIRTH", "CREDIT_CARD", "SECRETS", "EMAIL"},
-		Input: "Residence: 77 August Lane, Boise ID 83702\n" +
-			"Renée Müller, José García, François Lefèvre\n" +
+		Input: "Signed: Dr. Jane Ann Doe\n" +
+			"Dr. Renée Müller García signed\n" +
 			"Passport number: 512010001\n" +
-			"Located at 100 Martin Luther King Blvd\n" +
+			"Track 1: %B4532015112830366^DOE/JANE^2912101000000000000000?\n" +
 			"password = \"Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org\"\n" +
 			"server 203.12.19.85 reached\n" +
 			"call +1 449-87-4100\n" +

@@ -1,0 +1,162 @@
+results:
+    - text: 172.984.064-77
+      line_number: 1
+      type: BR_CPF
+      confidence: 95
+      confidence_level: HIGH
+      filename: <golden:nationalid_americas>
+      validator: nationalid
+      metadata:
+        check_digit_valid: true
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: HR_Payroll
+        country: BR
+        original_confidence: 95
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_path: document
+    - text: 613 891 563
+      line_number: 5
+      type: CA_SIN
+      confidence: 95
+      confidence_level: HIGH
+      filename: <golden:nationalid_americas>
+      validator: nationalid
+      metadata:
+        check_digit_valid: true
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: HR_Payroll
+        country: CA
+        original_confidence: 95
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_path: document
+    - text: 916-635-287
+      line_number: 6
+      type: CA_SIN
+      confidence: 95
+      confidence_level: HIGH
+      filename: <golden:nationalid_americas>
+      validator: nationalid
+      metadata:
+        check_digit_valid: true
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: HR_Payroll
+        country: CA
+        original_confidence: 95
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_path: document
+    - text: 6.001.216-4
+      line_number: 2
+      type: CL_RUT
+      confidence: 95
+      confidence_level: HIGH
+      filename: <golden:nationalid_americas>
+      validator: nationalid
+      metadata:
+        check_digit_valid: true
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: HR_Payroll
+        country: CL
+        original_confidence: 95
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_path: document
+    - text: GOMR850412MJCMNL00
+      line_number: 7
+      type: MX_CURP
+      confidence: 95
+      confidence_level: HIGH
+      filename: <golden:nationalid_americas>
+      validator: nationalid
+      metadata:
+        check_digit_valid: true
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: HR_Payroll
+        country: MX
+        original_confidence: 95
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_path: document
+    - text: 20-12173870-9
+      line_number: 4
+      type: AR_CUIL
+      confidence: 90
+      confidence_level: HIGH
+      filename: <golden:nationalid_americas>
+      validator: nationalid
+      metadata:
+        check_digit_valid: true
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: HR_Payroll
+        country: AR
+        original_confidence: 90
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_path: document
+    - text: 6001216-4
+      line_number: 3
+      type: CL_RUT
+      confidence: 90
+      confidence_level: HIGH
+      filename: <golden:nationalid_americas>
+      validator: nationalid
+      metadata:
+        check_digit_valid: true
+        confidence_adjustment: 0
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: HR_Payroll
+        country: CL
+        original_confidence: 90
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_path: document

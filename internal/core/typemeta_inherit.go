@@ -180,6 +180,14 @@ var typeParent = map[string]string{
 	// code; the mapping groups them under CREDIT_CARD on the checks page, the check that reports them.
 	"CARD_TRACK_DATA":    "CREDIT_CARD",
 	"CARD_SECURITY_CODE": "CREDIT_CARD",
+
+	// The Americas national identifiers (#884 Part B), each reported by the NATIONAL_ID check under
+	// its own type. They share the family's copy and weight (supplementalDescriptors).
+	"BR_CPF":  "NATIONAL_ID",
+	"CL_RUT":  "NATIONAL_ID",
+	"AR_CUIL": "NATIONAL_ID",
+	"CA_SIN":  "NATIONAL_ID",
+	"MX_CURP": "NATIONAL_ID",
 }
 
 // supplementalDescriptors supplies copy the migrated registry does not have — both for families that
@@ -193,6 +201,26 @@ var typeParent = map[string]string{
 // Weights are set relative to what the registry already uses — CREDIT_CARD 10, SECRETS 9,
 // CLOUD_RESOURCE_ID 7, EMAIL 5, METADATA 3 — rather than invented on a fresh scale.
 var supplementalDescriptors = map[string]TypeDescriptor{
+	// #884 Part B. A national identifier is the key that joins a person's tax, payroll, health and
+	// banking records, which is why it carries the SSN's weight.
+	"NATIONAL_ID": {
+		SARIFShort: "National Identification Number Detected",
+		SARIFFull: "A national identification number was detected in the scanned content: a Brazilian CPF, " +
+			"a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number " +
+			"or a Mexican CURP. Each identifies one person to their government's tax, employment or " +
+			"population registry, and each passed its check digit beside its own label.",
+		SARIFHelp: "Handle a national identification number as you would a US Social Security Number: " +
+			"remove it, or replace it with synthetic test data that fails the number's check digit, and " +
+			"keep real values in a system with access controls rather than in source, configuration " +
+			"files or logs. These numbers appear on payroll, tax and onboarding records, so check the " +
+			"surrounding record for the holder's name and other identifiers.",
+		SARIFSensitivityWeight: 10.0,
+		GitLabCheckDesc:        "National identification number",
+		GitLabRemediation: "Remove national identification numbers (CPF, RUT, CUIL, SIN, CURP) from code " +
+			"and documentation, or replace them with synthetic values that fail the check digit.",
+		GitLabName: "National Identification Number Detected",
+	},
+
 	// A routing number with an account number is enough to move money, and the report did not say so.
 	"BANK_ACCOUNT": {
 		SARIFShort: "Bank Account Identifier Detected",

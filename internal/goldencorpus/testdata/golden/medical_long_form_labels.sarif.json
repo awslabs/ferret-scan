@@ -31,6 +31,9 @@
           "message": {
             "text": "Medical Identifier Detected in <golden:medical_long_form_labels> at line 3 (confidence: 85.0% - MEDIUM). Matched text: '1EG4TE5MK73'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "e16eb931af77a145cf3fdffdb54ee2f099cebee3e75fe6be092fb53b90af09a6"
+          },
           "properties": {
             "confidence": 85,
             "confidenceLevel": "MEDIUM",
@@ -91,6 +94,9 @@
           ],
           "message": {
             "text": "Medical Identifier Detected in <golden:medical_long_form_labels> at line 2 (confidence: 80.0% - MEDIUM). Matched text: 'X9876543210'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "f69481a542bd5e3fca3d655602e20ad964583f250b36b7c53effcc7994143e87"
           },
           "properties": {
             "confidence": 80,
@@ -155,6 +161,9 @@
           "message": {
             "text": "Medical Identifier Detected in <golden:medical_long_form_labels> at line 6 (confidence: 80.0% - MEDIUM). Matched text: 'W1122009988'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "37e9295c69bdcf39e7678d805355c665436d97dce94d7044c10b898cf9e3b6c5"
+          },
           "properties": {
             "confidence": 80,
             "confidenceLevel": "MEDIUM",
@@ -217,6 +226,9 @@
           ],
           "message": {
             "text": "Medical Identifier Detected in <golden:medical_long_form_labels> at line 4 (confidence: 80.0% - MEDIUM). Matched text: '4472901'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "913996db278cededa6e23e534d0c05b1f79fc8fcb51d18261e45517b4d6eca48"
           },
           "properties": {
             "confidence": 80,
@@ -281,6 +293,9 @@
           "message": {
             "text": "Medical Identifier Detected in <golden:medical_long_form_labels> at line 1 (confidence: 70.0% - MEDIUM). Matched text: 'W1234567801'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "b2afcefdda8f7c44b6df654b842f9cb302b20c0fde1f3a93598313a00363cbe8"
+          },
           "properties": {
             "confidence": 70,
             "confidenceLevel": "MEDIUM",
@@ -340,6 +355,9 @@
           ],
           "message": {
             "text": "Medical Identifier Detected in <golden:medical_long_form_labels> at line 5 (confidence: 70.0% - MEDIUM). Matched text: 'P5551234567'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "62025fcf349172927209a346af5041eaee4e4e75e296081e500f4ffc614ed455"
           },
           "properties": {
             "confidence": 70,

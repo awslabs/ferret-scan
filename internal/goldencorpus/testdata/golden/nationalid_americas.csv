@@ -1,0 +1,8 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<golden:nationalid_americas>,BR_CPF,HIGH,95.0,1,172.984.064-77
+<golden:nationalid_americas>,CA_SIN,HIGH,95.0,5,613 891 563
+<golden:nationalid_americas>,CA_SIN,HIGH,95.0,6,916-635-287
+<golden:nationalid_americas>,CL_RUT,HIGH,95.0,2,6.001.216-4
+<golden:nationalid_americas>,MX_CURP,HIGH,95.0,7,GOMR850412MJCMNL00
+<golden:nationalid_americas>,AR_CUIL,HIGH,90.0,4,20-12173870-9
+<golden:nationalid_americas>,CL_RUT,HIGH,90.0,3,6001216-4
