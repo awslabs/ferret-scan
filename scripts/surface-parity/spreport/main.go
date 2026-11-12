@@ -934,14 +934,15 @@ func (r *report) redaction(s set, base string, values map[string][]string) {
 			r.fail("%s: redaction %s exited %s in the container", s.name, d.Name(), meta["exit"])
 		}
 		copies := locateCopies(filepath.Join(runDir, "extracted"))
-		disclosed := disclosedUnredacted(filepath.Join(runDir, "run.json"))
+		disc := disclosedUnredacted(filepath.Join(runDir, "run.json"))
+		disclosed := disc.listed
 		rels := make([]string, 0, len(values))
 		for rel := range values {
 			rels = append(rels, rel)
 		}
 		sort.Strings(rels)
 		checked, survived, skipped, rewritten, tokens, refusedDisclosed, missing := 0, 0, 0, 0, 0, 0, 0
-		var survivors []string
+		var survivors, unlisted []string
 		for _, rel := range rels {
 			copyPath, ok := copies[rel]
 			if !ok {
@@ -950,7 +951,7 @@ func (r *report) redaction(s set, base string, values map[string][]string) {
 				} else {
 					missing++
 					if !s.aggregate {
-						survivors = append(survivors, "no redacted copy and not disclosed: "+rel)
+						unlisted = append(unlisted, "no redacted copy and not disclosed: "+rel)
 					}
 				}
 				continue
@@ -982,8 +983,17 @@ func (r *report) redaction(s set, base string, values map[string][]string) {
 				}
 			}
 		}
+		capNote, beyondCap := disc.beyondCap(missing)
+		missing -= beyondCap
+		refusedDisclosed += beyondCap
+		if missing > 0 {
+			survivors = append(unlisted, survivors...)
+		}
 		r.printf("redaction %-28s exit=%s copies=%d rewritten=%d values-checked=%d survived=%d skipped(<%dB)=%d simple-tokens=%d refused+disclosed=%d missing+undisclosed=%d\n",
 			d.Name(), meta["exit"], len(copies), rewritten, checked, survived, minValueBytes, skipped, tokens, refusedDisclosed, missing)
+		if capNote != "" {
+			r.printf("  %s\n", capNote)
+		}
 		for i, sv := range survivors {
 			if i >= 20 {
 				r.printf("  … %d more\n", len(survivors)-i)
@@ -1023,14 +1033,53 @@ func locateCopies(root string) map[string]string {
 	return out
 }
 
-// disclosedUnredacted returns the inputs the redaction run itself named in its "unredacted" list.
-func disclosedUnredacted(path string) map[string]bool {
-	out := map[string]bool{}
+// unredactedCap is the product's cap on the per-file "unredacted" list in a machine format
+// (internal/formatters.MaxUnredactedEntries, #450; a test pins the two together). Past it the list
+// stops enumerating and only stats.files_not_redacted still counts every refused file.
+const unredactedCap = 50
+
+// disclosure is what one redaction run said about the inputs it wrote no copy for.
+type disclosure struct {
+	listed   map[string]bool // the paths in its "unredacted" list
+	entries  int             // len of that list as written (a path listed twice counts twice)
+	total    int             // stats.files_not_redacted
+	hasTotal bool
+}
+
+// beyondCap decides the files with findings, no copy and no list entry (unlisted). When the list is
+// at the cap, the run's own total says how many refused files the list left out; if that number is
+// exactly unlisted, every one of them is disclosed by count, and beyondCap returns them all with a
+// line saying so. Otherwise it returns 0 (each stays undisclosed and fails), with a line naming the
+// arithmetic that does not close whenever a total was present to compare.
+func (d disclosure) beyondCap(unlisted int) (string, int) {
+	if unlisted == 0 || !d.hasTotal {
+		return "", 0
+	}
+	omitted := d.total - d.entries
+	if d.entries == unredactedCap && omitted == unlisted {
+		return fmt.Sprintf("%d refused file(s) beyond the %d-entry unredacted list; the total matches stats.files_not_redacted=%d (%d listed + %d omitted)",
+			unlisted, unredactedCap, d.total, d.entries, omitted), unlisted
+	}
+	if d.entries != unredactedCap {
+		return fmt.Sprintf("the arithmetic does not close: the unredacted list holds %d entries, not the %d-entry cap, so it omitted nothing, but %d file(s) with findings have neither a copy nor an entry (stats.files_not_redacted=%d)",
+			d.entries, unredactedCap, unlisted, d.total), 0
+	}
+	return fmt.Sprintf("the arithmetic does not close: stats.files_not_redacted=%d, %d listed (the cap), so %d omitted, but %d file(s) with findings have neither a copy nor an entry",
+		d.total, d.entries, omitted, unlisted), 0
+}
+
+// disclosedUnredacted reads what the redaction run itself disclosed: the inputs named in its
+// "unredacted" list and the total in stats.files_not_redacted.
+func disclosedUnredacted(path string) disclosure {
+	out := disclosure{listed: map[string]bool{}}
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return out
 	}
 	var doc struct {
+		Stats struct {
+			FilesNotRedacted *int `json:"files_not_redacted"`
+		} `json:"stats"`
 		Unredacted []struct {
 			Path string `json:"path"`
 		} `json:"unredacted"`
@@ -1040,7 +1089,11 @@ func disclosedUnredacted(path string) map[string]bool {
 	}
 	strip := rootRewriter(containerRoot)
 	for _, u := range doc.Unredacted {
-		out[strip(u.Path)] = true
+		out.listed[strip(u.Path)] = true
+	}
+	out.entries = len(doc.Unredacted)
+	if doc.Stats.FilesNotRedacted != nil {
+		out.total, out.hasTotal = *doc.Stats.FilesNotRedacted, true
 	}
 	return out
 }
