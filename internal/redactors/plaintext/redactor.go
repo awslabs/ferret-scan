@@ -273,6 +273,10 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 		var startPos, endPos int
 		var confidence float64
 		var correlationUsed bool
+		// correlationMethod (exact, fuzzy, heuristic) and corrected name what the placement score
+		// only implies; the audit log's placement records both (#865).
+		var correlationMethod string
+		var corrected bool
 
 		// Try position correlation if enabled
 		if ptr.enablePositionCorrelation && ptr.positionCorrelator != nil {
@@ -283,6 +287,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 				endPos = startPos + len(match.Text)
 				confidence = correlatedPos.ConfidenceScore
 				correlationUsed = true
+				correlationMethod = correlatedPos.Method.String()
 
 				// The match's own bytes are the sensitive value being redacted, so
 				// they must not reach the log (BSC4) — the line, span and length
@@ -397,6 +402,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 				startPos = correctedStart
 				endPos = correctedEnd
 				confidence *= 0.7 // Reduce confidence for corrected positions
+				corrected = true
 
 				ptr.logEvent("position_corrected", true, map[string]interface{}{
 					"original_start":        startPos,
@@ -456,6 +462,12 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 				"original_confidence": match.Confidence,
 				"position_method":     ptr.getPositionMethodString(correlationUsed),
 			},
+		}
+		if correlationUsed {
+			mapping.Metadata[redactors.CorrelationMethodKey] = correlationMethod
+		}
+		if corrected {
+			mapping.Metadata[redactors.PositionCorrectedKey] = true
 		}
 		if unit.group.IsGroup() {
 			// One entry for the whole group, naming every finding it covered.
