@@ -75,6 +75,9 @@ type scopedCandidate struct {
 	// ceiling, when positive, is a value-intrinsic upper bound published as ConfidenceCeilingKey,
 	// combined with the other ceilings by taking the lowest. Set by uri_userinfo's LOW dispositions.
 	ceiling float64
+	// literal marks a gateable candidate the #753 gate examined and kept: its value starts inside a
+	// literal, so it is text, and nonLiteralValue's expression shapes apply to it (#931).
+	literal bool
 }
 
 // spannedMatch is an emitted finding that still remembers the byte span of the
@@ -868,7 +871,7 @@ func (v *Validator) validateContentCtx(ctx stdctx.Context, content string, origi
 			if c.gateable && gateDrops(c.start, c.end, c.text) {
 				continue
 			}
-			cands = append(cands, scopedCandidate{candidate: c, method: "keyword_pattern", threshold: 60})
+			cands = append(cands, scopedCandidate{candidate: c, method: "keyword_pattern", threshold: 60, literal: c.gateable && gate != nil})
 		}
 
 		// #746 shape (c), continued. Order matters: the state is advanced AFTER this line is
@@ -882,7 +885,7 @@ func (v *Validator) validateContentCtx(ctx stdctx.Context, content string, origi
 					}
 					cands = append(cands, scopedCandidate{
 						candidate: candidate{text: c.text, start: c.start, end: c.end, gateable: true},
-						method:    "keyword_pattern", threshold: 60,
+						method:    "keyword_pattern", threshold: 60, literal: gate != nil,
 					})
 				}
 				// The key governs this item's confidence even though it is on an earlier line.
@@ -2635,6 +2638,8 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 	// candidate that needs it, so a line with no candidate, or one a positive keyword already
 	// corroborates, pays nothing for it.
 	joined := lineKeywordUnknown
+	// Whether the #753 gate parses this file; see nonLiteralValue's expressions rule.
+	gatedSource := sourceLanguageFor(originalPath) != langNone
 
 	for _, cand := range matches {
 		match := cand.text
@@ -2643,6 +2648,12 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 		// Skip shell variable references that aren't actual secret values
 		// Only perform expensive regex checks if the line potentially has shell variables
 		if lineHasShellVars && v.isMatchShellVariableReference(line, match) {
+			continue
+		}
+		// A regex, a path, an expression, a redaction marker or a provider-prefixed placeholder is
+		// not a literal and carries no secret byte (#931). Value-intrinsic; the structural sources'
+		// grammars already decide what their values are. See non_literal_values.go.
+		if !cand.structural && nonLiteralValue(match, !cand.gateable || !gatedSource || cand.literal) {
 			continue
 		}
 
