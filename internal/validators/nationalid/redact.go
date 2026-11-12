@@ -42,6 +42,14 @@ func Key(value string) string { return canonical(value) }
 // letter a random letter, and a RUT's K verifier a digit. The result FAILS Valid for dataType, so a
 // redacted copy never re-detects (#669): when the draw passes the check, its last symbol is moved
 // until it does not. intn(n) returns a uniform integer in [0, n).
+//
+// A replacement of the all-digit types also starts with "000". A national ID often sits on the same
+// span as an SSN finding, or an SSN finding covers its first nine digits ("CPF: 234567890-92"), and
+// the overlap group then writes this replacement for both; random leading digits re-detected as an
+// SSN in 4 of 5 synthetic runs of a four-line file. Area 000 is never an SSN or an ITIN, a SIN never
+// starts with 0, a RUT body never does and no CUIL prefix is 00, so the replacement is none of them.
+// shortcut: that leaves a SIN six random digits, one million replacements a run; widen the draw if a
+// run ever holds more distinct SINs than that.
 func DrawSynthetic(dataType, key string, intn func(int) int) string {
 	b := []byte(key)
 	for i, c := range b {
@@ -54,6 +62,11 @@ func DrawSynthetic(dataType, key string, intn func(int) int) string {
 			} else {
 				b[i] = byte('A' + intn(26)) // #nosec G115 -- an upper-case letter
 			}
+		}
+	}
+	if dataType != TypeMXCURP {
+		for i := 0; i < 3 && i < len(b); i++ {
+			b[i] = '0'
 		}
 	}
 	for tries := 0; tries < 10 && len(b) > 0 && Valid(dataType, string(b)); tries++ {
