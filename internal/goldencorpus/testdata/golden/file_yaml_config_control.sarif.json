@@ -37,6 +37,9 @@
           "message": {
             "text": "Secret or API Key Detected in config/settings.yaml at line 1 (confidence: 100.0% - HIGH). Matched text: 'AuthToken'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "c3055796cc1566ec478fb8f9d867e772ba4d6c7a50f9b31f831a52890e626a37"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -102,6 +105,9 @@
           ],
           "message": {
             "text": "Secret or API Key Detected in config/settings.yaml at line 2 (confidence: 100.0% - HIGH). Matched text: 'MixedCaseNoDigits'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "3b73a57771a0d3b1702c16b8e92bb771b89c80e0f2c44822897ae53f039cb7cf"
           },
           "properties": {
             "confidence": 100,

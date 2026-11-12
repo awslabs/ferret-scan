@@ -314,6 +314,42 @@ func (sm *SuppressionManager) generateFindingHash(match detector.Match) string {
 	return sm.findingHashVersion(match, hashVersionCurrent)
 }
 
+// FindingIdentityFingerprintName is the partialFingerprints key the SARIF
+// formatter writes a finding's identity under. The /v1 suffix is SARIF's
+// versioned-fingerprint convention: a change to the fingerprint formula takes
+// a new suffix, never a new value under this one, so a consumer that stored a
+// fingerprint can always tell which formula produced it.
+const FindingIdentityFingerprintName = "ferretFindingIdentity/v1"
+
+// fingerprintHasher exists only to reach the identity formula from the
+// package-level fingerprint function: identityParts and hashSensitiveData
+// read no manager state, so the zero value is safe here.
+var fingerprintHasher = &SuppressionManager{}
+
+// FindingIdentityFingerprint is a finding's identity for SARIF consumers:
+// sha256 over the current-formula identity composite (generateFindingHash's)
+// with the line number left out. Leaving the line out is the point — it is
+// the invariance re-anchoring derives for rule files after the fact
+// (reanchor.go recomputes the hash at other lines to find a moved finding),
+// baked in up front: an edit that only moves the finding to another line
+// changes nothing in this value, so a consumer that keyed a decision on it
+// (ASH's suppressions, a report differ) keeps matching. The invariance is
+// exactly re-anchoring's: an edit inside a multi-line context window still
+// changes it. Two findings that agree on type, line text, basename, context
+// windows and matched value share one fingerprint wherever they sit — three
+// copies of one line are one identity, the case reanchor.go refuses as
+// ambiguous, published here as-is (a consumer that must tell copies apart
+// combines it with the result's location). The value digests the secret and its surroundings, it does not
+// contain them — the property that lets rule files carry the per-line hashes
+// today — but it is unsalted and emitted per finding, so a report carrying it
+// is testable offline against candidate values: a fingerprinted report carries
+// the sensitivity of its findings.
+func FindingIdentityFingerprint(match detector.Match) string {
+	head, tail := fingerprintHasher.identityParts(match, hashVersionCurrent)
+	sum := sha256.Sum256([]byte(head + tail))
+	return hex.EncodeToString(sum[:])
+}
+
 // hashVersion identifies a finding-hash formula. Old rule files carry hashes computed
 // by an older formula, and they have to keep working: an operator's suppression file is
 // a record of decisions they already made, not a cache we may invalidate.
@@ -927,6 +963,8 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 		}
 	}
 
+	// currentIdentity holds every finding's current-formula hash, filled before pass 1: refresh reads it.
+	currentIdentity := make(map[string]bool, len(matches))
 	// refresh records that rule idx identifies a finding whose current-formula hash is findingHash.
 	refresh := func(idx int, findingHash string) {
 		// Update last_seen_at for existing rule. Written through the live
@@ -938,7 +976,14 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 		// here: an explicit write, by the run that just saw its finding. Its other fields stay.
 		// The current formula is tried first, so a rule that differs from findingHash matched
 		// through an older one. A rule the loader refused (#866) is left as it is (#885).
-		if rule.Hash != findingHash && rule.NotApplied == "" && !migrated[idx] {
+		//
+		// A rule whose hash is ANOTHER finding's current-formula identity is that finding's rule
+		// and is never migrated away from it. Two findings of one run can meet that way: the
+		// multi-line PEM pass's finding carries no context, and a keyword copy of the same key on
+		// the same line does, so the copy's empty-context compatibility candidate IS the PEM
+		// finding's current hash. Migrating moved the PEM finding's own rule onto the copy, and the
+		// PEM finding was left with no rule (#981: 36 of 36 on 2fb4719).
+		if rule.Hash != findingHash && rule.NotApplied == "" && !migrated[idx] && !currentIdentity[rule.Hash] {
 			rule.Hash = findingHash
 			existingHashes[findingHash] = idx
 			migrated[idx] = true
@@ -971,11 +1016,16 @@ func (sm *SuppressionManager) GenerateSuppressionRules(matches []detector.Match,
 	// current formula.
 	identities := make([]string, len(matches)) // each finding's current-formula hash
 	ruled := make([]bool, len(matches))        // a rule identifies the finding
+	allCandidates := make([][]string, len(matches))
+	for i, match := range matches {
+		allCandidates[i] = sm.findingHashCandidates(match)
+		identities[i] = allCandidates[i][0]
+		currentIdentity[identities[i]] = true
+	}
 	var unruled []int
 	var unruledCandidates [][]string
-	for i, match := range matches {
-		candidates := sm.findingHashCandidates(match)
-		identities[i] = candidates[0]
+	for i := range matches {
+		candidates := allCandidates[i]
 		if idx := lookup(candidates); idx >= 0 {
 			refresh(idx, identities[i])
 			ruled[i] = true

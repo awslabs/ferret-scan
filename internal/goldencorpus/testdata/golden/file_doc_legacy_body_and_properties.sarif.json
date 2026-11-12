@@ -37,6 +37,9 @@
           "message": {
             "text": "Social Security Number Detected in quarterly.doc at line 5 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "476ae72093ebdd265a644f53d2b19e94ed170730765c6495aa9992d74721549c"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -104,6 +107,9 @@
           "message": {
             "text": "Credit Card Number Detected in quarterly.doc at line 6 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "52c1f86053f0f29904b770dbc342f1f78d82e4e21a4305b681473a0607fc2d01"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -163,6 +169,9 @@
           ],
           "message": {
             "text": "Sensitive Metadata Detected in quarterly.doc at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "4ddfad2146ddea1b78e902f5fe4bb7d46c8505456646386a0807e50a67e9726f"
           },
           "properties": {
             "confidence": 60,
@@ -224,6 +233,9 @@
           "message": {
             "text": "Sensitive Metadata Detected in quarterly.doc at line 3 (confidence: 60.0% - MEDIUM). Matched text: 'Ops Reviewer'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "7451bc09253ea1dcd03c7c5059de42faaba491fb808c0795385f2283cf9b20ba"
+          },
           "properties": {
             "confidence": 60,
             "confidenceLevel": "MEDIUM",
@@ -283,6 +295,9 @@
           ],
           "message": {
             "text": "Sensitive Metadata Detected in quarterly.doc at line 2 (confidence: 40.0% - LOW). Matched text: 'Microsoft Word 97'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "0b305967c346748431a4d1c4a16de5f6d3b5387b91b971d820f7658abe9e9af5"
           },
           "properties": {
             "confidence": 40,

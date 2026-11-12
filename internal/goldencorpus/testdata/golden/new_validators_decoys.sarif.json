@@ -31,6 +31,9 @@
           "message": {
             "text": "Bank Account Identifier Detected in <golden:new_validators_decoys> at line 6 (confidence: 65.0% - MEDIUM). Matched text: '021000021'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "e0130bbefef65b58e3b68c83d95309270330301d6ea2fdf350c23a2f2f9a0b2a"
+          },
           "properties": {
             "confidence": 65,
             "confidenceLevel": "MEDIUM",
@@ -83,6 +86,9 @@
           ],
           "message": {
             "text": "Bank Account Identifier Detected in <golden:new_validators_decoys> at line 5 (confidence: 60.0% - MEDIUM). Matched text: 'DE89 3704 0044 0532 0130 00'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "ebe4285086da7ab3a0befd90fcc9ea267a17d9e98308d7b6fa6bfa00481f5ae6"
           },
           "properties": {
             "confidence": 60,
@@ -143,6 +149,9 @@
           ],
           "message": {
             "text": "Medical Identifier Detected in <golden:new_validators_decoys> at line 7 (confidence: 40.0% - LOW). Matched text: '1EG4-TE5-MK73'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "84e9e9833ceaae7ab9ce6f609778508d6f19fe1fa2696403ec75a0fcd69b035b"
           },
           "properties": {
             "confidence": 40,
