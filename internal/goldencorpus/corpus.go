@@ -1729,6 +1729,33 @@ var Cases = []Case{
 			"Passport Number: \u017fA123456\n" +
 			"Passport Number: G\u212a123456\n",
 	},
+	{
+		Name: "passport_national_shapes_decoys",
+		Description: "National passport shapes the #888 Part 3 buckets must refuse, which must stay EMPTY. " +
+			"PASSPORT now reports a German number with a digit second (C1234567K) and the current " +
+			"Canadian series (R123456KX), but only behind a passport label: lines 1-12 put an ID of one " +
+			"of those shapes (or the French 2D 2L 5D shape) beside the word \"passport\" without a label " +
+			"before it; measured with only the existing context rules, 12 of 12 reported at 77.5-100. " +
+			"Line 13 is a label after the value, which the label gate does not cover by design. Line 14 " +
+			"is the French shape under a label: France is deferred for want of a primary source. The " +
+			"positives (form label, prose, CSV column, label above, the D<< MRZ pair) are unit tests in " +
+			"internal/validators/passport, so this case adds no finding to the census.",
+		Checks: []string{"PASSPORT"},
+		Input: "Passport renewal invoice 24FR00317 paid in full.\n" +
+			"passport office purchase 25AB12345 shipped\n" +
+			"Passport photo batch 23PH48207 printed today.\n" +
+			"Passport application ref 26CA90412 received.\n" +
+			"Travel and visa desk: case 22VS40981 for the passport team\n" +
+			"passport kiosk S482071US back online\n" +
+			"passport-svc ticket R482071CS escalated to tier 2\n" +
+			"Passport week 2026: room K482071TZ booked for the international team\n" +
+			"passport scanner model L1024N160 firmware update\n" +
+			"passport printer part M2T48K9Z1 replaced\n" +
+			"passport lounge wifi code H4KT29XN7\n" +
+			"passport API build C7JK2M9X4 promoted\n" +
+			"C1234567K (passport number)\n" +
+			"Passport Number: 12CF34567\n",
+	},
 }
 
 // FileCase is one file-based corpus entry. Unlike Case (which scans an in-memory
