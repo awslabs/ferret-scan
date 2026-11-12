@@ -25,6 +25,7 @@ registry yet; the detection itself is unaffected.
 - [API_KEY_OR_SECRET](#api_key_or_secret)
 - [APPLE_CORPORATE](#apple_corporate)
 - [APPLICATION_INFO](#application_info)
+- [AR_CUIL](#ar_cuil)
 - [ATLASSIAN](#atlassian)
 - [AUDIO_ARTIST_IDENTITY](#audio_artist_identity)
 - [AUDIO_CONTACT_INFO](#audio_contact_info)
@@ -35,12 +36,15 @@ registry yet; the detection itself is unaffected.
 - [AWS_ARN](#aws_arn)
 - [AWS_SECRET_ACCESS_KEY](#aws_secret_access_key)
 - [AZURE_RESOURCE_ID](#azure_resource_id)
+- [BR_CPF](#br_cpf)
 - [BUSINESS](#business)
 - [CARD_SECURITY_CODE](#card_security_code)
 - [CARD_TRACK_DATA](#card_track_data)
+- [CA_SIN](#ca_sin)
 - [CERTIFICATE](#certificate)
 - [CHI_NUMBER](#chi_number)
 - [CLOUD_RESOURCE_ID](#cloud_resource_id)
+- [CL_RUT](#cl_rut)
 - [COMPANY_INFO](#company_info)
 - [CREDIT_CARD](#credit_card)
 - [CUSTOM_PROPERTY](#custom_property)
@@ -88,6 +92,7 @@ registry yet; the detection itself is unaffected.
 - [METADATA](#metadata)
 - [MICROSOFT_365](#microsoft_365)
 - [MRN](#mrn)
+- [MX_CURP](#mx_curp)
 - [NHS_NUMBER](#nhs_number)
 - [NPI](#npi)
 - [OCI_OCID](#oci_ocid)
@@ -182,6 +187,14 @@ Sensitive metadata was detected in file properties. This may include author name
 
 *What to do:* File metadata can contain sensitive information that persists even when the visible content is sanitized. Review the detected metadata and determine if it should be removed. Consider using metadata scrubbing tools before sharing documents externally. Implement policies for metadata handling in your document management processes.
 
+## AR_CUIL
+
+**National Identification Number Detected**
+
+A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label.
+
+*What to do:* Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers.
+
 ## ATLASSIAN
 
 **Email Address Detected**
@@ -262,6 +275,14 @@ A cloud provider resource identifier (e.g. AWS ARN, Azure resource ID, GCP resou
 
 *What to do:* Cloud resource identifiers embed account/subscription/project anchors that reveal ownership and infrastructure topology. Avoid hardcoding them in source, logs, or shared documents. Use variables, parameters, or service discovery instead, and scrub identifiers from artifacts shared outside your organization.
 
+## BR_CPF
+
+**National Identification Number Detected**
+
+A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label.
+
+*What to do:* Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers.
+
 ## BUSINESS
 
 **Email Address Detected**
@@ -286,6 +307,14 @@ A full magnetic-stripe track (ISO/IEC 7813 Track 1 or Track 2) or a chip card's 
 
 *What to do:* PCI DSS v4.0 Requirement 3.3.1.1 forbids retaining the full contents of any track after authorisation, even encrypted. Delete the track rather than masking or tokenising it, find the process that wrote it (a card reader log, a debug dump, a keyboard-wedge capture) and stop it, and treat the card as exposed.
 
+## CA_SIN
+
+**National Identification Number Detected**
+
+A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label.
+
+*What to do:* Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers.
+
 ## CERTIFICATE
 
 **Secret or API Key Detected**
@@ -309,6 +338,14 @@ A healthcare identifier — a medical record number, a Medicare Beneficiary Iden
 A cloud provider resource identifier (e.g. AWS ARN, Azure resource ID, GCP resource name, OCI OCID, IBM CRN, or Alibaba ARN) was detected in the scanned content. These identifiers can expose account, subscription, project, or tenant identity and infrastructure layout.
 
 *What to do:* Cloud resource identifiers embed account/subscription/project anchors that reveal ownership and infrastructure topology. Avoid hardcoding them in source, logs, or shared documents. Use variables, parameters, or service discovery instead, and scrub identifiers from artifacts shared outside your organization.
+
+## CL_RUT
+
+**National Identification Number Detected**
+
+A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label.
+
+*What to do:* Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers.
 
 ## COMPANY_INFO
 
@@ -685,6 +722,14 @@ An email address was detected in the scanned content. Email addresses can be con
 A healthcare identifier — a medical record number, a Medicare Beneficiary Identifier, a UK NHS number, a Scottish CHI number, an NPI, a DEA registration number or an insurance member ID — was detected in the scanned content. Most of these identify a PATIENT and are protected health information; an NPI identifies a PRACTITIONER and is published in a public registry, so it is the least sensitive of the group.
 
 *What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA, the UK GDPR or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
+
+## MX_CURP
+
+**National Identification Number Detected**
+
+A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label.
+
+*What to do:* Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers.
 
 ## NHS_NUMBER
 
