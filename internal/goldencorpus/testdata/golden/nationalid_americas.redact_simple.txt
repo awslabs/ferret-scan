@@ -1,0 +1,23 @@
+=== REDACTED ===
+CPF nº [BR_CPF-REDACTED]
+RUT: [CL_RUT-REDACTED]
+RUN [CL_RUT-REDACTED]
+CUIL [AR_CUIL-REDACTED]
+Employee SIN: [CA_SIN-REDACTED]
+Social Insurance Number: [CA_SIN-REDACTED]
+CURP: [MX_CURP-REDACTED]
+Pedido [BR_CPF-REDACTED]
+CPF: 172.984.064-78
+Pago sin recargo: [CA_SIN-REDACTED]
+Sinónimo [CA_SIN-REDACTED]
+backup to the NAS [CA_SIN-REDACTED]
+run [CL_RUT-REDACTED] times
+RFC 7231 section 6
+=== FINDINGS (sorted) ===
+type=AR_CUIL line=4 conf=high match=20-12173870-9
+type=BR_CPF line=1 conf=high match=172.984.064-77
+type=CA_SIN line=5 conf=high match=613 891 563
+type=CA_SIN line=6 conf=high match=916-635-287
+type=CL_RUT line=2 conf=high match=6.001.216-4
+type=CL_RUT line=3 conf=high match=6001216-4
+type=MX_CURP line=7 conf=high match=GOMR850412MJCMNL00

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="&lt;golden:nationalid_americas&gt;" classname="security-scan" time="0.001">
+      <failure message="7 security findings detected" type="SECURITY_FINDINGS">Line 1: BR_CPF detected with 95.0% confidence (HIGH)&#xA;Match: 172.984.064-77&#xA;Validator: nationalid&#xA;Line 5: CA_SIN detected with 95.0% confidence (HIGH)&#xA;Match: 613 891 563&#xA;Validator: nationalid&#xA;Line 6: CA_SIN detected with 95.0% confidence (HIGH)&#xA;Match: 916-635-287&#xA;Validator: nationalid&#xA;Line 2: CL_RUT detected with 95.0% confidence (HIGH)&#xA;Match: 6.001.216-4&#xA;Validator: nationalid&#xA;Line 7: MX_CURP detected with 95.0% confidence (HIGH)&#xA;Match: GOMR850412MJCMNL00&#xA;Validator: nationalid&#xA;Line 4: AR_CUIL detected with 90.0% confidence (HIGH)&#xA;Match: 20-12173870-9&#xA;Validator: nationalid&#xA;Line 3: CL_RUT detected with 90.0% confidence (HIGH)&#xA;Match: 6001216-4&#xA;Validator: nationalid</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

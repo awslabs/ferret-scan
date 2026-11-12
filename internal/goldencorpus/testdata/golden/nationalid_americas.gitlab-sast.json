@@ -1,0 +1,212 @@
+{
+  "remediations": [],
+  "scan": {
+    "analyzer": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/awslabs/ferret-scan",
+      "vendor": {
+        "name": "Amazon Web Services"
+      },
+      "version": "0.0.0-development"
+    },
+    "end_time": "<TIMESTAMP>",
+    "scanner": {
+      "id": "ferret-scan",
+      "name": "Ferret Scan",
+      "url": "https://github.com/awslabs/ferret-scan",
+      "vendor": {
+        "name": "Amazon Web Services"
+      },
+      "version": "0.0.0-development"
+    },
+    "start_time": "<TIMESTAMP>",
+    "status": "success",
+    "type": "sast"
+  },
+  "version": "15.0.4",
+  "vulnerabilities": [
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected national identification number in this file.\n\n**Location:** <golden:nationalid_americas> (line 1)\n**Confidence:** HIGH (95.0%)\n**Detected by:** nationalid validator\n\n**Context:**\n```\nCPF nº 172.984.064-77\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove national identification numbers (CPF, RUT, CUIL, SIN, CURP) from code and documentation, or replace them with synthetic values that fail the check digit.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BR_CPF"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "nationalid"
+        }
+      ],
+      "location": {
+        "end_line": 1,
+        "file": "<golden:nationalid_americas>",
+        "start_line": 1
+      },
+      "message": "National identification number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "National Identification Number Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected national identification number in this file.\n\n**Location:** <golden:nationalid_americas> (line 5)\n**Confidence:** HIGH (95.0%)\n**Detected by:** nationalid validator\n\n**Context:**\n```\nEmployee SIN: 613 891 563\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove national identification numbers (CPF, RUT, CUIL, SIN, CURP) from code and documentation, or replace them with synthetic values that fail the check digit.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "CA_SIN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "nationalid"
+        }
+      ],
+      "location": {
+        "end_line": 5,
+        "file": "<golden:nationalid_americas>",
+        "start_line": 5
+      },
+      "message": "National identification number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "National Identification Number Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected national identification number in this file.\n\n**Location:** <golden:nationalid_americas> (line 6)\n**Confidence:** HIGH (95.0%)\n**Detected by:** nationalid validator\n\n**Context:**\n```\nSocial Insurance Number: 916-635-287\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove national identification numbers (CPF, RUT, CUIL, SIN, CURP) from code and documentation, or replace them with synthetic values that fail the check digit.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "CA_SIN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "nationalid"
+        }
+      ],
+      "location": {
+        "end_line": 6,
+        "file": "<golden:nationalid_americas>",
+        "start_line": 6
+      },
+      "message": "National identification number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "National Identification Number Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected national identification number in this file.\n\n**Location:** <golden:nationalid_americas> (line 2)\n**Confidence:** HIGH (95.0%)\n**Detected by:** nationalid validator\n\n**Context:**\n```\nRUT: 6.001.216-4\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove national identification numbers (CPF, RUT, CUIL, SIN, CURP) from code and documentation, or replace them with synthetic values that fail the check digit.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "CL_RUT"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "nationalid"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "<golden:nationalid_americas>",
+        "start_line": 2
+      },
+      "message": "National identification number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "National Identification Number Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected national identification number in this file.\n\n**Location:** <golden:nationalid_americas> (line 7)\n**Confidence:** HIGH (95.0%)\n**Detected by:** nationalid validator\n\n**Context:**\n```\nCURP: GOMR850412MJCMNL00\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove national identification numbers (CPF, RUT, CUIL, SIN, CURP) from code and documentation, or replace them with synthetic values that fail the check digit.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "MX_CURP"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "nationalid"
+        }
+      ],
+      "location": {
+        "end_line": 7,
+        "file": "<golden:nationalid_americas>",
+        "start_line": 7
+      },
+      "message": "National identification number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "National Identification Number Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected national identification number in this file.\n\n**Location:** <golden:nationalid_americas> (line 4)\n**Confidence:** HIGH (90.0%)\n**Detected by:** nationalid validator\n\n**Context:**\n```\nCUIL 20-12173870-9\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove national identification numbers (CPF, RUT, CUIL, SIN, CURP) from code and documentation, or replace them with synthetic values that fail the check digit.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "AR_CUIL"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "nationalid"
+        }
+      ],
+      "location": {
+        "end_line": 4,
+        "file": "<golden:nationalid_americas>",
+        "start_line": 4
+      },
+      "message": "National identification number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "National Identification Number Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected national identification number in this file.\n\n**Location:** <golden:nationalid_americas> (line 3)\n**Confidence:** HIGH (90.0%)\n**Detected by:** nationalid validator\n\n**Context:**\n```\nRUN 6001216-4\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove national identification numbers (CPF, RUT, CUIL, SIN, CURP) from code and documentation, or replace them with synthetic values that fail the check digit.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "CL_RUT"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "nationalid"
+        }
+      ],
+      "location": {
+        "end_line": 3,
+        "file": "<golden:nationalid_americas>",
+        "start_line": 3
+      },
+      "message": "National identification number detected: [HIDDEN] (confidence: HIGH)",
+      "name": "National Identification Number Detected",
+      "severity": "Critical"
+    }
+  ]
+}
