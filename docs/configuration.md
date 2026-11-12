@@ -534,12 +534,6 @@ INTELLECTUAL_PROPERTY, a bad `internal_urls` entry prints nothing. `--stdin` pri
 a usable configuration the key and the notification are absent. `--debug` shows none of the
 validator's configure-time detail.
 
-A value set under a profile is named by its path under `validators:` alone: with
-`profiles.share.validators.intellectual_property.internal_urls[0]` invalid and `--profile share`, the
-line reads `Warning: config value validators.intellectual_property.internal_urls[0]: …`, without the
-profile, and so does its `stats.config_warnings` entry. Look under the profile you ran as well as
-under the top-level `validators:` key.
-
 ##### Configuration Examples by Organization Type
 
 ###### Technology Company
@@ -817,6 +811,12 @@ profiles:
 ```
 
 This allows you to create profiles tailored to specific companies or projects with their own internal URL patterns and intellectual property definitions.
+
+A warning for an unusable value under a profile names it by its path under `validators:` alone: with
+`profiles.share.validators.intellectual_property.internal_urls[0]` invalid and `--profile share`, the
+line reads `Warning: config value validators.intellectual_property.internal_urls[0]: …`, without the
+profile, and so does its `stats.config_warnings` entry. Look under the profile you ran as well as
+under the top-level `validators:` key.
 
 ## Configuration Precedence
 
