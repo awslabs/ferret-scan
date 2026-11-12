@@ -248,13 +248,16 @@ var MultiCheckCases = []Case{
 		Redactable: true,
 	},
 	{
-		Name:      "medical_npi_labelled",
-		Origin:    "authored 2026-08 for scorecorpus; value verified against the real CLI",
+		Name:   "medical_npi_labelled",
+		Origin: "authored 2026-08 for scorecorpus; value verified against the real CLI",
+		// The value was CMS's worked check-digit example, 1234567893, until #930 held that one at
+		// LOW as a published example. 1938475625 passes the same NPI-Luhn check, and on 2026-11-11
+		// the NPPES registry API had no provider under it and a web search found no page printing it.
 		Rationale: "A labelled NPI identifies a provider on a claim.",
 		Checks:    []string{"MEDICAL_ID"},
-		Input:     "Provider NPI: 1234567893 on the claim.\n",
+		Input:     "Provider NPI: 1938475625 on the claim.\n",
 		Labels: []Label{
-			{Line: 1, Value: "1234567893", Types: []string{"NPI"}, MinBand: BandHigh},
+			{Line: 1, Value: "1938475625", Types: []string{"NPI"}, MinBand: BandHigh},
 		},
 		Redactable: true,
 	},
@@ -412,14 +415,16 @@ var MultiCheckCases = []Case{
 			"at 10 or 11 digits including the trunk 0 — a London 020 number, a Manchester 0161 " +
 			"number and an 0800 freephone. A length bound that excluded these would trade one " +
 			"barcode false positive for every UK phone number in the corpus, and an unreported " +
-			"number is never handed to the redactor.",
+			"number is never handed to the redactor. The Manchester number was 0161 496 0000 until " +
+			"#930 held Ofcom's Manchester drama block (0161 496 0xxx) at LOW; 0161 498 0000 is the " +
+			"same 11-digit shape outside every drama block.",
 		Checks: []string{"PHONE"},
 		Input: "Call 020 7123 4567 for support\n" +
-			"Ring 0161 496 0000 today\n" +
+			"Ring 0161 498 0000 today\n" +
 			"Freephone 0800 123 456\n",
 		Labels: []Label{
 			{Line: 1, Value: "020 7123 4567", Types: []string{"PHONE"}},
-			{Line: 2, Value: "0161 496 0000", Types: []string{"PHONE"}},
+			{Line: 2, Value: "0161 498 0000", Types: []string{"PHONE"}},
 			{Line: 3, Value: "0800 123 456", Types: []string{"PHONE"}},
 		},
 		Redactable: true,

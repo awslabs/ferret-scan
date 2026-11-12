@@ -801,7 +801,7 @@ func TestMedicalIDValidator_IntrinsicValueFloor(t *testing.T) {
 		typ     string
 		minBase float64
 	}{
-		{"NPI", "NPI 1234567893", "NPI", 80},
+		{"NPI", "NPI 1234567885", "NPI", 80}, // not 1234567893, CMS's example, held at 15 (#930)
 		{"DEA", "DEA number AB1234563", "DEA_NUMBER", 80},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
