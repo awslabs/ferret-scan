@@ -51,7 +51,7 @@ var countryOf = map[string]string{
 const (
 	// confidenceStrong: a long-form label, or an acronym with a colon/ordinal ("CPF nº", "SIN:").
 	confidenceStrong = 95
-	// confidenceAcronym: a capitalised acronym directly before the value ("RUN 12345678-5").
+	// confidenceAcronym: a capitalised acronym directly before the value (a RUN printed as "RUN" and the value).
 	confidenceAcronym = 90
 )
 
@@ -92,7 +92,7 @@ func isAlnum(b byte) bool {
 }
 
 // standsAlone reports whether line[start:end] is a whole token: not glued to a letter or digit, and
-// not one segment of a longer dotted or dashed number ("1.234.567.890-92-3", "v12.345.678-5").
+// not one segment of a longer dotted or dashed number (a CPF with a third dashed group, a RUT glued to a "v").
 func standsAlone(line string, start, end int) bool {
 	if start > 0 {
 		p := line[start-1]

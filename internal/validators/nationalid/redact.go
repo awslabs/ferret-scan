@@ -22,7 +22,7 @@ func isASCIIAlnum(c byte) bool {
 }
 
 // Mask is the format-preserving rendering: every letter and digit becomes '*', every separator stays,
-// so "234.567.890-92" becomes "***.***.***-**". Nothing of the value is kept: unlike an SSN's last
+// so a dotted CPF becomes "***.***.***-**". Nothing of the value is kept: unlike an SSN's last
 // four, no part of these numbers is conventionally printed as a reference.
 func Mask(value string) string {
 	b := []byte(value)

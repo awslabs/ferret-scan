@@ -24,7 +24,7 @@ type label struct {
 	// sign (nº, n°) separates it from the value.
 	abbr bool
 	// strict marks an acronym that counts ONLY with such a separator: "NAS" is written in capitals
-	// in English too ("backup to the NAS 123 456 782").
+	// in English too ("backup to the NAS" before a 3-3-3 number).
 	strict bool
 }
 
