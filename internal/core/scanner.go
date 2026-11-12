@@ -216,6 +216,7 @@ func ScanFileCtx(ctx context.Context, scanConfig ScanConfig) (*ScanResult, error
 	// Build the filtered validator set via the shared factory
 	enabledChecks := ParseChecksToRun(scanConfig.Checks)
 	standardValidators := BuildValidatorSetWithOverrides(enabledChecks, scanConfig.Config, scanConfig.Profile, scanConfig.ValidatorOverrides)
+	attachDebugObservers(standardValidators, scanConfig.Debug, logWriter)
 	disabledTypes, unrecognisedTypes := DisabledDetectionTypes(standardValidators)
 	configWarnings := ConfigWarnings(standardValidators)
 
@@ -482,6 +483,7 @@ func ScanContentCtx(ctx context.Context, content string, cfg ContentScanConfig) 
 	// Build the filtered validator set.
 	enabledChecks := ParseChecksToRun(cfg.Checks)
 	standardValidators := BuildValidatorSetWithOverrides(enabledChecks, cfg.Config, cfg.Profile, cfg.ValidatorOverrides)
+	attachDebugObservers(standardValidators, cfg.Debug, logWriter)
 	disabledTypes, unrecognisedTypes := DisabledDetectionTypes(standardValidators)
 	configWarnings := ConfigWarnings(standardValidators)
 
