@@ -15,6 +15,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/config"
 	"github.com/awslabs/ferret-scan/v2/internal/core"
 	"github.com/awslabs/ferret-scan/v2/internal/olefixture"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 )
 
 // TestOverlapGroupSinkEveryFormat drives the issue's lines through the REAL file pipeline
@@ -27,7 +28,13 @@ import (
 // The whole-value residue checks could not catch any of it: a partly rewritten value is no longer the
 // value. So the assertion here is on the fragments a stranded member leaves.
 //
-// All values synthetic: the names and addresses are repo fixtures, 512010001 is area 512.
+// Every group is between two GENUINE findings, so a detector fix that stops a false positive cannot
+// silently empty a case: a titled name read two ways (partial), a card inside its own track frame
+// (contained), PASSPORT and SSN on the same digits (identical). The lines #773 used, a street read as a
+// name and a list read as `Surname, Given`, were the false positives #935 and #936 remove.
+//
+// All values synthetic: Jane Ann Doe is the placeholder name and the UTF-8 names repo fixtures, the
+// card has a computed Luhn digit, 512010001 is area 512.
 func TestOverlapGroupSinkEveryFormat(t *testing.T) {
 	var padded []string
 	for i := 1; i <= 11; i++ {
@@ -39,12 +46,15 @@ func TestOverlapGroupSinkEveryFormat(t *testing.T) {
 		checks    []string
 		forbidden []string // fragments of a member that must not survive
 	}{
-		{"residence", []string{"Residence: 77 August Lane, Boise ID 83702"},
-			[]string{"PHYSICAL_ADDRESS", "PERSON_NAME"}, []string{"77 August", "August Lane", "Lane,", ", Boise", "Boise ID"}},
-		{"mlk", []string{"Located at 100 Martin Luther King Blvd"},
-			[]string{"PHYSICAL_ADDRESS", "PERSON_NAME"}, []string{"at 100", "Martin", "King Blvd", "* Blvd"}},
-		{"names", []string{"Renée Müller, José García, François Lefèvre"},
-			[]string{"PERSON_NAME"}, []string{"Renée", "José", "García"}},
+		// "Dr. Jane Ann" and "Jane Ann Doe" cross: the title's head and the surname's tail are each
+		// outside the other member.
+		{"titled", []string{"Signed: Dr. Jane Ann Doe"},
+			[]string{"PERSON_NAME"}, []string{"Dr. J", "Jane", "Ann", "Doe"}},
+		// synthetic keeps the PAN's issuer prefix by design (cardDigits), so the forbidden runs start after it.
+		{"track", []string{"Track 1: %B4532015112830366^DOE/JANE^2912101000000000000000?"},
+			[]string{"CREDIT_CARD"}, []string{"015112830366", "DOE/JANE", "29121010"}},
+		{"names", []string{"Dr. Renée Müller García signed"},
+			[]string{"PERSON_NAME"}, []string{"Renée", "Müller", "García"}},
 		// 13 findings: above sort.Slice's insertion-sort threshold, where the SSN rendering used to win.
 		{"passport13", append(append([]string(nil), padded...), "Passport number: 512010001"),
 			[]string{"EMAIL", "PASSPORT", "SSN"}, []string{"0001", "512010"}},
@@ -87,6 +97,13 @@ func TestOverlapGroupSinkEveryFormat(t *testing.T) {
 					}
 					if len(res.Matches) == 0 {
 						t.Fatalf("the fixture reported nothing; the case is not testing the overlap")
+					}
+					grouped := false
+					for _, g := range redactors.ResolveOverlaps(res.Matches) {
+						grouped = grouped || g.IsGroup()
+					}
+					if !grouped {
+						t.Fatalf("the fixture's %d findings hold no overlap group; the case is not testing the overlap", len(res.Matches))
 					}
 					out := res.RedactedFilePath
 					if out == "" {
