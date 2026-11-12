@@ -363,6 +363,16 @@ func (wp *WorkerPool) processJob(job *Job, workerID int) *Result {
 		})
 
 		if err != nil {
+			// The router opened the file and no preprocessor produced content from it: its
+			// "all preprocessors failed for file" error (router.processFileInternal), the only
+			// failure ProcessFile reports once the stat above has succeeded, besides the
+			// unregistered-type refusal, which is the same fact about the bytes. Left unset, the
+			// cause reached the web as none at all (12 public corpus files, #924) and the CLI
+			// recovered it from the prose. A context error is the retry giving up on a
+			// cancellation, which is a cut-short and stays to the consumer's classifier.
+			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				failureCause = coverage.CauseUnparseable
+			}
 			return err
 		}
 

@@ -82,6 +82,9 @@ type WebServer struct {
 	suppCacheMgr    *suppressions.SuppressionManager
 	suppCacheMtime  time.Time
 	suppCacheExists bool
+
+	// scans holds each /scan's result for /export (#923); see scanStore.
+	scans *scanStore
 }
 
 // ScanResponse represents the response from a scan operation (wraps CLI JSON output)
@@ -104,6 +107,15 @@ type ScanResponse struct {
 	// or a count, so an upload of forty files where three failed differently reported one of them
 	// (#417). omitempty, so a complete scan's JSON is unchanged.
 	NotExamined []notExaminedFile `json:"not_examined,omitempty"`
+
+	// ScanID names this scan's result, kept server-side for /export (#923): the browser sends the ids
+	// back instead of the findings, so the export is the scan the server ran. Empty on an error.
+	ScanID string `json:"scan_id,omitempty"`
+
+	// Scan is the block the CLI's json report carries as "scan" (#904): which checks ran and which did
+	// not, the confidence bands shown, and the config source. nil, and so absent, for a full-scope scan,
+	// exactly as on the CLI.
+	Scan *formatters.ScanScope `json:"scan,omitempty"`
 }
 
 // notExaminedFile is one uploaded file that was not fully examined.
@@ -210,6 +222,7 @@ func NewWebServerWithOptions(port, bindAddr, configPath, suppressionsPath string
 		suppressionsPath: suppressionsPath,
 		excludePatterns:  excludePatterns,
 		mux:              http.NewServeMux(),
+		scans:            newScanStore(),
 	}
 }
 
@@ -728,6 +741,26 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 	// complete scan's JSON byte-identical to before.
 	incompleteReason := summarizeIncompleteFiles(incompleteFiles, len(files))
 
+	scope := ws.webScanScope(cfg, checks, confidenceFilter)
+
+	// Keep this scan's result for /export (#923), as detector values: the export formats exactly these.
+	session, err := scanSession(responseWriter, request)
+	if err != nil {
+		ws.sendErrorWithStatus(responseWriter, "Failed to start a scan session", http.StatusInternalServerError)
+		return
+	}
+	scanID, err := ws.scans.put(session, &storedScan{
+		matches:    allMatches,
+		suppressed: suppressedMatches,
+		settings:   confidence + "|" + checks,
+		confidence: confidenceFilter,
+		scope:      scope,
+	})
+	if err != nil {
+		ws.sendErrorWithStatus(responseWriter, "Failed to keep the scan result", http.StatusInternalServerError)
+		return
+	}
+
 	// Return the exact CLI structure wrapped in success response
 	responseWriter.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(responseWriter).Encode(ScanResponse{
@@ -737,6 +770,8 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 		Incomplete:       len(incompleteFiles) > 0,
 		IncompleteReason: incompleteReason,
 		NotExamined:      notExaminedFrom(incompleteFiles),
+		ScanID:           scanID,
+		Scan:             scope,
 	})
 }
 
@@ -1026,34 +1061,42 @@ func (ws *WebServer) runFullCLIScan(ctx context.Context, filePath, originalFilen
 	return unsuppressed, suppressed, len(suppressed), incomplete, nil
 }
 
-// handleExport exports scan results in the requested format
+// handleExport formats scans the server ran, named by the scan_id each /scan returned (#923).
+//
+// It used to rebuild detector.Match from findings the browser posted back. That wire shape drops the
+// explanation, the context keywords and the typed metadata, so the export differed from the CLI's
+// report of the same findings; and the whole result set had to fit the 1 MiB JSON cap, so 782
+// findings answered HTTP 400. Now the request carries ids, the cap holds, and the formatter receives
+// exactly the matches, suppressed matches, confidence filter and scope the scan produced: the body is
+// formatters.Export of that scan, as the CLI renders it.
+//
+// A request still carrying "results" is refused with a message saying what to send: formatting
+// caller-supplied findings is the lossy path this replaced. Nothing here logs a matched value.
 func (ws *WebServer) handleExport(responseWriter http.ResponseWriter, request *http.Request) {
 	if request.Method != "POST" {
 		http.Error(responseWriter, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Parse request body
 	var exportRequest struct {
-		Format    string                      `json:"format"`
-		Results   []formatterShared.JSONMatch `json:"results"`
-		ShowMatch bool                        `json:"show_match"`
-		Verbose   bool                        `json:"verbose"`
+		Format    string          `json:"format"`
+		ScanIDs   []string        `json:"scan_ids"`
+		Results   json.RawMessage `json:"results"`
+		ShowMatch bool            `json:"show_match"`
+		Verbose   bool            `json:"verbose"`
 	}
 
-	// Bounded for the same reason as the suppression endpoints — see maxJSONRequestBytes.
+	// Bounded for the same reason as the suppression endpoints — see maxJSONRequestBytes. The request
+	// carries ids, never findings, so the bound is far above any legitimate body.
 	if err := json.NewDecoder(http.MaxBytesReader(responseWriter, request.Body, maxJSONRequestBytes)).Decode(&exportRequest); err != nil {
 		ws.sendError(responseWriter, "Invalid JSON in request body")
 		return
 	}
 
-	// Validate format
 	if exportRequest.Format == "" {
 		ws.sendError(responseWriter, "Format is required")
 		return
 	}
-
-	// Check if format is supported
 	formatter, exists := formatters.Get(exportRequest.Format)
 	if !exists {
 		availableFormats := formatters.List()
@@ -1062,69 +1105,75 @@ func (ws *WebServer) handleExport(responseWriter http.ResponseWriter, request *h
 		return
 	}
 
-	// Convert JSONMatch back to detector.Match for formatting
-	var matches []detector.Match
-	for _, jsonMatch := range exportRequest.Results {
-		match := detector.Match{
-			Text:       jsonMatch.Text,
-			LineNumber: jsonMatch.LineNumber,
-			Type:       jsonMatch.Type,
-			Confidence: jsonMatch.Confidence,
-			Filename:   jsonMatch.Filename,
-			Validator:  jsonMatch.Validator,
-			Metadata:   jsonMatch.Metadata,
+	if len(exportRequest.ScanIDs) == 0 {
+		if len(exportRequest.Results) > 0 {
+			ws.sendError(responseWriter, "/export no longer takes results: send scan_ids, the scan_id of each /scan to export")
+			return
 		}
-
-		// Convert context fields if present
-		if jsonMatch.FullLine != "" || jsonMatch.BeforeText != "" || jsonMatch.AfterText != "" {
-			match.Context = detector.ContextInfo{
-				BeforeText: jsonMatch.BeforeText,
-				AfterText:  jsonMatch.AfterText,
-				FullLine:   jsonMatch.FullLine,
-			}
+		ws.sendError(responseWriter, "scan_ids is required: the scan_id of each /scan to export")
+		return
+	}
+	for _, id := range exportRequest.ScanIDs {
+		if !validToken(id) {
+			ws.sendError(responseWriter, "scan_ids holds a value that is not a scan id")
+			return
 		}
-
-		matches = append(matches, match)
 	}
 
-	// Set up formatter options.
-	//
-	// No SourceRoot here either, and for a second reason on top of the one in handleScan:
-	// these filenames arrive in the REQUEST BODY, posted back from the browser's copy of a
-	// /scan response. A root chosen by this server has no relationship to a path chosen by
-	// the caller, and the path that arrives is already the upload name. See
+	scans, _, ok := ws.scans.get(existingScanSession(request), exportRequest.ScanIDs)
+	if !ok {
+		// The id is not echoed: it is caller-supplied text, and the message is enough to act on.
+		ws.sendErrorWithStatus(responseWriter,
+			"Scan result not found: it expired, was evicted, or belongs to another session. Scan again, then export.",
+			http.StatusNotFound)
+		return
+	}
+
+	// One report has one confidence filter and one scope, so scans run with different settings are
+	// not merged into one.
+	var matches []detector.Match
+	var suppressed []detector.SuppressedMatch
+	for _, s := range scans {
+		if s.settings != scans[0].settings {
+			ws.sendError(responseWriter, "scan_ids name scans run with different confidence or checks; export them separately")
+			return
+		}
+		matches = append(matches, s.matches...)
+		suppressed = append(suppressed, s.suppressed...)
+	}
+	if suppressed == nil {
+		suppressed = []detector.SuppressedMatch{}
+	}
+
+	// No SourceRoot, as in handleScan: every Filename is already the uploaded name. See
 	// TestWebReportPathsAreTheUploadedName.
 	formatterOptions := formatters.FormatterOptions{
-		ConfidenceLevel: map[string]bool{"high": true, "medium": true, "low": true}, // Export all levels
+		ConfidenceLevel: scans[0].confidence,
 		Verbose:         exportRequest.Verbose,
 		NoColor:         true, // Always disable color for exports
 		ShowMatch:       exportRequest.ShowMatch,
+		Scan:            scans[0].scope,
 	}
 
-	// Format the results
-	output, err := formatter.Format(matches, []detector.SuppressedMatch{}, formatterOptions)
+	output, err := formatter.Format(matches, suppressed, formatterOptions)
 	if err != nil {
 		ws.sendError(responseWriter, fmt.Sprintf("Failed to format results: %v", err))
 		return
 	}
 
-	// Get format info using the centralized GetFormatInfo function
 	formatInfo := formatters.GetFormatInfo(exportRequest.Format)
 	contentType := formatInfo.MimeType
 	fileExtension := formatInfo.Extension
 
-	// Generate filename with timestamp
 	timestamp := time.Now().Format("20060102-150405")
 	filename := fmt.Sprintf("ferret-scan-results-%s%s", timestamp, fileExtension)
 
-	// Set response headers
 	responseWriter.Header().Set("Content-Type", contentType)
 	responseWriter.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
 	responseWriter.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	responseWriter.Header().Set("Pragma", "no-cache")
 	responseWriter.Header().Set("Expires", "0")
 
-	// Write the formatted output
 	responseWriter.WriteHeader(http.StatusOK)
 	responseWriter.Write([]byte(output))
 }
