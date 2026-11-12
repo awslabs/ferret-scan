@@ -364,6 +364,11 @@ var knownDetectionTypes = []string{
 	"ITIN",                  // SSN sub-type: the IRS Individual Taxpayer Identification Number (#884)
 	"CARD_TRACK_DATA",       // CREDIT_CARD: a whole magnetic-stripe track or EMV tag 57 value (#905)
 	"CARD_SECURITY_CODE",    // CREDIT_CARD: a labelled CVV2/CVC2/CID (#905)
+	"BR_CPF",                // NATIONAL_ID: Brazil's CPF (#884 Part B)
+	"CL_RUT",                // NATIONAL_ID: Chile's RUT/RUN (#884 Part B)
+	"AR_CUIL",               // NATIONAL_ID: Argentina's CUIL and personal CUIT (#884 Part B)
+	"CA_SIN",                // NATIONAL_ID: Canada's Social Insurance Number (#884 Part B)
+	"MX_CURP",               // NATIONAL_ID: Mexico's CURP (#884 Part B)
 }
 
 // KnownTypes returns every detection type this tool can report, sorted.
