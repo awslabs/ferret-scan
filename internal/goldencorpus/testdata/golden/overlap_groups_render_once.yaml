@@ -1,4 +1,37 @@
 results:
+    - text: '%B4532015112830366^DOE/JANE^2912101000000000000000?'
+      line_number: 4
+      type: CARD_TRACK_DATA
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:overlap_groups_render_once>
+      validator: creditcard
+      metadata:
+        card_frame: track1
+        card_type: VISA
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: 15
+        original_confidence: 100
+        original_file: <golden:overlap_groups_render_once>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            entropy: true
+            length: true
+            luhn: true
+            not_repeating: true
+            not_test: true
+            vendor: true
+        validation_path: document
     - text: 203.12.19.85
       line_number: 6
       type: IP_ADDRESS
@@ -65,6 +98,58 @@ results:
             not_test_number: true
             valid_characters: true
             valid_country_code: false
+        validation_path: document
+    - text: Dr. Renée Müller
+      line_number: 2
+      type: PERSON_NAME
+      confidence: 100
+      confidence_level: HIGH
+      filename: <golden:overlap_groups_render_once>
+      validator: PERSON_NAME
+      metadata:
+        confidence_adjustment: 0
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: 0
+        context_keywords: []
+        cultural_context:
+            - western
+            - formal
+        name_components:
+            fullname: Dr. Renée Müller
+            title: Dr.
+            firstname: Renée
+            middlename: ""
+            lastname: Müller
+            suffix: ""
+            pattern: name_with_title
+            cultural:
+                - western
+                - formal
+        original_confidence: 100
+        pattern: name_with_title
+        pattern_priority: 8
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        validation_checks:
+            both_names_known: true
+            has_known_name_component: true
+            has_middle_name: false
+            has_suffix: false
+            has_title: true
+            known_first_name: true
+            known_last_name: true
+            not_business_name: true
+            not_technical_term: true
+            not_test_data: true
+            proper_case: true
+            reasonable_length: true
+            valid_pattern: true
         validation_path: document
     - text: +1 449-87-4100
       line_number: 7
@@ -136,88 +221,8 @@ results:
             vendor: true
         validation_path: document
         vendor: Visa
-    - text: Müller, José García
-      line_number: 2
-      type: PERSON_NAME
-      confidence: 99
-      confidence_level: HIGH
-      filename: <golden:overlap_groups_render_once>
-      validator: PERSON_NAME
-      metadata:
-        confidence_adjustment: 0
-        context_confidence: 1
-        context_doctype: Unknown
-        context_domain: Government
-        context_impact: 0
-        context_keywords: []
-        cultural_context:
-            - formal
-            - database
-            - directory
-        name_components:
-            fullname: Müller, José García
-            title: ""
-            firstname: José
-            middlename: García
-            lastname: Müller
-            suffix: ""
-            pattern: last_comma_first_middle
-            cultural:
-                - formal
-                - database
-                - directory
-        original_confidence: 99
-        pattern: last_comma_first_middle
-        pattern_priority: 8
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
-        validation_checks:
-            both_names_known: true
-            has_known_name_component: true
-            has_middle_name: true
-            has_suffix: false
-            has_title: false
-            known_first_name: true
-            known_last_name: true
-            not_business_name: true
-            not_technical_term: true
-            not_test_data: true
-            proper_case: true
-            reasonable_length: true
-            valid_pattern: true
-        validation_path: document
-    - text: 77 August Lane
+    - text: Jane Ann Doe
       line_number: 1
-      type: US_STREET_ADDRESS
-      confidence: 95
-      confidence_level: HIGH
-      filename: <golden:overlap_groups_render_once>
-      validator: physical_address
-      metadata:
-        confidence_adjustment: 0
-        context_confidence: 1
-        context_doctype: Unknown
-        context_domain: Government
-        original_confidence: 95
-        original_file: <golden:overlap_groups_render_once>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
-        source: preprocessed_content
-        validation_checks:
-            no_negative_context: true
-            not_false_positive: true
-            street_type_suffix: true
-        validation_path: document
-    - text: Martin Luther King
-      line_number: 4
       type: PERSON_NAME
       confidence: 93
       confidence_level: HIGH
@@ -235,11 +240,11 @@ results:
             - hispanic
             - compound
         name_components:
-            fullname: Martin Luther King
+            fullname: Jane Ann Doe
             title: ""
-            firstname: Martin
-            middlename: Luther
-            lastname: King
+            firstname: Jane
+            middlename: Ann
+            lastname: Doe
             suffix: ""
             pattern: three_part_name
             cultural:
@@ -270,64 +275,10 @@ results:
             reasonable_length: true
             valid_pattern: true
         validation_path: document
-    - text: August Lane
-      line_number: 1
-      type: PERSON_NAME
-      confidence: 92
-      confidence_level: HIGH
-      filename: <golden:overlap_groups_render_once>
-      validator: PERSON_NAME
-      metadata:
-        confidence_adjustment: 0
-        context_confidence: 1
-        context_doctype: Unknown
-        context_domain: Government
-        context_impact: 0
-        context_keywords: []
-        cultural_context:
-            - western
-            - english
-            - european
-        name_components:
-            fullname: August Lane
-            title: ""
-            firstname: August
-            middlename: ""
-            lastname: Lane
-            suffix: ""
-            pattern: basic_western_name
-            cultural:
-                - western
-                - english
-                - european
-        original_confidence: 92
-        pattern: basic_western_name
-        pattern_priority: 5
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
-        validation_checks:
-            both_names_known: true
-            has_known_name_component: true
-            has_middle_name: false
-            has_suffix: false
-            has_title: false
-            known_first_name: true
-            known_last_name: true
-            not_business_name: true
-            not_technical_term: true
-            not_test_data: true
-            proper_case: true
-            reasonable_length: true
-            valid_pattern: true
-        validation_path: document
-    - text: Renée Müller
+    - text: Renée Müller García
       line_number: 2
       type: PERSON_NAME
-      confidence: 92
+      confidence: 93
       confidence_level: HIGH
       filename: <golden:overlap_groups_render_once>
       validator: PERSON_NAME
@@ -340,23 +291,23 @@ results:
         context_keywords: []
         cultural_context:
             - western
-            - english
-            - european
+            - hispanic
+            - compound
         name_components:
-            fullname: Renée Müller
+            fullname: Renée Müller García
             title: ""
             firstname: Renée
-            middlename: ""
-            lastname: Müller
+            middlename: Müller
+            lastname: García
             suffix: ""
-            pattern: basic_western_name
+            pattern: three_part_name
             cultural:
                 - western
-                - english
-                - european
-        original_confidence: 92
-        pattern: basic_western_name
-        pattern_priority: 5
+                - hispanic
+                - compound
+        original_confidence: 93
+        pattern: three_part_name
+        pattern_priority: 6
         semantic_context:
             FinancialData: 0
             MedicalData: 0
@@ -366,7 +317,7 @@ results:
         validation_checks:
             both_names_known: true
             has_known_name_component: true
-            has_middle_name: false
+            has_middle_name: true
             has_suffix: false
             has_title: false
             known_first_name: true
@@ -410,10 +361,44 @@ results:
             specific_pattern: false
             valid_format: true
         validation_path: document
-    - text: Lane, Boise
+    - text: "4532015112830366"
+      line_number: 4
+      type: VISA
+      confidence: 75
+      confidence_level: MEDIUM
+      filename: <golden:overlap_groups_render_once>
+      validator: creditcard
+      metadata:
+        card_type: VISA
+        confidence_adjustment: 0
+        confidence_ceiling: 75
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Government
+        context_impact: 0
+        original_confidence: 75
+        original_file: <golden:overlap_groups_render_once>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            entropy: true
+            length: true
+            luhn: true
+            not_repeating: true
+            not_test: true
+            vendor: true
+        validation_path: document
+        vendor: Visa
+    - text: Dr. Jane Ann
       line_number: 1
       type: PERSON_NAME
-      confidence: 67
+      confidence: 65
       confidence_level: MEDIUM
       filename: <golden:overlap_groups_render_once>
       validator: PERSON_NAME
@@ -425,23 +410,21 @@ results:
         context_impact: 0
         context_keywords: []
         cultural_context:
+            - western
             - formal
-            - database
-            - directory
         name_components:
-            fullname: Lane, Boise
-            title: ""
-            firstname: Boise
+            fullname: Dr. Jane Ann
+            title: Dr.
+            firstname: Jane
             middlename: ""
-            lastname: Lane
+            lastname: Ann
             suffix: ""
-            pattern: last_comma_first
+            pattern: name_with_title
             cultural:
+                - western
                 - formal
-                - database
-                - directory
-        original_confidence: 67
-        pattern: last_comma_first
+        original_confidence: 65
+        pattern: name_with_title
         pattern_priority: 8
         semantic_context:
             FinancialData: 0
@@ -454,41 +437,16 @@ results:
             has_known_name_component: true
             has_middle_name: false
             has_suffix: false
-            has_title: false
-            known_first_name: false
-            known_last_name: true
+            has_title: true
+            known_first_name: true
+            known_last_name: false
+            known_last_name_unverified: true
             not_business_name: true
             not_technical_term: true
             not_test_data: true
             proper_case: true
             reasonable_length: true
             valid_pattern: true
-        validation_path: document
-    - text: 100 Martin Luther King Blvd
-      line_number: 4
-      type: US_STREET_ADDRESS
-      confidence: 65
-      confidence_level: MEDIUM
-      filename: <golden:overlap_groups_render_once>
-      validator: physical_address
-      metadata:
-        confidence_adjustment: 0
-        context_confidence: 1
-        context_doctype: Unknown
-        context_domain: Government
-        original_confidence: 65
-        original_file: <golden:overlap_groups_render_once>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
-        source: preprocessed_content
-        validation_checks:
-            no_negative_context: true
-            not_false_positive: true
-            street_type_suffix: true
         validation_path: document
     - text: 449-87-4100
       line_number: 7
