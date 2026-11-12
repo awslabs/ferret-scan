@@ -129,4 +129,4 @@ ENTRYPOINT ["/ferret-scan"]
 # Run Web Mode: docker run --rm -p 127.0.0.1:8080:8080 -v ~/.ferret-scan:/home/ferret/.ferret-scan ferret-scan --web --port 8080
 # Run Custom Web Port: docker run --rm -p 127.0.0.1:9000:9000 ferret-scan --web --port 9000
 # Run Help: docker run --rm ferret-scan --help
-# Size: Expected ~5-10MB (single executable, no AWS SDK bloat)
+# Size: ~18MB (one static, stripped executable on scratch; ferret-scan:v2.6.0-30-g6c55063 measured 18.3MB)

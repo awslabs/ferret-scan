@@ -138,6 +138,14 @@ Choose a format with `--format`:
 
 The `sarif`, `gitlab-sast`, and `junit` formats slot directly into GitHub code scanning, GitLab SAST reports, and CI test dashboards.
 
+> **Landing with [#983](https://github.com/awslabs/ferret-scan/issues/983)'s PR, not in a release yet:**
+> every `sarif` result, suppressed ones included, carries
+> `partialFingerprints["ferretFindingIdentity/v1"]`, a SHA-256 of the finding's suppression identity
+> (type, line text, file basename, context and value) with the line number left out, so an edit that
+> only moves a finding to another line keeps its fingerprint. It digests the value rather than
+> containing it, but like a suppression file it is unsalted: treat a report that carries it as being as
+> sensitive as its findings. A later formula gets a new `/vN` key beside this one.
+
 ---
 
 ## Ways to run it
@@ -162,7 +170,7 @@ cat customer-export.csv | ferret-scan --stdin --enable-redaction --redaction-str
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/awslabs/ferret-scan
-    rev: v2.5.5
+    rev: v2.6.0
     hooks:
       - id: ferret-scan
 ```
