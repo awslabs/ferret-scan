@@ -17,8 +17,8 @@ import "github.com/awslabs/ferret-scan/v2/internal/detector"
 // A listed value is capped, never dropped: it is still reported, so redaction still rewrites it, at
 // no more than publishedExampleCeiling, and the ceiling is published so the document bridge cannot
 // lift it back. The lookup is an exact match on the 10-digit candidate, so nothing in the scanned
-// content can steer it, and any other NPI, including the Luhn-valid neighbour 1234567885, keeps its
-// score.
+// content can steer it, and any other NPI, an NPI-Luhn-valid value two digits away included, keeps
+// its score (published_example_npis_test.go).
 var publishedExampleNPIs = map[string]string{
 	// CMS, "Requirements for National Provider Identifier (NPI) and NPI Check Digit" (January 23,
 	// 2004), https://www.cms.gov/Regulations-and-Guidance/Administrative-Simplification/NationalProvIdentStand/Downloads/NPIcheckdigit.pdf,
@@ -31,13 +31,13 @@ var publishedExampleNPIs = map[string]string{
 // validators treat the same class of value alike.
 const publishedExampleCeiling = 15.0
 
-// capPublishedExampleNPI holds the NPI finding m to publishedExampleCeiling when its text is a
-// published example, and records why: confidence_ceiling for the bridge and
-// not_published_example=false in validation_checks for --explain. Any other finding is left exactly
-// as it was, metadata included.
-func capPublishedExampleNPI(m *detector.Match) {
+// capPublishedExampleNPI returns the NPI finding m held to publishedExampleCeiling when its text is
+// a published example, recording why: confidence_ceiling for the bridge and
+// not_published_example=false in validation_checks for --explain. Any other finding is returned
+// exactly as it was, metadata included.
+func capPublishedExampleNPI(m detector.Match) detector.Match {
 	if _, listed := publishedExampleNPIs[m.Text]; !listed {
-		return
+		return m
 	}
 	if m.Confidence > publishedExampleCeiling {
 		m.Confidence = publishedExampleCeiling
@@ -46,4 +46,5 @@ func capPublishedExampleNPI(m *detector.Match) {
 	if checks, ok := m.Metadata["validation_checks"].(map[string]bool); ok {
 		checks["not_published_example"] = false
 	}
+	return m
 }
