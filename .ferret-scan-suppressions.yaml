@@ -6641,6 +6641,28 @@ rules:
         filename: file_wide_context_test.go
         finding_type: API_KEY_OR_SECRET
         line_number: "40"
+    - id: SUP-00000706
+      hash: f4967a2da71abeb5107d54f08955bfc09c414925f0aaf338e5debb82f1f2a7c9 # pragma: allowlist secret
+      reason: "fixture: the #785 six-line file's callback tokens, which TestTrailingNewlineDoesNotDecideWhetherAFileReports asserts are detected"
+      enabled: true
+      created_at: 2026-11-12T01:44:40.954081058Z
+      last_seen_at: 2026-11-12T01:44:48.417333988Z
+      metadata:
+        confidence: "95.00"
+        filename: file_wide_context_test.go
+        finding_type: API_KEY_OR_SECRET
+        line_number: "40"
+    - id: SUP-00000707
+      hash: 70bf380d5cad0d15dbb6530a46d19fa2b26fbb8ac2092933dfe1c3826104188a # pragma: allowlist secret
+      reason: "fixture: the #785 six-line file's callback tokens, which TestTrailingNewlineDoesNotDecideWhetherAFileReports asserts are detected"
+      enabled: true
+      created_at: 2026-11-12T01:44:40.954081058Z
+      last_seen_at: 2026-11-12T01:44:48.417333988Z
+      metadata:
+        confidence: "95.00"
+        filename: file_wide_context_test.go
+        finding_type: API_KEY_OR_SECRET
+        line_number: "40"
     - id: SUP-00000645
       hash: 2717d60065baf1821eb1d5442bfcf98ab85c2756044295d1d8580ae5dec5b87c # pragma: allowlist secret
       reason: "fixture: test input the test asserts is detected or redacted"
