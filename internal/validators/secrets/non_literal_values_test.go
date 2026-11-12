@@ -47,7 +47,7 @@ func TestNonLiteralValueShapes(t *testing.T) {
 		"Pa55(word" + synth(4),          // a password with a parenthesis: no dotted callee
 		`Xk9\d` + synth(5),              // a backslash class escape with no regex operator
 		"k7Fq.9xLm2P" + synth(6),        // dotted, but not identifier words
-		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0." + synth(7), // JWT-shaped
+		buildTestToken("ey", "JhbGciOiJIUzI1NiJ9", ".", "ey", "JzdWIiOiIxMjM0NTY3ODkwIn0", ".") + synth(7), // JWT-shaped
 		"glpat-" + synth(8), // a provider prefix with a real-shaped body
 		"xoxb-" + synth(9) + "-" + synth(10),
 		"[" + synth(11) + "]", // brackets, but not the marker
