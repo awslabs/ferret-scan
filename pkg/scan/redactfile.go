@@ -62,6 +62,18 @@ type RedactFileResult struct {
 	// break). The pointer compares by identity, and it is only ever non-nil on a result that
 	// came back with an error.
 	Coverage *RedactCoverage
+
+	// ConfigWarnings is nil when every configured value under `validators:` was usable, and otherwise
+	// lists the ones the validators of this redaction could not use, in the form and order
+	// Result.ConfigWarnings gives (#903). Each such value was dropped, so a pattern meant to find a
+	// value found nothing and that value was not masked, while the redaction otherwise looks normal.
+	// A pointer for the reason Coverage is one: RedactFileResult stays comparable.
+	ConfigWarnings *RedactConfigWarnings
+}
+
+// RedactConfigWarnings carries RedactFileResult.ConfigWarnings. Lines is never empty.
+type RedactConfigWarnings struct {
+	Lines []string
 }
 
 // RedactCoverage describes a file RedactFile did not fully examine. The fields mean what the
@@ -164,6 +176,9 @@ func RedactFileContext(ctx context.Context, path string, opts RedactFileOptions)
 		RedactedFilePath: result.RedactedFilePath,
 		RedactionCount:   result.RedactionCount,
 		Strategy:         result.Strategy,
+	}
+	if len(result.ConfigWarnings) > 0 {
+		res.ConfigWarnings = &RedactConfigWarnings{Lines: append([]string(nil), result.ConfigWarnings...)}
 	}
 	if !result.Incomplete {
 		return res, nil
