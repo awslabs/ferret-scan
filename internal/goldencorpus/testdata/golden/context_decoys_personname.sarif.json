@@ -31,6 +31,9 @@
           "message": {
             "text": "Person Name Detected in <golden:context_decoys_personname> at line 3 (confidence: 92.0% - HIGH). Matched text: 'James Whitfield'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "068bf8be8c13973eb38c04d7631988fc272c1bc85c60e2004e7d616332cddfd4"
+          },
           "properties": {
             "confidence": 92,
             "confidenceLevel": "HIGH",
@@ -119,6 +122,9 @@
           ],
           "message": {
             "text": "Person Name Detected in <golden:context_decoys_personname> at line 5 (confidence: 92.0% - HIGH). Matched text: 'Sarah Okonkwo'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "8ffb12cf88d036f94ecf1bc1c6b0dde5d8d9c408874f14579d3f9b71ed038641"
           },
           "properties": {
             "confidence": 92,
@@ -209,6 +215,9 @@
           "message": {
             "text": "Person Name Detected in <golden:context_decoys_personname> at line 7 (confidence: 92.0% - HIGH). Matched text: 'Daniel Moreau'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "441909d4d65e19bae7547d0313d032b08506dbb690f8c79623cd93760c99a5ca"
+          },
           "properties": {
             "confidence": 92,
             "confidenceLevel": "HIGH",
@@ -298,6 +307,9 @@
           "message": {
             "text": "Person Name Detected in <golden:context_decoys_personname> at line 9 (confidence: 92.0% - HIGH). Matched text: 'Priya Raghavan'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "0ab2cd88d251098d5b1a83aa601eb135d3a064c0b847b85643e9d72a228cb19d"
+          },
           "properties": {
             "confidence": 92,
             "confidenceLevel": "HIGH",
@@ -386,6 +398,9 @@
           ],
           "message": {
             "text": "Person Name Detected in <golden:context_decoys_personname> at line 1 (confidence: 80.0% - MEDIUM). Matched text: 'Contact Maria Delgado'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "dee3fb0da5b2fc725cb8d8bfaeb69e4e3e3b48961b23d0857dd693691ccf554f"
           },
           "properties": {
             "confidence": 80,

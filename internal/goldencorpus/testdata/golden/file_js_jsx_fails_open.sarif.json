@@ -37,6 +37,9 @@
           "message": {
             "text": "Secret or API Key Detected in src/Help.js at line 4 (confidence: 85.0% - MEDIUM). Matched text: 'process.env.JWT_SECRET'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "1a01e1860299af3a89827984c3963c1da744c8cb47a54de433874fcd05ef58c5"
+          },
           "properties": {
             "confidence": 85,
             "confidenceLevel": "MEDIUM",
@@ -102,6 +105,9 @@
           "message": {
             "text": "Secret or API Key Detected in src/Help.js at line 8 (confidence: 85.0% - MEDIUM). Matched text: 'JsxTextS3cretVal55'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "1e677375449a2796a12d14c05c2b6bc0cc2726605e9613baf9c34ed65f756481"
+          },
           "properties": {
             "confidence": 85,
             "confidenceLevel": "MEDIUM",
@@ -166,6 +172,9 @@
           ],
           "message": {
             "text": "Secret or API Key Detected in src/Help.js at line 10 (confidence: 85.0% - MEDIUM). Matched text: 'JsxChildPassVal66</code>'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "31d8e4be1c146f9b169b0a9d48aa650ebd9b7d13ec05e01bd25c29c5c56aa681"
           },
           "properties": {
             "confidence": 85,

@@ -25,6 +25,9 @@
           "message": {
             "text": "Email Address Detected in <golden:email_variants> at line 1 (confidence: 100.0% - HIGH). Matched text: 'support@acme-corp.com'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "a01710a37d8873051e0f74284bea4a2575e325c6e315b710259d918b9662b259"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -90,6 +93,9 @@
           "message": {
             "text": "Email Address Detected in <golden:email_variants> at line 2 (confidence: 100.0% - HIGH). Matched text: 'alice@gmail.com'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "09c52a707ee971b331fd6ebb63482d754660522d0fb33033a3563a662597bf34"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -151,6 +157,9 @@
           ],
           "message": {
             "text": "Email Address Detected in <golden:email_variants> at line 3 (confidence: 85.0% - MEDIUM). Matched text: 'no-reply@internal.example.org'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "f3ef6b0c9144408cb5c31d39ea40014f3a2252ad909171e1b2c787b0a998dd80"
           },
           "properties": {
             "confidence": 85,

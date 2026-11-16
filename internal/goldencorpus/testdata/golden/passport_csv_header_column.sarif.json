@@ -31,6 +31,9 @@
           "message": {
             "text": "Email Address Detected in <golden:passport_csv_header_column> at line 2 (confidence: 100.0% - HIGH). Matched text: 'jane.smith@acmecorp.io'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "fbd08f22077451133450e76ca50225e89e5d684784767be70394e932df7246a8"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -98,6 +101,9 @@
           ],
           "message": {
             "text": "Email Address Detected in <golden:passport_csv_header_column> at line 3 (confidence: 100.0% - HIGH). Matched text: 'bob.jones@acmecorp.io'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "72dc83634f7dac910fcd7931b9cd348b554752e0af63703dd5e02d0490dac27d"
           },
           "properties": {
             "confidence": 100,
@@ -167,6 +173,9 @@
           "message": {
             "text": "Email Address Detected in <golden:passport_csv_header_column> at line 4 (confidence: 100.0% - HIGH). Matched text: 'amy.lee@acmecorp.io'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "1372d80391ca7c8695022ba93cd7dfdf8cda499c7b05d6dcba0974a87a7b04aa"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -234,6 +243,9 @@
           ],
           "message": {
             "text": "Email Address Detected in <golden:passport_csv_header_column> at line 5 (confidence: 100.0% - HIGH). Matched text: 'sam.roe@acmecorp.io'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "a4c805a75ce528c8b38639c3182f65cc61fd1394ec9cd2568d97736c083464df"
           },
           "properties": {
             "confidence": 100,
@@ -303,6 +315,9 @@
           "message": {
             "text": "Passport Number Detected in <golden:passport_csv_header_column> at line 2 (confidence: 100.0% - HIGH). Matched text: '987654321'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "5e3fd582135e35971a1c3e22bd678d9d9d7874ce959b90e0fcc9bf4d72fd7753"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -366,6 +381,9 @@
           ],
           "message": {
             "text": "Passport Number Detected in <golden:passport_csv_header_column> at line 3 (confidence: 100.0% - HIGH). Matched text: '512345678'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "fe8f7f17ea9387c8cbbaec6312aac9dfbda17e047d1defef0efbd18476c713fc"
           },
           "properties": {
             "confidence": 100,
@@ -431,6 +449,9 @@
           "message": {
             "text": "Passport Number Detected in <golden:passport_csv_header_column> at line 4 (confidence: 100.0% - HIGH). Matched text: '512345671'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "9df87dc73a8d1c566de4f88b0220d90d4a7bdb87171aa6089cb4f2f9cd43d576"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -494,6 +515,9 @@
           ],
           "message": {
             "text": "Passport Number Detected in <golden:passport_csv_header_column> at line 5 (confidence: 100.0% - HIGH). Matched text: '987654322'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "d56cab9add19d41eb0081e159c031d81792cd0ae4627c305c4b8445898f04d9c"
           },
           "properties": {
             "confidence": 100,

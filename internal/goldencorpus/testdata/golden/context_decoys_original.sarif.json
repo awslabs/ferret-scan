@@ -31,6 +31,9 @@
           "message": {
             "text": "Social Security Number Detected in <golden:context_decoys_original> at line 1 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "0184a489ec03818e53289568772e8b0c5e3b8db573ad3856d42e851852fc131d"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -96,6 +99,9 @@
           ],
           "message": {
             "text": "Social Security Number Detected in <golden:context_decoys_original> at line 2 (confidence: 55.0% - LOW). Matched text: '449-87-4100'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "da7f0c9f33736327d6afaf943e775cc3ae2148ac3389c6826a4401862b833c6e"
           },
           "properties": {
             "confidence": 55,
@@ -163,6 +169,9 @@
           "message": {
             "text": "Social Security Number Detected in <golden:context_decoys_original> at line 3 (confidence: 40.0% - LOW). Matched text: '526-33-8210'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "f96999f068032d2792dc0050ae1a6789ddc041ac7c5f18cae1931635ddd08f55"
+          },
           "properties": {
             "confidence": 40,
             "confidenceLevel": "LOW",
@@ -229,6 +238,9 @@
           ],
           "message": {
             "text": "Phone Number Detected in <golden:context_decoys_original> at line 4 (confidence: 15.0% - LOW). Matched text: '212-555-0142'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "6760b007473bd873601223af765b1c0e971d54818c9295c43526ce296dd091c4"
           },
           "properties": {
             "confidence": 15,
@@ -303,6 +315,9 @@
           "message": {
             "text": "Phone Number Detected in <golden:context_decoys_original> at line 5 (confidence: 15.0% - LOW). Matched text: '212-555-0142'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "08cd66e9afd19836b49a88e0db74f5557dc8b5c6102b13d36d802de67511be30"
+          },
           "properties": {
             "confidence": 15,
             "confidenceLevel": "LOW",
@@ -375,6 +390,9 @@
           ],
           "message": {
             "text": "Phone Number Detected in <golden:context_decoys_original> at line 6 (confidence: 15.0% - LOW). Matched text: '313-555-0175'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "855a459add1dfdae1b14739d74689c7ea0b28287363fe58e8a45bd177c154307"
           },
           "properties": {
             "confidence": 15,

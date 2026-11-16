@@ -37,6 +37,9 @@
           "message": {
             "text": "Social Security Number Detected in numrefs.docx at line 1 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "23de5df06f4b6ee9341eb3724f76f3f1069a7ce725e5b71306416a30fb1ac642"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -103,6 +106,9 @@
           ],
           "message": {
             "text": "Social Security Number Detected in numrefs.docx at line 3 (confidence: 100.0% - HIGH). Matched text: '519-42-8836'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "8194d413faf3c72a17f2bbb05cdbda6a9bd38b381726b541288952d84bd2783a"
           },
           "properties": {
             "confidence": 100,
@@ -171,6 +177,9 @@
           "message": {
             "text": "Social Security Number Detected in numrefs.docx at line 5 (confidence: 100.0% - HIGH). Matched text: '563-18-7249'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "511d01202d5d5fe4c90baedc28728afffedb10cc1feb3c458f742cff921e6b35"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -238,6 +247,9 @@
           "message": {
             "text": "Social Security Number Detected in numrefs.docx at line 7 (confidence: 100.0% - HIGH). Matched text: '607-31-9284'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "de798963e3df6942a6e5f1f94ab9a45b18cb025de6f380d680144ea771181c7c"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -299,6 +311,9 @@
           "message": {
             "text": "Sensitive Metadata Detected in numrefs.docx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "f02d171b53aa12bdb138726550e8b25f3cf690d16d2c56672a755bf3997e998d"
+          },
           "properties": {
             "confidence": 60,
             "confidenceLevel": "MEDIUM",
@@ -358,6 +373,9 @@
           ],
           "message": {
             "text": "Sensitive Metadata Detected in numrefs.docx at line 2 (confidence: 60.0% - MEDIUM). Matched text: 'Ops Reviewer'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "2c4743e59b3cf454e64e9b55cab611147e88b4cae0c31bf0506919588d005954"
           },
           "properties": {
             "confidence": 60,

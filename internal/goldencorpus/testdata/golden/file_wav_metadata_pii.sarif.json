@@ -31,6 +31,9 @@
           "message": {
             "text": "Sensitive Metadata Detected in clip.wav at line 6 (confidence: 80.0% - MEDIUM). Matched text: 'john.doe@example.com'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "9bb44ccb27ee180dec868ed58f5e065a8c0edf65a3d916ab6196d2ed8f40ed41"
+          },
           "properties": {
             "confidence": 80,
             "confidenceLevel": "MEDIUM",
@@ -93,6 +96,9 @@
           ],
           "message": {
             "text": "Sensitive Metadata Detected in clip.wav at line 7 (confidence: 65.0% - MEDIUM). Matched text: 'contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "af66ee738ac8abd6144680678ec8db2d66608dbd77f7347d80c1e63bcc2f37f2"
           },
           "properties": {
             "confidence": 65,
@@ -160,6 +166,9 @@
           ],
           "message": {
             "text": "Email Address Detected in clip.wav at line 6 (confidence: 25.0% - LOW). Matched text: 'john.doe@example.com'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "fbf59b8646055c3ac8fbebfba45190c85f5ab3a2d476024a7e4faf837f7fb93e"
           },
           "properties": {
             "confidence": 25,
@@ -233,6 +242,9 @@
           "message": {
             "text": "Secret or API Key Detected in clip.wav at line 7 (confidence: 15.0% - LOW). Matched text: 'AKIAIOSFODNN7EXAMPLE'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "8395936261b49333ff7945bcb670bd4361aa62e12e3dfb02e59af1c4435eb8f7"
+          },
           "properties": {
             "confidence": 15,
             "confidenceLevel": "LOW",
@@ -299,6 +311,9 @@
           ],
           "message": {
             "text": "Phone Number Detected in clip.wav at line 7 (confidence: 15.0% - LOW). Matched text: '212-555-0142'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "539096079b295f5fa5c693514ec15dbc3ba579d4d564169b23dbd35f70b877a6"
           },
           "properties": {
             "confidence": 15,
