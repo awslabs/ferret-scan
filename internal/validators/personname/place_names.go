@@ -212,9 +212,13 @@ func (v *Validator) isKnownNameToken(token string) bool {
 // It runs on findPatternCandidates' result, so both findNames* paths and both the plain and the masked
 // pass go through it. It filters in place: the slice is the one findPatternCandidates just built.
 func (v *Validator) dropPlaceCandidates(line string, candidates []PatternMatch) []PatternMatch {
+	streets := streetSpans(line)
 	kept := candidates[:0]
 	for _, c := range candidates {
 		if isToponymPhrase(c.Text) || v.continuesToponym(line, c.StartIndex) || v.isUnsupportedCapsFragment(c) {
+			continue
+		}
+		if insideStreet(streets, c.StartIndex, c.EndIndex) || v.isStreetCityCommaForm(c) {
 			continue
 		}
 		kept = append(kept, c)

@@ -6,4 +6,6 @@ a false positive (NEM MIN, EI LUO) the old path produced by mis-decoding escapes
 Iberian and Latin American: San Francisco, Santa Clara, Sao Paulo, Puerto Vallarta,
 Ciudad Juarez, Villa Nueva, Bahia Blanca, Isla Mujeres, Monte Plata.
 Customer region: North East; shipping desk: Russian Far East
+Residence: 77 August Lane, Boise ID 83702
+Located at 100 Martin Luther King Blvd
 === FINDINGS (sorted) ===
