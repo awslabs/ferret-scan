@@ -43,6 +43,12 @@ func TestCommaFormIsNotTakenAcrossAList(t *testing.T) {
 		{"font_name_test.go:12 (67): joined by 'and'",
 			"// fire: Roman, Black and Vera are surnames.",
 			[]string{"Roman, Black"}, nil},
+		{"a list of cities joined by 'and', the last two words",
+			"Offices in Austin, Dallas, Fort Worth and Houston.",
+			[]string{"Austin, Dallas"}, nil},
+		{"every author inverted: indistinguishable from a single-word list by shape, so only the last is kept (documented limit)",
+			`Griffith, Rachel, Simpson, Helen and Redding, Stephen. "All inverted."`,
+			[]string{"Griffith, Rachel", "Simpson, Helen"}, []string{"Redding, Stephen"}},
 	}
 	for _, c := range cases {
 		t.Run(c.where, func(t *testing.T) {
@@ -87,6 +93,21 @@ func TestGenuineCommaFormsKeepTheirConfidence(t *testing.T) {
 		{"control (#935)", "Signed by May Chen today.", "May Chen", 92},
 		{"control (#935)", "Signed by Jean-Claude Van Damme today.", "Jean-Claude Van Damme", 93},
 		{"control (#935)", "Signed by Dr. Sarah Johnson today.", "Dr. Sarah Johnson", 100},
+		// The first author of a reference list is inverted and the rest are not. The first #936 fix
+		// read ", Stephen" as the next item of a single-word list and dropped the first author;
+		// measured on the public corpus, 5 of these in one govdocs bibliography. The values are what
+		// main @ 946294f reports for the same lines.
+		{"first author of a reference list, co-authors Given Surname",
+			`Griffith, Rachel, Stephen Redding and Helen Simpson. "Productivity Convergence," Working Paper No. 3765. June 2003.`,
+			"Griffith, Rachel", 97},
+		{"first author, then an Oxford comma and an inverted last author",
+			`Griffith, Rachel, Stephen Redding, and Simpson, Helen. "Foreign Ownership and Productivity." Oxford Review.`,
+			"Griffith, Rachel", 97},
+		{"the inverted last author of that line", `Griffith, Rachel, Stephen Redding, and Simpson, Helen. "Foreign Ownership."`,
+			"Simpson, Helen", 97},
+		{"first author, co-author with an initial", `Keller, Wolfgang and Stephen R. Yeaple. "Multinational Enterprises," Journal 2004.`,
+			"Keller, Wolfgang", 67},
+		{"two authors, the first inverted", `Redding, Stephen and Helen Simpson. "Two authors."`, "Redding, Stephen", 97},
 	}
 	for _, c := range cases {
 		t.Run(c.why+"/"+c.name, func(t *testing.T) {
@@ -148,6 +169,12 @@ func TestListWordBoundaries(t *testing.T) {
 		{"", false},              // end of line
 		{",", false},             // a trailing comma alone
 		{" Jackson", false},      // no separator
+		// A person written Given Surname is not an item of a single-word list: the form before it is
+		// a reference list's first author and is kept.
+		{", Stephen Redding and", false},
+		{" and Stephen R. Yeaple.", false},
+		{", Jackson Hole", false}, // a two-word place with a given-name first word reads as a person
+		{", Fort Worth", true},    // Fort is a surname in the data, not a given name: still a single-word list
 	}
 	for _, c := range cont {
 		line := "Houston, Madison" + c.after

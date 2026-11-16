@@ -105,7 +105,20 @@ func titleWord(word string) string {
 }
 
 // continuesAsName reports whether the comma, conjunction or ampersand at line[i:] starts another list
-// item whose first word is a name the data knows: ", Jackson", " and Charlotte", " or Lake".
+// item that is ONE known name and nothing more: ", Jackson", " and Charlotte", " or Lake". A list of
+// such items is a list of places or surnames, and a "Surname, Given" read across its comma is two of
+// them joined.
+//
+// It is false when the next item is a person written Given Surname (", Stephen Redding",
+// " and Stephen R. Yeaple"): a known given name followed by another capitalised word or an initial.
+// A surname-first form in front of such an item is the first author of a reference list, the one
+// convention that inverts only the first name ("Griffith, Rachel, Stephen Redding and Helen Simpson"),
+// and the first #936 fix lost it: measured on the public corpus, 5 real first authors in one govdocs
+// bibliography were no longer reported while their co-authors were. The residual ambiguity is a
+// two-word place whose first word is a given name (", Jackson Hole"): it reads as a person here, so
+// the form before it is kept, as it was before #936. A list in which EVERY name is inverted
+// ("Griffith, Rachel, Simpson, Helen") cannot be told from a list of single words by shape, and only
+// its last item is kept.
 func (v *Validator) continuesAsName(line string, i int) bool {
 	j := i
 	switch {
@@ -138,7 +151,28 @@ func (v *Validator) continuesAsName(line string, i int) bool {
 		return false
 	}
 	word := titleWordAt(line, k)
-	return word != "" && v.inNameData(word)
+	if word == "" || !v.inNameData(word) {
+		return false
+	}
+	return !(v.isGivenName(word) && nameTokenAfter(line, k+len(word)))
+}
+
+// nameTokenAfter reports whether a second name-like token follows the word that ends at line[i:],
+// after one or more spaces: a Title-Case word ("Redding") or an initial ("R."). Bounded by
+// listWordMax through titleWordAt.
+func nameTokenAfter(line string, i int) bool {
+	j := i
+	for j < len(line) && line[j] == ' ' {
+		j++
+	}
+	if j == i || j >= len(line) {
+		return false
+	}
+	if titleWordAt(line, j) != "" {
+		return true
+	}
+	r, size := utf8.DecodeRuneInString(line[j:])
+	return unicode.IsUpper(r) && j+size < len(line) && line[j+size] == '.'
 }
 
 // isListBoundaryCommaForm reports whether a comma-form candidate takes the comma of a list.
@@ -151,7 +185,8 @@ func (v *Validator) continuesAsName(line string, i int) bool {
 //   - Or, for the single-word form only, the given name is followed by the next item: a comma, "and",
 //     "or" or "&" and a capitalised name the data knows, as in a list of single-word cities. The next
 //     word has to be a name for the same reason as above: a genuine form followed by a department or
-//     by a suffix such as MD is kept.
+//     by a suffix such as MD is kept. So is a form followed by a person written Given Surname, which
+//     is how a reference list continues after its inverted first author (see continuesAsName).
 //
 // What the issue literally proposes, rejecting the form whenever the part after the comma reads as a
 // name by itself, is not used on its own: a middle name is very often a surname too, so it would reject
@@ -175,6 +210,15 @@ func (v *Validator) inNameData(word string) bool {
 		return true
 	}
 	return v.lastNames != nil && (v.lastNames[lower] || v.lastNames[normalized])
+}
+
+// isGivenName reports whether a Title-Case word, lowercased, is in the given-name list.
+func (v *Validator) isGivenName(word string) bool {
+	if v.firstNames == nil {
+		return false
+	}
+	lower := strings.ToLower(word)
+	return v.firstNames[lower] || v.firstNames[v.normalizeAccents(lower)]
 }
 
 // dropListBoundaryCandidates removes the comma-form candidates that take the comma of a list (see
