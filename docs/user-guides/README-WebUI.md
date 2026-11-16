@@ -101,6 +101,11 @@ The web UI supports the same file types as the CLI version:
   file* before anything reads it — so the larger allowance would let one request write 500 MB
   of temp disk, chosen by the filename it supplied. To scan a video between 100 MB and 500 MB,
   use the CLI: `ferret-scan --file clip.mov`.
+- **Session Cookie**: `/scan` sets `ferret_scan_session` (`HttpOnly`, `SameSite=Strict`), which
+  scopes stored results to your browser session so `/export` can format the scan the server ran.
+  It is marked `Secure` when the request arrived over HTTPS (a TLS connection, or a reverse proxy
+  that sends `X-Forwarded-Proto: https`) and left unmarked over plain HTTP, so the documented
+  `http://localhost` path works in every browser; Safari refuses a `Secure` cookie there.
 - **No Data Retention**: Scan results are displayed in browser only, not stored permanently
 - **Audit Trail**: Comprehensive logging for compliance requirements
 
