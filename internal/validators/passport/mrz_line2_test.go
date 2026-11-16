@@ -74,6 +74,41 @@ func TestMRZLine2IsDetected(t *testing.T) {
 	}
 }
 
+// emptyPersonalLine2 is a TD3 line 2 whose personal number is unused (all fillers),
+// with personalCD written as that field's check digit. The composite is unchanged by
+// the choice between "0" and "<": both are worth 0.
+func emptyPersonalLine2(personalCD byte) string {
+	b := []byte(buildTD3Line2("L898902C3", "UTO", "740812", "F", "120415", ""))
+	b[42] = personalCD
+	return string(b)
+}
+
+// TestMRZLine2EmptyPersonalNumberFillerCheckDigit: ICAO Doc 9303 Part 4 lets the issuing
+// State print "<" instead of "0" as the check digit of an unused personal number, and
+// some issuers do. Such a line 2 failed the check-digit gate, so it was never
+// reported and stayed in cleartext under --enable-redaction while line 1 was redacted.
+func TestMRZLine2EmptyPersonalNumberFillerCheckDigit(t *testing.T) {
+	v := NewValidator()
+	line1 := "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<"
+	for _, cd := range []byte{'0', '<'} {
+		line2 := emptyPersonalLine2(cd)
+		matches, err := v.ValidateContent(line1+"\n"+line2+"\n", "passport-scan.txt")
+		if err != nil {
+			t.Fatalf("ValidateContent: %v", err)
+		}
+		var sawLine2 bool
+		for _, m := range matches {
+			if m.LineNumber == 2 && m.Text == line2 {
+				sawLine2 = true
+			}
+		}
+		if !sawLine2 {
+			t.Errorf("line 2 %q (personal-number check digit %q) was not reported; got %d finding(s)",
+				line2, cd, len(matches))
+		}
+	}
+}
+
 // TestCorruptedCheckDigitIsRejected is what makes the 44-character pattern safe.
 // The shape alone matches any run of 44 MRZ characters; the check digits are the
 // actual test, so a single corrupted digit must drop the finding.
@@ -132,6 +167,13 @@ func TestMRZLine2ChecksValid(t *testing.T) {
 		{"month 13", buildTD3Line2("L898902C3", "GBR", "741312", "M", "120415", "ZE184226B"), false},
 		{"day 32", buildTD3Line2("L898902C3", "GBR", "740832", "M", "120415", "ZE184226B"), false},
 		{"filler in date", good[:13] + "<<<<<<" + good[19:], false},
+		// An unused personal number's check digit is "0" or "<" (ICAO Doc 9303 Part 4,
+		// 4.2.2.2, position 43); "<" stands for a check digit nowhere else.
+		{"empty personal number, check digit 0", emptyPersonalLine2('0'), true},
+		{"empty personal number, check digit filler", emptyPersonalLine2('<'), true},
+		{"empty personal number, check digit 1", emptyPersonalLine2('1'), false},
+		{"personal number present, check digit filler", good[:42] + "<" + good[43:], false},
+		{"document number check digit filler", good[:9] + "<" + good[10:], false},
 	}
 
 	for _, c := range cases {
