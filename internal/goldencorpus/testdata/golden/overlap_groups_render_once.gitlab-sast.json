@@ -29,6 +29,32 @@
     {
       "category": "sast",
       "confidence": "High",
+      "description": "Ferret Scan detected card track data in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 4)\n**Confidence:** HIGH (100.0%)\n**Detected by:** creditcard validator\n\n**Context:**\n```\nTrack 1: %B4532015112830366^DOE/JANE^2912101000000000000000?\n```\n\n**Additional Information:**\n- card_type: VISA\n- context_impact: 15\n- source: preprocessed_content\n\n**Remediation:**\nDelete the track data: PCI DSS forbids keeping it after authorisation, even encrypted, so tokenisation is not a remedy. Stop the process that wrote it.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "CARD_TRACK_DATA"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "creditcard"
+        }
+      ],
+      "location": {
+        "end_line": 4,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 4
+      },
+      "message": "Card track data detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Card Track Data Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
       "description": "Ferret Scan detected ip address in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 6)\n**Confidence:** HIGH (100.0%)\n**Detected by:** ipaddress validator\n\n**Context:**\n```\nserver 203.12.19.85 reached\n```\n\n**Additional Information:**\n- context_impact: 12\n- source: preprocessed_content\n\n**Remediation:**\nRemove IP addresses or replace with example addresses (e.g., 192.0.2.1).",
       "id": "ferret-<HASH>",
       "identifiers": [
@@ -76,6 +102,32 @@
       },
       "message": "Passport number detected: [HIDDEN] (confidence: HIGH)",
       "name": "Passport Number Detected",
+      "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "High",
+      "description": "Ferret Scan detected personal name in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 2)\n**Confidence:** HIGH (100.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nDr. Renée Müller García signed\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove the name or replace it with a placeholder. A name is most sensitive in combination with an identifier or an address, so check what appears beside it.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "PERSON_NAME"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "PERSON_NAME"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 2
+      },
+      "message": "Personal name detected: [HIDDEN] (confidence: HIGH)",
+      "name": "Person Name Detected",
       "severity": "Critical"
     },
     {
@@ -133,85 +185,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected personal name in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 2)\n**Confidence:** HIGH (99.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nRenée Müller, José García, François Lefèvre\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove the name or replace it with a placeholder. A name is most sensitive in combination with an identifier or an address, so check what appears beside it.",
-      "id": "ferret-<HASH>",
-      "identifiers": [
-        {
-          "name": "Ferret Scan Check Type",
-          "type": "ferret_scan_check_type",
-          "value": "PERSON_NAME"
-        },
-        {
-          "name": "Ferret Scan Validator",
-          "type": "ferret_scan_validator",
-          "value": "PERSON_NAME"
-        }
-      ],
-      "location": {
-        "end_line": 2,
-        "file": "<golden:overlap_groups_render_once>",
-        "start_line": 2
-      },
-      "message": "Personal name detected: [HIDDEN] (confidence: HIGH)",
-      "name": "Person Name Detected",
-      "severity": "Critical"
-    },
-    {
-      "category": "sast",
-      "confidence": "High",
-      "description": "Ferret Scan detected physical address in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 1)\n**Confidence:** HIGH (95.0%)\n**Detected by:** physical_address validator\n\n**Context:**\n```\nResidence: 77 August Lane, Boise ID 83702\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove the postal address or replace it with an example address. Treat an APO/FPO/DPO address as more sensitive, since it can reveal a unit assignment.",
-      "id": "ferret-<HASH>",
-      "identifiers": [
-        {
-          "name": "Ferret Scan Check Type",
-          "type": "ferret_scan_check_type",
-          "value": "US_STREET_ADDRESS"
-        },
-        {
-          "name": "Ferret Scan Validator",
-          "type": "ferret_scan_validator",
-          "value": "physical_address"
-        }
-      ],
-      "location": {
-        "end_line": 1,
-        "file": "<golden:overlap_groups_render_once>",
-        "start_line": 1
-      },
-      "message": "Physical address detected: [HIDDEN] (confidence: HIGH)",
-      "name": "Physical Address Detected",
-      "severity": "Critical"
-    },
-    {
-      "category": "sast",
-      "confidence": "High",
-      "description": "Ferret Scan detected personal name in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 4)\n**Confidence:** HIGH (93.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nLocated at 100 Martin Luther King Blvd\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove the name or replace it with a placeholder. A name is most sensitive in combination with an identifier or an address, so check what appears beside it.",
-      "id": "ferret-<HASH>",
-      "identifiers": [
-        {
-          "name": "Ferret Scan Check Type",
-          "type": "ferret_scan_check_type",
-          "value": "PERSON_NAME"
-        },
-        {
-          "name": "Ferret Scan Validator",
-          "type": "ferret_scan_validator",
-          "value": "PERSON_NAME"
-        }
-      ],
-      "location": {
-        "end_line": 4,
-        "file": "<golden:overlap_groups_render_once>",
-        "start_line": 4
-      },
-      "message": "Personal name detected: [HIDDEN] (confidence: HIGH)",
-      "name": "Person Name Detected",
-      "severity": "Critical"
-    },
-    {
-      "category": "sast",
-      "confidence": "High",
-      "description": "Ferret Scan detected personal name in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 1)\n**Confidence:** HIGH (92.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nResidence: 77 August Lane, Boise ID 83702\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove the name or replace it with a placeholder. A name is most sensitive in combination with an identifier or an address, so check what appears beside it.",
+      "description": "Ferret Scan detected personal name in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 1)\n**Confidence:** HIGH (93.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nSigned: Dr. Jane Ann Doe\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove the name or replace it with a placeholder. A name is most sensitive in combination with an identifier or an address, so check what appears beside it.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -237,7 +211,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected personal name in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 2)\n**Confidence:** HIGH (92.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nRenée Müller, José García, François Lefèvre\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove the name or replace it with a placeholder. A name is most sensitive in combination with an identifier or an address, so check what appears beside it.",
+      "description": "Ferret Scan detected personal name in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 2)\n**Confidence:** HIGH (93.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nDr. Renée Müller García signed\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove the name or replace it with a placeholder. A name is most sensitive in combination with an identifier or an address, so check what appears beside it.",
       "id": "ferret-<HASH>-1",
       "identifiers": [
         {
@@ -289,7 +263,33 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected personal name in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 1)\n**Confidence:** MEDIUM (67.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nResidence: 77 August Lane, Boise ID 83702\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove the name or replace it with a placeholder. A name is most sensitive in combination with an identifier or an address, so check what appears beside it.",
+      "description": "Ferret Scan detected visa credit card in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 4)\n**Confidence:** MEDIUM (75.0%)\n**Detected by:** creditcard validator\n\n**Context:**\n```\nTrack 1: %B4532015112830366^DOE/JANE^2912101000000000000000?\n```\n\n**Additional Information:**\n- card_type: VISA\n- context_impact: 0\n- source: preprocessed_content\n- vendor: Visa\n\n**Remediation:**\nRemove or mask credit card numbers. Consider using tokenization for legitimate payment processing needs.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "VISA"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "creditcard"
+        }
+      ],
+      "location": {
+        "end_line": 4,
+        "file": "<golden:overlap_groups_render_once>",
+        "start_line": 4
+      },
+      "message": "Visa credit card detected: [HIDDEN] (confidence: MEDIUM)",
+      "name": "Credit Card Number Detected",
+      "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "Medium",
+      "description": "Ferret Scan detected personal name in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 1)\n**Confidence:** MEDIUM (65.0%)\n**Detected by:** PERSON_NAME validator\n\n**Context:**\n```\nSigned: Dr. Jane Ann Doe\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove the name or replace it with a placeholder. A name is most sensitive in combination with an identifier or an address, so check what appears beside it.",
       "id": "ferret-<HASH>-1",
       "identifiers": [
         {
@@ -310,32 +310,6 @@
       },
       "message": "Personal name detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Person Name Detected",
-      "severity": "High"
-    },
-    {
-      "category": "sast",
-      "confidence": "Medium",
-      "description": "Ferret Scan detected physical address in this file.\n\n**Location:** <golden:overlap_groups_render_once> (line 4)\n**Confidence:** MEDIUM (65.0%)\n**Detected by:** physical_address validator\n\n**Context:**\n```\nLocated at 100 Martin Luther King Blvd\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove the postal address or replace it with an example address. Treat an APO/FPO/DPO address as more sensitive, since it can reveal a unit assignment.",
-      "id": "ferret-<HASH>",
-      "identifiers": [
-        {
-          "name": "Ferret Scan Check Type",
-          "type": "ferret_scan_check_type",
-          "value": "US_STREET_ADDRESS"
-        },
-        {
-          "name": "Ferret Scan Validator",
-          "type": "ferret_scan_validator",
-          "value": "physical_address"
-        }
-      ],
-      "location": {
-        "end_line": 4,
-        "file": "<golden:overlap_groups_render_once>",
-        "start_line": 4
-      },
-      "message": "Physical address detected: [HIDDEN] (confidence: MEDIUM)",
-      "name": "Physical Address Detected",
       "severity": "High"
     },
     {

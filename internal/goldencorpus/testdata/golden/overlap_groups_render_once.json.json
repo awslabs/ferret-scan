@@ -4,6 +4,44 @@
       "confidence": 100,
       "confidence_level": "HIGH",
       "filename": "<golden:overlap_groups_render_once>",
+      "line_number": 4,
+      "metadata": {
+        "card_frame": "track1",
+        "card_type": "VISA",
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "Government",
+        "context_impact": 15,
+        "original_confidence": 100,
+        "original_file": "<golden:overlap_groups_render_once>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "digits": true,
+          "entropy": true,
+          "length": true,
+          "luhn": true,
+          "not_repeating": true,
+          "not_test": true,
+          "vendor": true
+        },
+        "validation_path": "document"
+      },
+      "text": "%B4532015112830366^DOE/JANE^2912101000000000000000?",
+      "type": "CARD_TRACK_DATA",
+      "validator": "creditcard"
+    },
+    {
+      "confidence": 100,
+      "confidence_level": "HIGH",
+      "filename": "<golden:overlap_groups_render_once>",
       "line_number": 6,
       "metadata": {
         "clean_ip": "203.12.19.85",
@@ -76,6 +114,66 @@
       "text": "512010001",
       "type": "PASSPORT",
       "validator": "passport"
+    },
+    {
+      "confidence": 100,
+      "confidence_level": "HIGH",
+      "filename": "<golden:overlap_groups_render_once>",
+      "line_number": 2,
+      "metadata": {
+        "confidence_adjustment": 0,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "Government",
+        "context_impact": 0,
+        "context_keywords": null,
+        "cultural_context": [
+          "western",
+          "formal"
+        ],
+        "name_components": {
+          "Cultural": [
+            "western",
+            "formal"
+          ],
+          "FirstName": "Renée",
+          "FullName": "Dr. Renée Müller",
+          "LastName": "Müller",
+          "MiddleName": "",
+          "Pattern": "name_with_title",
+          "Suffix": "",
+          "Title": "Dr."
+        },
+        "original_confidence": 100,
+        "pattern": "name_with_title",
+        "pattern_priority": 8,
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "validation_checks": {
+          "both_names_known": true,
+          "has_known_name_component": true,
+          "has_middle_name": false,
+          "has_suffix": false,
+          "has_title": true,
+          "known_first_name": true,
+          "known_last_name": true,
+          "not_business_name": true,
+          "not_technical_term": true,
+          "not_test_data": true,
+          "proper_case": true,
+          "reasonable_length": true,
+          "valid_pattern": true
+        },
+        "validation_path": "document"
+      },
+      "text": "Dr. Renée Müller",
+      "type": "PERSON_NAME",
+      "validator": "PERSON_NAME"
     },
     {
       "confidence": 100,
@@ -158,103 +256,10 @@
       "validator": "creditcard"
     },
     {
-      "confidence": 99,
-      "confidence_level": "HIGH",
-      "filename": "<golden:overlap_groups_render_once>",
-      "line_number": 2,
-      "metadata": {
-        "confidence_adjustment": 0,
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Government",
-        "context_impact": 0,
-        "context_keywords": null,
-        "cultural_context": [
-          "formal",
-          "database",
-          "directory"
-        ],
-        "name_components": {
-          "Cultural": [
-            "formal",
-            "database",
-            "directory"
-          ],
-          "FirstName": "José",
-          "FullName": "Müller, José García",
-          "LastName": "Müller",
-          "MiddleName": "García",
-          "Pattern": "last_comma_first_middle",
-          "Suffix": "",
-          "Title": ""
-        },
-        "original_confidence": 99,
-        "pattern": "last_comma_first_middle",
-        "pattern_priority": 8,
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0.125
-        },
-        "validation_checks": {
-          "both_names_known": true,
-          "has_known_name_component": true,
-          "has_middle_name": true,
-          "has_suffix": false,
-          "has_title": false,
-          "known_first_name": true,
-          "known_last_name": true,
-          "not_business_name": true,
-          "not_technical_term": true,
-          "not_test_data": true,
-          "proper_case": true,
-          "reasonable_length": true,
-          "valid_pattern": true
-        },
-        "validation_path": "document"
-      },
-      "text": "Müller, José García",
-      "type": "PERSON_NAME",
-      "validator": "PERSON_NAME"
-    },
-    {
-      "confidence": 95,
-      "confidence_level": "HIGH",
-      "filename": "<golden:overlap_groups_render_once>",
-      "line_number": 1,
-      "metadata": {
-        "confidence_adjustment": 0,
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Government",
-        "original_confidence": 95,
-        "original_file": "<golden:overlap_groups_render_once>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0.125
-        },
-        "source": "preprocessed_content",
-        "validation_checks": {
-          "no_negative_context": true,
-          "not_false_positive": true,
-          "street_type_suffix": true
-        },
-        "validation_path": "document"
-      },
-      "text": "77 August Lane",
-      "type": "US_STREET_ADDRESS",
-      "validator": "physical_address"
-    },
-    {
       "confidence": 93,
       "confidence_level": "HIGH",
       "filename": "<golden:overlap_groups_render_once>",
-      "line_number": 4,
+      "line_number": 1,
       "metadata": {
         "confidence_adjustment": 0,
         "context_confidence": 1,
@@ -273,10 +278,10 @@
             "hispanic",
             "compound"
           ],
-          "FirstName": "Martin",
-          "FullName": "Martin Luther King",
-          "LastName": "King",
-          "MiddleName": "Luther",
+          "FirstName": "Jane",
+          "FullName": "Jane Ann Doe",
+          "LastName": "Doe",
+          "MiddleName": "Ann",
           "Pattern": "three_part_name",
           "Suffix": "",
           "Title": ""
@@ -308,74 +313,12 @@
         },
         "validation_path": "document"
       },
-      "text": "Martin Luther King",
+      "text": "Jane Ann Doe",
       "type": "PERSON_NAME",
       "validator": "PERSON_NAME"
     },
     {
-      "confidence": 92,
-      "confidence_level": "HIGH",
-      "filename": "<golden:overlap_groups_render_once>",
-      "line_number": 1,
-      "metadata": {
-        "confidence_adjustment": 0,
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Government",
-        "context_impact": 0,
-        "context_keywords": null,
-        "cultural_context": [
-          "western",
-          "english",
-          "european"
-        ],
-        "name_components": {
-          "Cultural": [
-            "western",
-            "english",
-            "european"
-          ],
-          "FirstName": "August",
-          "FullName": "August Lane",
-          "LastName": "Lane",
-          "MiddleName": "",
-          "Pattern": "basic_western_name",
-          "Suffix": "",
-          "Title": ""
-        },
-        "original_confidence": 92,
-        "pattern": "basic_western_name",
-        "pattern_priority": 5,
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0.125
-        },
-        "validation_checks": {
-          "both_names_known": true,
-          "has_known_name_component": true,
-          "has_middle_name": false,
-          "has_suffix": false,
-          "has_title": false,
-          "known_first_name": true,
-          "known_last_name": true,
-          "not_business_name": true,
-          "not_technical_term": true,
-          "not_test_data": true,
-          "proper_case": true,
-          "reasonable_length": true,
-          "valid_pattern": true
-        },
-        "validation_path": "document"
-      },
-      "text": "August Lane",
-      "type": "PERSON_NAME",
-      "validator": "PERSON_NAME"
-    },
-    {
-      "confidence": 92,
+      "confidence": 93,
       "confidence_level": "HIGH",
       "filename": "<golden:overlap_groups_render_once>",
       "line_number": 2,
@@ -388,26 +331,26 @@
         "context_keywords": null,
         "cultural_context": [
           "western",
-          "english",
-          "european"
+          "hispanic",
+          "compound"
         ],
         "name_components": {
           "Cultural": [
             "western",
-            "english",
-            "european"
+            "hispanic",
+            "compound"
           ],
           "FirstName": "Renée",
-          "FullName": "Renée Müller",
-          "LastName": "Müller",
-          "MiddleName": "",
-          "Pattern": "basic_western_name",
+          "FullName": "Renée Müller García",
+          "LastName": "García",
+          "MiddleName": "Müller",
+          "Pattern": "three_part_name",
           "Suffix": "",
           "Title": ""
         },
-        "original_confidence": 92,
-        "pattern": "basic_western_name",
-        "pattern_priority": 5,
+        "original_confidence": 93,
+        "pattern": "three_part_name",
+        "pattern_priority": 6,
         "semantic_context": {
           "FinancialData": 0,
           "MedicalData": 0,
@@ -418,7 +361,7 @@
         "validation_checks": {
           "both_names_known": true,
           "has_known_name_component": true,
-          "has_middle_name": false,
+          "has_middle_name": true,
           "has_suffix": false,
           "has_title": false,
           "known_first_name": true,
@@ -432,7 +375,7 @@
         },
         "validation_path": "document"
       },
-      "text": "Renée Müller",
+      "text": "Renée Müller García",
       "type": "PERSON_NAME",
       "validator": "PERSON_NAME"
     },
@@ -474,7 +417,46 @@
       "validator": "secrets"
     },
     {
-      "confidence": 67,
+      "confidence": 75,
+      "confidence_level": "MEDIUM",
+      "filename": "<golden:overlap_groups_render_once>",
+      "line_number": 4,
+      "metadata": {
+        "card_type": "VISA",
+        "confidence_adjustment": 0,
+        "confidence_ceiling": 75,
+        "context_confidence": 1,
+        "context_doctype": "Unknown",
+        "context_domain": "Government",
+        "context_impact": 0,
+        "original_confidence": 75,
+        "original_file": "<golden:overlap_groups_render_once>",
+        "semantic_context": {
+          "FinancialData": 0,
+          "MedicalData": 0,
+          "PersonalData": 0,
+          "Production": 0,
+          "TestData": 0.125
+        },
+        "source": "preprocessed_content",
+        "validation_checks": {
+          "digits": true,
+          "entropy": true,
+          "length": true,
+          "luhn": true,
+          "not_repeating": true,
+          "not_test": true,
+          "vendor": true
+        },
+        "validation_path": "document",
+        "vendor": "Visa"
+      },
+      "text": "4532015112830366",
+      "type": "VISA",
+      "validator": "creditcard"
+    },
+    {
+      "confidence": 65,
       "confidence_level": "MEDIUM",
       "filename": "<golden:overlap_groups_render_once>",
       "line_number": 1,
@@ -486,26 +468,24 @@
         "context_impact": 0,
         "context_keywords": null,
         "cultural_context": [
-          "formal",
-          "database",
-          "directory"
+          "western",
+          "formal"
         ],
         "name_components": {
           "Cultural": [
-            "formal",
-            "database",
-            "directory"
+            "western",
+            "formal"
           ],
-          "FirstName": "Boise",
-          "FullName": "Lane, Boise",
-          "LastName": "Lane",
+          "FirstName": "Jane",
+          "FullName": "Dr. Jane Ann",
+          "LastName": "Ann",
           "MiddleName": "",
-          "Pattern": "last_comma_first",
+          "Pattern": "name_with_title",
           "Suffix": "",
-          "Title": ""
+          "Title": "Dr."
         },
-        "original_confidence": 67,
-        "pattern": "last_comma_first",
+        "original_confidence": 65,
+        "pattern": "name_with_title",
         "pattern_priority": 8,
         "semantic_context": {
           "FinancialData": 0,
@@ -519,9 +499,10 @@
           "has_known_name_component": true,
           "has_middle_name": false,
           "has_suffix": false,
-          "has_title": false,
-          "known_first_name": false,
-          "known_last_name": true,
+          "has_title": true,
+          "known_first_name": true,
+          "known_last_name": false,
+          "known_last_name_unverified": true,
           "not_business_name": true,
           "not_technical_term": true,
           "not_test_data": true,
@@ -531,40 +512,9 @@
         },
         "validation_path": "document"
       },
-      "text": "Lane, Boise",
+      "text": "Dr. Jane Ann",
       "type": "PERSON_NAME",
       "validator": "PERSON_NAME"
-    },
-    {
-      "confidence": 65,
-      "confidence_level": "MEDIUM",
-      "filename": "<golden:overlap_groups_render_once>",
-      "line_number": 4,
-      "metadata": {
-        "confidence_adjustment": 0,
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Government",
-        "original_confidence": 65,
-        "original_file": "<golden:overlap_groups_render_once>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0.125
-        },
-        "source": "preprocessed_content",
-        "validation_checks": {
-          "no_negative_context": true,
-          "not_false_positive": true,
-          "street_type_suffix": true
-        },
-        "validation_path": "document"
-      },
-      "text": "100 Martin Luther King Blvd",
-      "type": "US_STREET_ADDRESS",
-      "validator": "physical_address"
     },
     {
       "confidence": 60,
