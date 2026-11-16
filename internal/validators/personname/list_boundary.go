@@ -105,20 +105,18 @@ func titleWord(word string) string {
 }
 
 // continuesAsName reports whether the comma, conjunction or ampersand at line[i:] starts another list
-// item that is ONE known name and nothing more: ", Jackson", " and Charlotte", " or Lake". A list of
-// such items is a list of places or surnames, and a "Surname, Given" read across its comma is two of
-// them joined.
+// item that is ONE known name and nothing more, as in a list of single-word cities or of surnames
+// joined by "and" or "or". A list of such items is a list of places or words, and a "Surname, Given"
+// read across its comma is two of them joined.
 //
-// It is false when the next item is a person written Given Surname (", Stephen Redding",
-// " and Stephen R. Yeaple"): a known given name followed by another capitalised word or an initial.
-// A surname-first form in front of such an item is the first author of a reference list, the one
-// convention that inverts only the first name ("Griffith, Rachel, Stephen Redding and Helen Simpson"),
-// and the first #936 fix lost it: measured on the public corpus, 5 real first authors in one govdocs
-// bibliography were no longer reported while their co-authors were. The residual ambiguity is a
-// two-word place whose first word is a given name (", Jackson Hole"): it reads as a person here, so
-// the form before it is kept, as it was before #936. A list in which EVERY name is inverted
-// ("Griffith, Rachel, Simpson, Helen") cannot be told from a list of single words by shape, and only
-// its last item is kept.
+// It is false when the next item is a person written Given Surname: a known given name followed by
+// another capitalised word or by an initial (a capital and a period). A surname-first form in front
+// of such an item is the first author of a reference list, the one convention that inverts only the
+// first name, and the first #936 fix lost it: measured on the public corpus, 5 real first authors in
+// one govdocs bibliography were no longer reported while their co-authors were. The residual
+// ambiguity is a two-word place whose first word is also a given name: it reads as a person here, so
+// the form before it is kept, as it was before #936. A list in which EVERY author is inverted cannot
+// be told from a list of single words by shape, and only its last item is kept.
 func (v *Validator) continuesAsName(line string, i int) bool {
 	j := i
 	switch {
@@ -158,8 +156,8 @@ func (v *Validator) continuesAsName(line string, i int) bool {
 }
 
 // nameTokenAfter reports whether a second name-like token follows the word that ends at line[i:],
-// after one or more spaces: a Title-Case word ("Redding") or an initial ("R."). Bounded by
-// listWordMax through titleWordAt.
+// after one or more spaces: a Title-Case word, or an initial (a capital letter and a period). Bounded
+// by listWordMax through titleWordAt.
 func nameTokenAfter(line string, i int) bool {
 	j := i
 	for j < len(line) && line[j] == ' ' {
