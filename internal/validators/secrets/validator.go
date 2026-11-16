@@ -914,6 +914,12 @@ func (v *Validator) validateContentCtx(ctx stdctx.Context, content string, origi
 			lineResults = v.appendHTTPAuthResults(lineResults, auths, line, lineNum, originalPath, content, contextInsights, lineHasShellVars, envType, isShellScript, govKeyLine)
 		}
 
+		// #902 Part C: crypt(3)/PHC password hashes and DES crypt in shadow/passwd/htpasswd records.
+		// Structural and additive like the HTTP-auth source above. See password_hashes.go.
+		if hashes := v.findPasswordHashes(line, originalPath); len(hashes) > 0 {
+			lineResults = v.appendPasswordHashResults(lineResults, hashes, line, lineNum, originalPath, content, contextInsights, lineHasShellVars, envType, isShellScript, govKeyLine)
+		}
+
 		// #766: a password or token in URI user info. A separate, ADDITIVE source: it runs outside
 		// containsSecretIndicators (so none of that function's arms changes, and a line it skips,
 		// like an npm "resolved" registry URL, is still parsed), it is never gated (#753), and it
@@ -956,6 +962,10 @@ func (v *Validator) validateContentCtx(ctx stdctx.Context, content string, origi
 	// containers outside 5-dash PEM (PuTTY, ssh.com, OpenVPN, age, other armour labels) are added
 	// where no finding already reports their bytes. See private_key_containers.go.
 	matches = v.appendPrivateKeyContainers(matches, len(multiLineMatches), content, originalPath, contextInsights, isShellScript, envType)
+
+	// #902 Part C: private members of a JSON Web Key (`d`, `p`, `q`, `dp`, `dq`, `qi`, `k` in an
+	// object with a `"kty"`). See jwk_private.go.
+	matches = v.appendJWKPrivateMembers(matches, content, originalPath, contextInsights, isShellScript, envType)
 
 	return matches, nil
 }
@@ -1969,6 +1979,15 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 		return confidence, checks
 	}
 
+	// One exact password-hash grammar (#902 Part C): the grammar is the evidence, scored like a
+	// certificate, so a test/dev marker demotes it but never drops it.
+	if isPasswordHashText(match) {
+		confidence = 90.0
+		checks["specific_pattern"] = true
+		checks["valid_format"] = true
+		return confidence, checks
+	}
+
 	// Length check
 	if len(match) < 8 {
 		confidence -= 30
@@ -2642,7 +2661,11 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 		confidenceThreshold := cand.threshold
 		// Skip shell variable references that aren't actual secret values
 		// Only perform expensive regex checks if the line potentially has shell variables
-		if lineHasShellVars && v.isMatchShellVariableReference(line, match) {
+		// An exact password-hash grammar is exempt (#902 Part C): `"$6$<salt>$..."` with a
+		// letter-led salt reads as the variable `$<salt>`, which made a hash's detection depend on
+		// its random salt. The grammar is exact and right-bounded, so `"$USER$HOST$SUFFIX"` is not
+		// exempt.
+		if lineHasShellVars && !isPasswordHashText(match) && v.isMatchShellVariableReference(line, match) {
 			continue
 		}
 
