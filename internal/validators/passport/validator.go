@@ -546,6 +546,9 @@ func mrzCheckDigit(s string) int {
 // check digit only proves internal consistency, so without this a 44-character
 // token could satisfy the arithmetic while carrying "99" as a month; the range
 // test costs nothing and removes that class.
+//
+// The one check digit that may be "<" is the personal number's, and only when the
+// personal number is all fillers.
 func mrzLine2ChecksValid(s string) bool {
 	if len(s) != 44 {
 		return false
@@ -575,6 +578,14 @@ func mrzLine2ChecksValid(s string) bool {
 		return false
 	}
 
+	// An unused personal number (all fillers) has the check digit "0" or "<", at the
+	// issuing State's option (ICAO Doc 9303 Part 4, 4.2.2.2, position 43). The filler is
+	// worth 0, so the composite below verifies the same either way.
+	personalWant := personalCD
+	if personalCD == '<' && strings.Count(personal, "<") == len(personal) {
+		personalWant = '0'
+	}
+
 	type field struct {
 		text string
 		want byte
@@ -583,7 +594,7 @@ func mrzLine2ChecksValid(s string) bool {
 		{docNum, docCD},
 		{dob, dobCD},
 		{exp, expCD},
-		{personal, personalCD},
+		{personal, personalWant},
 		{docNum + string(docCD) + dob + string(dobCD) + exp + string(expCD) + personal + string(personalCD), compositeCD},
 	} {
 		got := mrzCheckDigit(f.text)
