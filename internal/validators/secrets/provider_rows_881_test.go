@@ -171,3 +171,29 @@ func TestSlackDocumentedShape(t *testing.T) {
 		t.Errorf("a 10-character secret typed %q, want none", typ)
 	}
 }
+
+// TestPrefixInsideAnotherTokenIsNotASecondFinding: the first segment of a fine-grained GitHub token
+// ends `hf`, so the token holds `hf_` and 59 more characters. That is the same secret, reported
+// once, as the token; and two tokens side by side are still two findings.
+func TestPrefixInsideAnotherTokenIsNotASecondFinding(t *testing.T) {
+	v := NewValidator()
+	r := rand.New(rand.NewSource(11))
+	pat := "github_pat_" + syntheticBody(r, testAlnum, 20) + "hf" + "_" + syntheticBody(r, testAlnum, 59)
+	for _, line := range []string{pat, "token: " + pat, "Please use " + pat + " now."} {
+		ms, err := v.ValidateContent(line+"\n", "settings.txt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(ms) != 1 || ms[0].Text != pat || ms[0].Type != "GITHUB_TOKEN" {
+			t.Errorf("%q: want one GITHUB_TOKEN over the whole token, got %v", line, ms)
+		}
+	}
+	other := "hf_" + syntheticBody(r, testAlnum, 34)
+	ms, err := v.ValidateContent(pat+" "+other+"\n", "settings.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 2 {
+		t.Errorf("two tokens side by side: want 2 findings, got %d: %v", len(ms), ms)
+	}
+}

@@ -2,6 +2,7 @@ package secrets
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -441,8 +442,12 @@ func findProviderRuns(line string) []candidate {
 	for _, r := range runs {
 		ends[r.end] = struct{}{}
 	}
+	nested := nestedRuns(len(runs), func(i int) (int, int) { return runs[i].start, runs[i].end })
 	out := make([]candidate, 0, len(runs))
-	for _, r := range runs {
+	for i, r := range runs {
+		if nested[i] {
+			continue
+		}
 		if r.typ == "STRIPE_API_KEY" {
 			if _, boundary := ends[r.start]; !boundary && stripeLeftGlue(line, r.start, r.bodyStart, r.end) {
 				continue
@@ -451,6 +456,44 @@ func findProviderRuns(line string) []candidate {
 		out = append(out, r.candidate)
 	}
 	return out
+}
+
+// nestedRuns marks the runs that lie wholly inside another run. A prefix inside a longer token
+// is body bytes that happen to spell a prefix, which the straddle cut already says for the end of
+// a run; this says it for the middle. It matters since #881 for short prefixes over a charset
+// that carries `_`: a `github_pat_` token whose first segment ends in `hf` holds `hf_` and 59 more
+// characters, which is a second, nested finding over the same secret (4 in 20,000 random
+// tokens). Runs of one line are few, so a sort and a sweep; a run that only partly overlaps the
+// previous one is kept, the leak-safe direction.
+func nestedRuns(n int, span func(int) (start, end int)) []bool {
+	nested := make([]bool, n)
+	if n < 2 {
+		return nested
+	}
+	order := make([]int, n)
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		sa, ea := span(order[a])
+		sb, eb := span(order[b])
+		if sa != sb {
+			return sa < sb
+		}
+		return ea > eb
+	})
+	maxEnd := -1
+	for k, i := range order {
+		start, end := span(i)
+		if k > 0 && start < maxEnd && end <= maxEnd {
+			nested[i] = true
+			continue
+		}
+		if end > maxEnd {
+			maxEnd = end
+		}
+	}
+	return nested
 }
 
 // straddleCut returns the offset in [floor, end) at which a provider prefix
