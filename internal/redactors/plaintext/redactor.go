@@ -200,12 +200,11 @@ func (ptr *PlainTextRedactor) RedactDocument(originalPath string, outputPath str
 	}, nil
 }
 
-// redactText performs the actual text redaction based on matches and strategy. scope is the
-// synthetic strategy's memory for the invocation this text belongs to.
-func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector.Match, strategy redactors.RedactionStrategy, scope redactors.SyntheticScope) (string, []redactors.RedactionMapping, error) {
-	if len(matches) == 0 {
-		return originalText, []redactors.RedactionMapping{}, nil
-	}
+// redactPositional is redactText's positional pass: it writes every overlap group at its resolved
+// position and returns the rewritten text, the match set the completeness pass must judge, and the
+// redaction map. Split out so the pass's cost can be measured apart from the completeness sweep
+// (redactverify.SweepRemaining), whose own cost is outside this package.
+func (ptr *PlainTextRedactor) redactPositional(originalText string, matches []detector.Match, strategy redactors.RedactionStrategy, scope redactors.SyntheticScope) (*spliceText, []detector.Match, []redactors.RedactionMapping, error) {
 
 	// Restore bounded (display-truncated) consolidated match texts to their
 	// full-line spans FIRST: redaction locates matches by searching for
@@ -245,7 +244,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 	groups := redactors.ResolveOverlaps(matches)
 	units, err := ptr.writeUnits(groups, matches, strategy, scope)
 	if err != nil {
-		return "", nil, err
+		return nil, nil, nil, err
 	}
 
 	redactedText := newSpliceText(originalText)
@@ -337,14 +336,14 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 							"fallback_error":    simpleErr,
 						})
 						if unit.group.IsGroup() {
-							return "", nil, unwritable("not located in the text")
+							return nil, nil, nil, unwritable("not located in the text")
 						}
 						continue
 					}
 				} else {
 					// Skip this match if correlation fails and fallback is disabled
 					if unit.group.IsGroup() {
-						return "", nil, unwritable("position correlation failed and fallback is disabled")
+						return nil, nil, nil, unwritable("position correlation failed and fallback is disabled")
 					}
 					continue
 				}
@@ -361,7 +360,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 					"match_type":   match.Type,
 				})
 				if unit.group.IsGroup() {
-					return "", nil, unwritable("not located in the text")
+					return nil, nil, nil, unwritable("not located in the text")
 				}
 				continue
 			}
@@ -381,7 +380,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 				"correlation_used": correlationUsed,
 			})
 			if unit.group.IsGroup() {
-				return "", nil, unwritable("invalid position")
+				return nil, nil, nil, unwritable("invalid position")
 			}
 			continue
 		}
@@ -412,7 +411,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 			} else {
 				// Skip this match if we can't find the correct position
 				if unit.group.IsGroup() {
-					return "", nil, unwritable("not located in the text")
+					return nil, nil, nil, unwritable("not located in the text")
 				}
 				continue
 			}
@@ -484,6 +483,20 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 			"confidence":         confidence,
 			"correlation_used":   correlationUsed,
 		})
+	}
+
+	return redactedText, sweepMatches, redactionMap, nil
+}
+
+// redactText performs the actual text redaction based on matches and strategy. scope is the
+// synthetic strategy's memory for the invocation this text belongs to.
+func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector.Match, strategy redactors.RedactionStrategy, scope redactors.SyntheticScope) (string, []redactors.RedactionMapping, error) {
+	if len(matches) == 0 {
+		return originalText, []redactors.RedactionMapping{}, nil
+	}
+	redactedText, sweepMatches, redactionMap, err := ptr.redactPositional(originalText, matches, strategy, scope)
+	if err != nil {
+		return "", nil, err
 	}
 
 	// COMPLETENESS PASS. Everything above is positional and best-effort: correlation can fail, spans
