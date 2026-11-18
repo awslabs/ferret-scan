@@ -150,6 +150,10 @@ func runStdinScan(in stdinScanInputs) int {
 		}
 	}
 
+	// --quiet / config quiet as the operator wrote it, before the pre-commit default below sets it:
+	// the unmatched-rules note stays on in pre-commit mode (#885) and goes off for an explicit --quiet.
+	explicitQuiet := finalCfg.quiet
+
 	// Apply pre-commit overrides for non-color/format defaults that the
 	// main path would normally apply via precommitConfig.
 	if precommitConfig != nil {
@@ -367,7 +371,9 @@ func runStdinScan(in stdinScanInputs) int {
 		writeExpiredRulesWarning(os.Stderr, expiredSkips, oldestExpiry)
 		// And for a rule that matched nothing, the file path's note (#885). With stderr carrying the
 		// findings document the count rides in its stats block instead.
-		suppressions.WriteUnmatchedRulesNote(os.Stderr, unmatched)
+		if !explicitQuiet {
+			suppressions.WriteUnmatchedRulesNote(os.Stderr, unmatched)
+		}
 	}
 
 	if !shouldSuppressStdinProse(finalCfg, precommitConfig, in.outputFile) {
