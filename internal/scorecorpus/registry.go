@@ -93,6 +93,8 @@ func init() {
 // TestUnscoredChecksAreAccountedFor keeps it honest: every name in core.CheckNames()
 // must either be scored or appear here with a reason.
 var UnscoredChecks = map[string]string{
+	"NATIONAL_ID": "new in #884 Part B; its recall and decoy cases are validator tests " +
+		"(internal/validators/nationalid) and one golden case until a scored case is added.",
 	"OTP": "scope is provisioning secrets (otpauth:// URIs, base32 seeds, recovery " +
 		"codes), verified working; transient 6-digit codes are deliberately out of scope.",
 	"SOCIAL_MEDIA": "config-gated by design; verified working with the shipped " +

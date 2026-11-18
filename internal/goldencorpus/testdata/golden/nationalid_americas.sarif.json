@@ -1,0 +1,463 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:nationalid_americas>"
+                },
+                "region": {
+                  "endColumn": 23,
+                  "snippet": {
+                    "text": "CPF nº 172.984.064-77"
+                  },
+                  "startColumn": 9,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "National Identification Number Detected in <golden:nationalid_americas> at line 1 (confidence: 95.0% - HIGH). Matched text: '172.984.064-77'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "c5263268fed6db7be4babc8b26f182302fe4aa28fad8cdd428c2e97401f0669b"
+          },
+          "properties": {
+            "confidence": 95,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "check_digit_valid": true,
+              "confidence_adjustment": 0,
+              "context_confidence": 0.5,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "country": "BR",
+              "original_confidence": 95,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "cpf"
+            ],
+            "validator": "nationalid"
+          },
+          "rank": 97.5,
+          "ruleId": "BR_CPF"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:nationalid_americas>"
+                },
+                "region": {
+                  "endColumn": 26,
+                  "snippet": {
+                    "text": "Employee SIN: 613 891 563"
+                  },
+                  "startColumn": 15,
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "National Identification Number Detected in <golden:nationalid_americas> at line 5 (confidence: 95.0% - HIGH). Matched text: '613 891 563'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "6ac8c2d3cb2d51aa847d8077d86ee9d82ec8b510ba47e03dfc4eb3235499f53a"
+          },
+          "properties": {
+            "confidence": 95,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "check_digit_valid": true,
+              "confidence_adjustment": 0,
+              "context_confidence": 0.5,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "country": "CA",
+              "original_confidence": 95,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "sin"
+            ],
+            "validator": "nationalid"
+          },
+          "rank": 97.5,
+          "ruleId": "CA_SIN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:nationalid_americas>"
+                },
+                "region": {
+                  "endColumn": 37,
+                  "snippet": {
+                    "text": "Social Insurance Number: 916-635-287"
+                  },
+                  "startColumn": 26,
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "National Identification Number Detected in <golden:nationalid_americas> at line 6 (confidence: 95.0% - HIGH). Matched text: '916-635-287'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "4f86b175c3c0d35cb3399d36d86ef0042033c867d29ae52f6ff89b1a89838516"
+          },
+          "properties": {
+            "confidence": 95,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "check_digit_valid": true,
+              "confidence_adjustment": 0,
+              "context_confidence": 0.5,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "country": "CA",
+              "original_confidence": 95,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "social insurance number"
+            ],
+            "validator": "nationalid"
+          },
+          "rank": 97.5,
+          "ruleId": "CA_SIN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:nationalid_americas>"
+                },
+                "region": {
+                  "endColumn": 17,
+                  "snippet": {
+                    "text": "RUT: 6.001.216-4"
+                  },
+                  "startColumn": 6,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "National Identification Number Detected in <golden:nationalid_americas> at line 2 (confidence: 95.0% - HIGH). Matched text: '6.001.216-4'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "af62a72f2dfd442025fa4ee92f8bd52d27bd9e52597cdd3fa9fa71aa90129c93"
+          },
+          "properties": {
+            "confidence": 95,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "check_digit_valid": true,
+              "confidence_adjustment": 0,
+              "context_confidence": 0.5,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "country": "CL",
+              "original_confidence": 95,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "rut"
+            ],
+            "validator": "nationalid"
+          },
+          "rank": 97.5,
+          "ruleId": "CL_RUT"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:nationalid_americas>"
+                },
+                "region": {
+                  "endColumn": 25,
+                  "snippet": {
+                    "text": "CURP: GOMR850412MJCMNL00"
+                  },
+                  "startColumn": 7,
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "National Identification Number Detected in <golden:nationalid_americas> at line 7 (confidence: 95.0% - HIGH). Matched text: 'GOMR850412MJCMNL00'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "39c157feb73d84c33458c03f76263c3f07c9ae1365d5cbb892ad310386de61a8"
+          },
+          "properties": {
+            "confidence": 95,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "check_digit_valid": true,
+              "confidence_adjustment": 0,
+              "context_confidence": 0.5,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "country": "MX",
+              "original_confidence": 95,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "curp"
+            ],
+            "validator": "nationalid"
+          },
+          "rank": 97.5,
+          "ruleId": "MX_CURP"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:nationalid_americas>"
+                },
+                "region": {
+                  "endColumn": 19,
+                  "snippet": {
+                    "text": "CUIL 20-12173870-9"
+                  },
+                  "startColumn": 6,
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "National Identification Number Detected in <golden:nationalid_americas> at line 4 (confidence: 90.0% - HIGH). Matched text: '20-12173870-9'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "5853d4a52d2e60d4db0025e28fcf1ad9b628e6f8f0555aae4371a16f4a4b4704"
+          },
+          "properties": {
+            "confidence": 90,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "check_digit_valid": true,
+              "confidence_adjustment": 0,
+              "context_confidence": 0.5,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "country": "AR",
+              "original_confidence": 90,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "cuil"
+            ],
+            "validator": "nationalid"
+          },
+          "rank": 95,
+          "ruleId": "AR_CUIL"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:nationalid_americas>"
+                },
+                "region": {
+                  "endColumn": 14,
+                  "snippet": {
+                    "text": "RUN 6001216-4"
+                  },
+                  "startColumn": 5,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "National Identification Number Detected in <golden:nationalid_americas> at line 3 (confidence: 90.0% - HIGH). Matched text: '6001216-4'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "b577d6dbba1508179a1c74b962435f31f6cc738ed92c27337f5a551b4cd70921"
+          },
+          "properties": {
+            "confidence": 90,
+            "confidenceLevel": "HIGH",
+            "metadata": {
+              "check_digit_valid": true,
+              "confidence_adjustment": 0,
+              "context_confidence": 0.5,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "country": "CL",
+              "original_confidence": 90,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "run"
+            ],
+            "validator": "nationalid"
+          },
+          "rank": 95,
+          "ruleId": "CL_RUT"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label."
+              },
+              "help": {
+                "text": "Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#ar_cuil",
+              "id": "AR_CUIL",
+              "shortDescription": {
+                "text": "National Identification Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label."
+              },
+              "help": {
+                "text": "Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#br_cpf",
+              "id": "BR_CPF",
+              "shortDescription": {
+                "text": "National Identification Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label."
+              },
+              "help": {
+                "text": "Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#ca_sin",
+              "id": "CA_SIN",
+              "shortDescription": {
+                "text": "National Identification Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label."
+              },
+              "help": {
+                "text": "Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#cl_rut",
+              "id": "CL_RUT",
+              "shortDescription": {
+                "text": "National Identification Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label."
+              },
+              "help": {
+                "text": "Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#mx_curp",
+              "id": "MX_CURP",
+              "shortDescription": {
+                "text": "National Identification Number Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

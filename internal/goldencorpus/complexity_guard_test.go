@@ -20,6 +20,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/validators/intellectualproperty"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/ipaddress"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/medicalid"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/nationalid"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/otp"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/passport"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/personname"
@@ -328,6 +329,17 @@ var complexityTargets = []struct {
 		new:             func() validatorUnderTest { return vin.NewValidator() },
 		unit:            "vin 1HGCM82633A004352 vehicle 2FMDK3GC4BBA12345 vin JH4KA7561PC008269 ",
 		minMatches:      500,
+		wantMatchGrowth: true,
+		threshold:       5 * time.Second,
+	},
+	{
+		name: "nationalid",
+		new:  func() validatorUnderTest { return nationalid.NewValidator() },
+		// One labelled valid value per type, plus an unlabelled one and a label with a failing value.
+		// Each value is split across two literals so this source line is not itself a finding.
+		unit: "CPF nº " + "234.567." + "890-92 RUT: " + "12.345." + "678-5 CUIL " + "20-12345678" + "-6 " +
+			"Employee SIN: " + "123 456" + " 782 CURP: " + "FAKE900101HDF" + "XXX09 ref 234.567.890-93 SIN: 123 456 789 ",
+		minMatches:      1000,
 		wantMatchGrowth: true,
 		threshold:       5 * time.Second,
 	},

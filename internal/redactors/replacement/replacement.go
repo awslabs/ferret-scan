@@ -22,6 +22,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/redactors"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/nationalid"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/personname"
 
 	"github.com/awslabs/ferret-scan/v2/internal/textnorm"
@@ -702,6 +703,8 @@ func FormatPreserving(original, dataType string) string {
 		return preservePhone(original)
 	case "IP_ADDRESS":
 		return preserveIP(original)
+	case nationalid.TypeBRCPF, nationalid.TypeCLRUT, nationalid.TypeARCUIL, nationalid.TypeCASIN, nationalid.TypeMXCURP:
+		return nationalid.Mask(original)
 	default:
 		return strings.Repeat("*", len(original))
 	}
@@ -937,6 +940,16 @@ func generatorFor(dataType, value string) synthGen {
 			}}
 	case "IP_ADDRESS":
 		return synthGen{family: "IP_ADDRESS", key: ipKey(value), distinct: true, draw: drawIP, render: verbatim}
+	case nationalid.TypeBRCPF, nationalid.TypeCLRUT, nationalid.TypeARCUIL, nationalid.TypeCASIN, nationalid.TypeMXCURP:
+		// #884 Part B: a replacement in the value's own separators that fails the number's check
+		// digit, so the copy never re-detects; one number spelled with and without separators is one
+		// value.
+		key := nationalid.Key(value)
+		return synthGen{family: dataType, key: key, distinct: true,
+			draw: func(s *source, _ int) (string, error) {
+				return nationalid.DrawSynthetic(dataType, key, s.intn), nil
+			},
+			render: func(stored string) string { return nationalid.RenderSynthetic(value, stored) }}
 	case "CARD_TRACK_DATA":
 		return synthGen{family: "CARD_TRACK_DATA", key: value, distinct: true,
 			draw:   func(s *source, _ int) (string, error) { return syntheticTrack(value, s), nil },

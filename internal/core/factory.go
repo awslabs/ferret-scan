@@ -19,6 +19,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/validators/ipaddress"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/medicalid"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/metadata"
+	"github.com/awslabs/ferret-scan/v2/internal/validators/nationalid"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/otp"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/passport"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/personname"
@@ -44,6 +45,7 @@ var validatorConstructors = map[string]func() detector.Validator{
 	"PHONE":                 func() detector.Validator { return phone.NewValidator() },
 	"IP_ADDRESS":            func() detector.Validator { return ipaddress.NewValidator() },
 	"MEDICAL_ID":            func() detector.Validator { return medicalid.NewValidator() },
+	"NATIONAL_ID":           func() detector.Validator { return nationalid.NewValidator() },
 	"OTP":                   func() detector.Validator { return otp.NewValidator() },
 	"PASSPORT":              func() detector.Validator { return passport.NewValidator() },
 	"PHYSICAL_ADDRESS":      func() detector.Validator { return address.NewValidator() },
