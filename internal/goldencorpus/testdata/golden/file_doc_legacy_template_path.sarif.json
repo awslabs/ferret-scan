@@ -37,6 +37,9 @@
           "message": {
             "text": "Social Security Number Detected in from_template.doc at line 3 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "ea7e2c7b0d0605504dcf0d7e8d3c4f7f1336fa1d9865e831197764fb49d9bac9"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -97,6 +100,9 @@
           ],
           "message": {
             "text": "Sensitive Metadata Detected in from_template.doc at line 2 (confidence: 85.0% - MEDIUM). Matched text: '\\\\corp-fs01\\templates\\quarterly.dot'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "f0ea75ef45c134315e8679f328f8049939077d635ff5ba0db1a17f53c3c22673"
           },
           "properties": {
             "confidence": 85,
@@ -160,6 +166,9 @@
           ],
           "message": {
             "text": "Sensitive Metadata Detected in from_template.doc at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "092296f86d7a6c5c6841234893a2a752100eb100236d0084c382fd196b217fa7"
           },
           "properties": {
             "confidence": 60,

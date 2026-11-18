@@ -31,6 +31,9 @@
           "message": {
             "text": "Credit Card Number Detected in <golden:context_soft_negative_labels> at line 2 (confidence: 100.0% - HIGH). Matched text: '5425233430109903'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "20f6010a9af72c9195b4e5cb90baa4e5ebb5f2bfb0163028933cd6a9e576a0be"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -96,6 +99,9 @@
           "message": {
             "text": "Credit Card Number Detected in <golden:context_soft_negative_labels> at line 1 (confidence: 100.0% - HIGH). Matched text: '4532015112830366'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "bb31369ffa759a4015c827e727ea2792d3db36fb144a31828923e841753939cb"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -160,6 +166,9 @@
           ],
           "message": {
             "text": "Medical Identifier Detected in <golden:context_soft_negative_labels> at line 3 (confidence: 65.0% - MEDIUM). Matched text: '1234567'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "d475094d5bc1f0eab363a66035922095738dd3354a17a60c4c809c0cb02e28af"
           },
           "properties": {
             "confidence": 65,
@@ -227,6 +236,9 @@
           "message": {
             "text": "Credit Card Number Detected in <golden:context_soft_negative_labels> at line 4 (confidence: 15.0% - LOW). Matched text: '490154203237518'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "518897ed1148f688fc17934bbac20c65615fd0e319785e6ae85f8e540c699a54"
+          },
           "properties": {
             "confidence": 15,
             "confidenceLevel": "LOW",
@@ -291,6 +303,9 @@
           ],
           "message": {
             "text": "Credit Card Number Detected in <golden:context_soft_negative_labels> at line 5 (confidence: 15.0% - LOW). Matched text: '4532015112830366'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "070eba92ecc8eaf61f83a128e54061e03cb301e03c23b3aa39843b7ae65091f8"
           },
           "properties": {
             "confidence": 15,

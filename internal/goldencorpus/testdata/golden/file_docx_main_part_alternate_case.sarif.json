@@ -37,6 +37,9 @@
           "message": {
             "text": "Social Security Number Detected in alt_case.docx at line 3 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "49a2464e2832a24a3f873537a463bfa19e077274c89254922c17359280f6e1ec"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -104,6 +107,9 @@
           "message": {
             "text": "Credit Card Number Detected in alt_case.docx at line 5 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "6ee48006b08c6627c2ff55796239fc768a9e492ddafdcbab010f60a8791d2368"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -164,6 +170,9 @@
           "message": {
             "text": "Sensitive Metadata Detected in alt_case.docx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "5b317b1c10d58a739c28b7120cc90c85896831349cdbb6fcfc75ea95603eb27b"
+          },
           "properties": {
             "confidence": 60,
             "confidenceLevel": "MEDIUM",
@@ -223,6 +232,9 @@
           ],
           "message": {
             "text": "Sensitive Metadata Detected in alt_case.docx at line 2 (confidence: 60.0% - MEDIUM). Matched text: 'Ops Reviewer'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "b983e38404b31bb3785f9df9181ef53cf2657abe2fc2d4e882cd87f2747ed2fa"
           },
           "properties": {
             "confidence": 60,

@@ -31,6 +31,9 @@
           "message": {
             "text": "Medical Identifier Detected in <golden:medical_hex_member_ids> at line 10 (confidence: 100.0% - HIGH). Matched text: 'AB1234563'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "3c73dc5f1e0750a99950e42b82dd87d509eaec8e42284794f53be4a97f7176a9"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -97,6 +100,9 @@
           "message": {
             "text": "Medical Identifier Detected in <golden:medical_hex_member_ids> at line 1 (confidence: 80.0% - MEDIUM). Matched text: 'E1122334455'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "d3744e98a687ac56410e86b124154e54e834c0144fba679520255f4a147df88b"
+          },
           "properties": {
             "confidence": 80,
             "confidenceLevel": "MEDIUM",
@@ -159,6 +165,9 @@
           ],
           "message": {
             "text": "Medical Identifier Detected in <golden:medical_hex_member_ids> at line 2 (confidence: 80.0% - MEDIUM). Matched text: 'ABCDEF123456'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "89361f4ccaeeca4d8714b56e0e899732bbeade300de1ea661ada2f901191f106"
           },
           "properties": {
             "confidence": 80,
@@ -223,6 +232,9 @@
           "message": {
             "text": "Medical Identifier Detected in <golden:medical_hex_member_ids> at line 3 (confidence: 80.0% - MEDIUM). Matched text: 'BEEF1234567'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "e845da5bf2539922e6c711c23d9315871f9147f761788a8d0b5800ffe7267f06"
+          },
           "properties": {
             "confidence": 80,
             "confidenceLevel": "MEDIUM",
@@ -286,6 +298,9 @@
           "message": {
             "text": "Medical Identifier Detected in <golden:medical_hex_member_ids> at line 4 (confidence: 80.0% - MEDIUM). Matched text: '1234567890AB'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "74e90d249ee6899118d5dba44cc3d2c33ca98cf0fefb38088685d56df4ebaca3"
+          },
           "properties": {
             "confidence": 80,
             "confidenceLevel": "MEDIUM",
@@ -348,6 +363,9 @@
           ],
           "message": {
             "text": "Medical Identifier Detected in <golden:medical_hex_member_ids> at line 5 (confidence: 80.0% - MEDIUM). Matched text: '55DEADBEEF12'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "1d622e734076a20ed127709703f5808c5c0548e2ccaace49b08f95eedb7f0608"
           },
           "properties": {
             "confidence": 80,

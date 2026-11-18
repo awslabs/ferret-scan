@@ -31,6 +31,9 @@
           "message": {
             "text": "Vehicle Identification Number Detected in <golden:vin_check_digit> at line 1 (confidence: 100.0% - HIGH). Matched text: '1HGCM82633A004352'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "0899153b19c4dbfe32f1b2a87a85269da92d6b4671752b73ec64befd7dd2a8ad"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -95,6 +98,9 @@
           ],
           "message": {
             "text": "Vehicle Identification Number Detected in <golden:vin_check_digit> at line 3 (confidence: 100.0% - HIGH). Matched text: 'JH4KA7561PC008269'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "c3ea4257b78f8424001ff2539371ade77f48ee099c6b89dd1e7c44428dde651d"
           },
           "properties": {
             "confidence": 100,

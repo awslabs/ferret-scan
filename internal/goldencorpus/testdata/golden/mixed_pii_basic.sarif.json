@@ -31,6 +31,9 @@
           "message": {
             "text": "Social Security Number Detected in <golden:mixed_pii_basic> at line 3 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "dd3dddcc83cb35d5a7e7df1f8c23c63e634e19f0f9fc6c4453118d9777458ae5"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -97,6 +100,9 @@
           "message": {
             "text": "Credit Card Number Detected in <golden:mixed_pii_basic> at line 4 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "cc33d9b0a1d9a64537780c1d73ff2a99287e029d80dcf844515b21f55654b2c5"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -161,6 +167,9 @@
           ],
           "message": {
             "text": "Email Address Detected in <golden:mixed_pii_basic> at line 1 (confidence: 33.0% - LOW). Matched text: 'john.doe@example.com'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "04f94d9913bebac4f3ba5c3d5d07521323374b76a9f0ac96b45329811c8bc5e1"
           },
           "properties": {
             "confidence": 33,
@@ -236,6 +245,9 @@
           "message": {
             "text": "Secret or API Key Detected in <golden:mixed_pii_basic> at line 2 (confidence: 15.0% - LOW). Matched text: 'AKIAIOSFODNN7EXAMPLE'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "f5619d759527c3988b897203f181e4cd5b64e2423a527822ea87a1cb30144354"
+          },
           "properties": {
             "confidence": 15,
             "confidenceLevel": "LOW",
@@ -300,6 +312,9 @@
           ],
           "message": {
             "text": "Phone Number Detected in <golden:mixed_pii_basic> at line 1 (confidence: 15.0% - LOW). Matched text: '212-555-0142'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "77e9963deb5a59aca135b86d927845de880e7b28589d5bd469b42b23add10485"
           },
           "properties": {
             "confidence": 15,

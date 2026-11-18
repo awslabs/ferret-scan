@@ -15,6 +15,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/explain"
 	"github.com/awslabs/ferret-scan/v2/internal/formatters"
 	"github.com/awslabs/ferret-scan/v2/internal/formatters/shared"
+	"github.com/awslabs/ferret-scan/v2/internal/suppressions"
 )
 
 // VulnerabilityMapper converts ferret-scan detector matches to SARIF results
@@ -80,15 +81,25 @@ func (m *VulnerabilityMapper) MapToSARIFResult(match detector.Match, options for
 	m.ruleManager.GetOrCreateRule(match.Type)
 
 	result := &SARIFResult{
-		RuleID:     match.Type,
-		Level:      LevelError, // All sensitive data findings are errors
-		Message:    m.buildMessage(match, options),
-		Locations:  []SARIFLocation{m.buildLocation(match, options)},
-		Properties: m.buildProperties(match, options),
-		Rank:       m.calculateRank(match),
+		RuleID:              match.Type,
+		Level:               LevelError, // All sensitive data findings are errors
+		Message:             m.buildMessage(match, options),
+		Locations:           []SARIFLocation{m.buildLocation(match, options)},
+		PartialFingerprints: buildPartialFingerprints(match),
+		Properties:          m.buildProperties(match, options),
+		Rank:                m.calculateRank(match),
 	}
 
 	return result, nil
+}
+
+// buildPartialFingerprints is every result's partialFingerprints map: the
+// finding's line-move-stable identity under its versioned key. One entry
+// today; a future formula adds a key beside it rather than changing this one.
+func buildPartialFingerprints(match detector.Match) map[string]string {
+	return map[string]string{
+		suppressions.FindingIdentityFingerprintName: suppressions.FindingIdentityFingerprint(match),
+	}
 }
 
 // MapSuppressedMatch converts a suppressed match to a SARIF result with level "none"
@@ -98,11 +109,12 @@ func (m *VulnerabilityMapper) MapSuppressedMatch(suppressed detector.SuppressedM
 	m.ruleManager.GetOrCreateRule(suppressed.Match.Type)
 
 	result := &SARIFResult{
-		RuleID:     suppressed.Match.Type,
-		Level:      LevelNone, // Suppressed results use "none" level
-		Message:    m.buildMessage(suppressed.Match, options),
-		Locations:  []SARIFLocation{m.buildLocation(suppressed.Match, options)},
-		Properties: m.buildPropertiesForSuppressed(suppressed, options),
+		RuleID:              suppressed.Match.Type,
+		Level:               LevelNone, // Suppressed results use "none" level
+		Message:             m.buildMessage(suppressed.Match, options),
+		Locations:           []SARIFLocation{m.buildLocation(suppressed.Match, options)},
+		PartialFingerprints: buildPartialFingerprints(suppressed.Match),
+		Properties:          m.buildPropertiesForSuppressed(suppressed, options),
 		Suppressions: []SARIFSuppression{
 			{
 				Kind:          SuppressionKindInSource,

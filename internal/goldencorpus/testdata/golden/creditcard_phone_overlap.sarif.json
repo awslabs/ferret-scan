@@ -31,6 +31,9 @@
           "message": {
             "text": "Credit Card Number Detected in <golden:creditcard_phone_overlap> at line 1 (confidence: 100.0% - HIGH). Matched text: '4532 0151 1283 0366'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "ad1780f6a53e22e3684ce8e9d9a517753d5014adb71160027f6eec9a41b53517"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -95,6 +98,9 @@
           ],
           "message": {
             "text": "Phone Number Detected in <golden:creditcard_phone_overlap> at line 2 (confidence: 15.0% - LOW). Matched text: '212-555-0142'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "382714c2962f38facb9efbe9322afa657cd2bb0316f4e422998d7e29272449d7"
           },
           "properties": {
             "confidence": 15,

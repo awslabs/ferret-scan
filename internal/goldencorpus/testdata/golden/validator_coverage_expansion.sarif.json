@@ -31,6 +31,9 @@
           "message": {
             "text": "Physical Address Detected in <golden:validator_coverage_expansion> at line 1 (confidence: 95.0% - HIGH). Matched text: 'PSC 1523, Box 25, APO AE 09009'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "cfb7aa0dd879944d9df1948eff21d4877331bfefb5d229d2e8bea5b94e82e2dc"
+          },
           "properties": {
             "confidence": 95,
             "confidenceLevel": "HIGH",
@@ -86,6 +89,9 @@
           ],
           "message": {
             "text": "Physical Address Detected in <golden:validator_coverage_expansion> at line 3 (confidence: 95.0% - HIGH). Matched text: '123 O'Brien St'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "f0db3040967e8fecc95baf514bd5fba51522afb8aa45f3f5ea9744d5dc183d8d"
           },
           "properties": {
             "confidence": 95,
@@ -148,6 +154,9 @@
           "message": {
             "text": "Physical Address Detected in <golden:validator_coverage_expansion> at line 2 (confidence: 90.0% - HIGH). Matched text: 'Rural Route 3 Box 88'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "413bef2494c387d467d6887d1d8a23214353e0a737bec1bc2d5d4e971ed5aab8"
+          },
           "properties": {
             "confidence": 90,
             "confidenceLevel": "HIGH",
@@ -203,6 +212,9 @@
           ],
           "message": {
             "text": "Physical Address Detected in <golden:validator_coverage_expansion> at line 4 (confidence: 90.0% - HIGH). Matched text: '456 King-Smith Rd'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "604aae08fe1bcac32fd36c94e0e180fbcac8755205dba3dd41394d4c9e0f46c5"
           },
           "properties": {
             "confidence": 90,
@@ -264,6 +276,9 @@
           ],
           "message": {
             "text": "Driver's License Number Detected in <golden:validator_coverage_expansion> at line 5 (confidence: 85.0% - MEDIUM). Matched text: 'D12345678901234'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "89da922c2152fed34bbaeb84e91f2b3d0a05919aebbb7edb4c8798f05871d65b"
           },
           "properties": {
             "confidence": 85,
@@ -332,6 +347,9 @@
           "message": {
             "text": "Multi-Factor Authentication Secret Detected in <golden:validator_coverage_expansion> at line 7 (confidence: 85.0% - MEDIUM). Matched text: 'k5cuwy3znrxw4z3t'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "2f576a565e375eab5af030b6780add2debd584c0194b6a246b02c08ec8e77043"
+          },
           "properties": {
             "confidence": 85,
             "confidenceLevel": "MEDIUM",
@@ -394,6 +412,9 @@
           ],
           "message": {
             "text": "Driver's License Number Detected in <golden:validator_coverage_expansion> at line 6 (confidence: 70.0% - MEDIUM). Matched text: 'J1234567890123'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "7c3724973727cba442b57f87ff372d4e6f36ee7b9a688caa151f6c7196392cc7"
           },
           "properties": {
             "confidence": 70,
@@ -459,6 +480,9 @@
           ],
           "message": {
             "text": "Physical Address Detected in <golden:validator_coverage_expansion> at line 8 (confidence: 40.0% - LOW). Matched text: 'RR 4'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "3c51d99ffbe877b8f325319dba06b89b6847403c46aedc430b1f06bb2f9878a0"
           },
           "properties": {
             "confidence": 40,

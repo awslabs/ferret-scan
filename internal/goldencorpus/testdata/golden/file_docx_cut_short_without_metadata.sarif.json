@@ -37,6 +37,9 @@
           "message": {
             "text": "Email Address Detected in contacts.docx at line 1 (confidence: 48.0% - LOW). Matched text: 'user00001@example.com'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "204beae836efe8909f53353cdb9932fc426ca1d5fef2ef6235e8546e29256e3e"
+          },
           "properties": {
             "confidence": 48,
             "confidenceLevel": "LOW",
@@ -111,6 +114,9 @@
           ],
           "message": {
             "text": "Email Address Detected in contacts.docx at line 3 (confidence: 48.0% - LOW). Matched text: 'user00002@example.com'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "75724d254f1191905bd458d566ce0775e2c4f40b042aca6d69236bd0a8e95823"
           },
           "properties": {
             "confidence": 48,
@@ -187,6 +193,9 @@
           "message": {
             "text": "Email Address Detected in contacts.docx at line 5 (confidence: 48.0% - LOW). Matched text: 'user00003@example.com'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "9d3fdd83f171a62ea11d34727b4c01c4653aa277889e6ed257ade50910857800"
+          },
           "properties": {
             "confidence": 48,
             "confidenceLevel": "LOW",
@@ -261,6 +270,9 @@
           ],
           "message": {
             "text": "Email Address Detected in contacts.docx at line 7 (confidence: 48.0% - LOW). Matched text: 'user00004@example.com'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "5654a26d18c8e30c487200bfad3d3ffb312444d24d6f717b8d3458f9f27f7684"
           },
           "properties": {
             "confidence": 48,
@@ -337,6 +349,9 @@
           "message": {
             "text": "Email Address Detected in contacts.docx at line 9 (confidence: 48.0% - LOW). Matched text: 'user00005@example.com'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "d7148dbbb9628163ac899b8bd1cab7f9d26aa04d7b904b1df543a07580454082"
+          },
           "properties": {
             "confidence": 48,
             "confidenceLevel": "LOW",
@@ -411,6 +426,9 @@
           ],
           "message": {
             "text": "Email Address Detected in contacts.docx at line 11 (confidence: 48.0% - LOW). Matched text: 'user00006@example.com'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "33e20a526396591ca4671f488897eff8e26923e62414777d461fb8cc5e3f0f97"
           },
           "properties": {
             "confidence": 48,
@@ -487,6 +505,9 @@
           "message": {
             "text": "Email Address Detected in contacts.docx at line 13 (confidence: 48.0% - LOW). Matched text: 'user00007@example.com'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "7c3fe844147bfb22c5eec5b3b3a1547d64e9b7652ba15e2c3de449aa55f56c1b"
+          },
           "properties": {
             "confidence": 48,
             "confidenceLevel": "LOW",
@@ -561,6 +582,9 @@
           ],
           "message": {
             "text": "Email Address Detected in contacts.docx at line 15 (confidence: 48.0% - LOW). Matched text: 'user00008@example.com'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "0db96b9745dea9ce4de181d89d0239db0dbb1c6f56873878f59c745221d9b646"
           },
           "properties": {
             "confidence": 48,
@@ -637,6 +661,9 @@
           "message": {
             "text": "Email Address Detected in contacts.docx at line 17 (confidence: 48.0% - LOW). Matched text: 'user00009@example.com'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "5cf5f03e5c53c83df629ea7e47725f7906b4ddeeedda2cd1a4ea2536dfb59ed8"
+          },
           "properties": {
             "confidence": 48,
             "confidenceLevel": "LOW",
@@ -711,6 +738,9 @@
           ],
           "message": {
             "text": "Email Address Detected in contacts.docx at line 19 (confidence: 48.0% - LOW). Matched text: 'user00010@example.com'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "4b5c51b77098b6b611d44ca3601df36d43324836d7fbdd00e35fb6f88be5bd3f"
           },
           "properties": {
             "confidence": 48,

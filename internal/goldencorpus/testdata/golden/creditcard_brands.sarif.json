@@ -31,6 +31,9 @@
           "message": {
             "text": "Credit Card Number Detected in <golden:creditcard_brands> at line 3 (confidence: 100.0% - HIGH). Matched text: '374245455400126'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "adcf37d833a4c3069b1cd6dec95cefe59f816265f986fd7ea34a6549c8a6ed68"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -96,6 +99,9 @@
           "message": {
             "text": "Credit Card Number Detected in <golden:creditcard_brands> at line 2 (confidence: 100.0% - HIGH). Matched text: '5425233430109903'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "6bce339096b21c0e963346ba6c26a18ac3e953865afc7b2626fe88b950621b9c"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -160,6 +166,9 @@
           ],
           "message": {
             "text": "Credit Card Number Detected in <golden:creditcard_brands> at line 1 (confidence: 100.0% - HIGH). Matched text: '4532015112830366'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "9c7edc649531523f609c169e6d9a188668761218bc5361d038e84bcccfeeed5c"
           },
           "properties": {
             "confidence": 100,

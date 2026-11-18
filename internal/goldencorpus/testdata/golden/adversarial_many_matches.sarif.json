@@ -31,6 +31,9 @@
           "message": {
             "text": "Email Address Detected in <golden:adversarial_many_matches> at line 1 (confidence: 40.0% - LOW). Matched text: 'user00@example.com'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "f305b3f451902fbde88bbd213b3e455a75f3fb496db8a2e0e99ddfc0090841ad"
+          },
           "properties": {
             "confidence": 40,
             "confidenceLevel": "LOW",
@@ -101,6 +104,9 @@
           ],
           "message": {
             "text": "Email Address Detected in <golden:adversarial_many_matches> at line 2 (confidence: 40.0% - LOW). Matched text: 'user01@example.com'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "9352e8a93f26c1e26359b4edb6b6a5dc2aae346135f477a2265225ff43f1d37c"
           },
           "properties": {
             "confidence": 40,
@@ -173,6 +179,9 @@
           "message": {
             "text": "Email Address Detected in <golden:adversarial_many_matches> at line 3 (confidence: 40.0% - LOW). Matched text: 'user02@example.com'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "8320abd58b31b12b822bc0fb6d078813fef9405a62acf4f5fa0ba12c01e790e3"
+          },
           "properties": {
             "confidence": 40,
             "confidenceLevel": "LOW",
@@ -243,6 +252,9 @@
           ],
           "message": {
             "text": "Email Address Detected in <golden:adversarial_many_matches> at line 4 (confidence: 40.0% - LOW). Matched text: 'user03@example.com'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "809ad52183bea629f87a74b79f56df421fe87e0bdc07feb03e87c9628f938a56"
           },
           "properties": {
             "confidence": 40,
@@ -315,6 +327,9 @@
           "message": {
             "text": "Email Address Detected in <golden:adversarial_many_matches> at line 5 (confidence: 40.0% - LOW). Matched text: 'user04@example.com'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "ab910365ca5a680a1e7104a7dfd1a359f1115c2a40fb42aa907c2ada7873ccec"
+          },
           "properties": {
             "confidence": 40,
             "confidenceLevel": "LOW",
@@ -385,6 +400,9 @@
           ],
           "message": {
             "text": "Email Address Detected in <golden:adversarial_many_matches> at line 6 (confidence: 40.0% - LOW). Matched text: 'user05@example.com'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "f58c04a1a422f93831bbab5c4d1d7f62c11c510b41811133acf1684ac40e9096"
           },
           "properties": {
             "confidence": 40,
@@ -457,6 +475,9 @@
           "message": {
             "text": "Email Address Detected in <golden:adversarial_many_matches> at line 7 (confidence: 40.0% - LOW). Matched text: 'user06@example.com'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "876887a34e09cf6c8dd041fcd8cd03215153ecfe1b5438444f960546b1539399"
+          },
           "properties": {
             "confidence": 40,
             "confidenceLevel": "LOW",
@@ -527,6 +548,9 @@
           ],
           "message": {
             "text": "Email Address Detected in <golden:adversarial_many_matches> at line 8 (confidence: 40.0% - LOW). Matched text: 'user07@example.com'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "071b14c987dc9850b7003c9c56ba45cf33fc2dc12d8cfaa09883ca21da84bd6a"
           },
           "properties": {
             "confidence": 40,
@@ -599,6 +623,9 @@
           "message": {
             "text": "Email Address Detected in <golden:adversarial_many_matches> at line 9 (confidence: 40.0% - LOW). Matched text: 'user08@example.com'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "86872e1d97f9165b3c2f906bf8151f270b0ad9428909d455402a68c55c00d8c2"
+          },
           "properties": {
             "confidence": 40,
             "confidenceLevel": "LOW",
@@ -669,6 +696,9 @@
           ],
           "message": {
             "text": "Email Address Detected in <golden:adversarial_many_matches> at line 10 (confidence: 40.0% - LOW). Matched text: 'user09@example.com'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "ea81abddaf86cafd5635c29e0c40d95fd8db1f6dfba13139b13e40226798e391"
           },
           "properties": {
             "confidence": 40,
@@ -741,6 +771,9 @@
           "message": {
             "text": "Email Address Detected in <golden:adversarial_many_matches> at line 11 (confidence: 40.0% - LOW). Matched text: 'user10@example.com'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "f0212e4e8811814c3d95ac9b064114d82c91d15e930e04d93334ef11251a4c6e"
+          },
           "properties": {
             "confidence": 40,
             "confidenceLevel": "LOW",
@@ -811,6 +844,9 @@
           ],
           "message": {
             "text": "Email Address Detected in <golden:adversarial_many_matches> at line 12 (confidence: 40.0% - LOW). Matched text: 'user11@example.com'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "d612b15ce6e20245fd3cfaf1dbddd0a493e30de5c538709912dc0bc05dc5c326"
           },
           "properties": {
             "confidence": 40,

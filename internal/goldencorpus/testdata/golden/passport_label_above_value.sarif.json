@@ -31,6 +31,9 @@
           "message": {
             "text": "Passport Number Detected in <golden:passport_label_above_value> at line 4 (confidence: 100.0% - HIGH). Matched text: '512345678'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "51fc728f8d90280f6b3ef6c19af6d3c0355a86b4100417cf4c388964b9b9d9fe"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -88,6 +91,9 @@
           ],
           "message": {
             "text": "Passport Number Detected in <golden:passport_label_above_value> at line 2 (confidence: 95.0% - HIGH). Matched text: '987654321'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "df383bca4aa1f4c0fccfb1508f99786d0223070ab213f8273c16b27ab0932646"
           },
           "properties": {
             "confidence": 95,

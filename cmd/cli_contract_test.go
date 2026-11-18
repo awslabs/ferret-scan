@@ -22,7 +22,9 @@ import (
 //	exit codes    findings do NOT make the ordinary scan exit non-zero; only --pre-commit-mode
 //	              turns findings into an exit code, and it is opt-in
 //	SARIF shape   version 2.1.0; results is an ARRAY even when empty, never null; every result
-//	              carries a ruleId (consumers key suppressions on it)
+//	              carries a ruleId (consumers key suppressions on it) and a 64-hex
+//	              partialFingerprints["ferretFindingIdentity/v1"] that a line move leaves
+//	              unchanged (#983)
 //	precedence    an explicit --format beats a config file's `format:`
 //	disclosure    --show-match is the ONLY flag that puts matched values into a report
 //	environment   FERRET_PRECOMMIT=0 declines pre-commit auto-detection for every signal that
@@ -105,7 +107,8 @@ type sarifDoc struct {
 	Version string `json:"version"`
 	Runs    []struct {
 		Results *[]struct { // pointer, so [] and null are distinguishable
-			RuleID string `json:"ruleId"`
+			RuleID              string            `json:"ruleId"`
+			PartialFingerprints map[string]string `json:"partialFingerprints"`
 		} `json:"results"`
 	} `json:"runs"`
 }
@@ -219,6 +222,48 @@ func TestSARIFShapeIsStable(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// sarifIdentityKey is the partialFingerprints key a SARIF consumer stores (#983). Spelled out here
+// rather than read from internal/suppressions, so renaming the constant fails this contract.
+const sarifIdentityKey = "ferretFindingIdentity/v1"
+
+// TestSARIFIdentityFingerprintSurvivesALineMove pins the #983 contract from the consumer's side:
+// every result carries a 64-hex identity under sarifIdentityKey, and an edit that only moves the
+// findings down (lines inserted above them) leaves every value as it was, while the region moves.
+func TestSARIFIdentityFingerprintSurvivesALineMove(t *testing.T) {
+	bin := buildForCLIContract(t)
+	const body = "aws key AKIAIOSFODNN7EXAMPLE\ncard 4532015112830366\n"
+	scan := func(content string) (fps []string) {
+		dir := t.TempDir()
+		in := filepath.Join(dir, "in.txt")
+		if err := os.WriteFile(in, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		sarifPath := filepath.Join(dir, "out.sarif")
+		c := exec.Command(bin, machineInvocation(in, sarifPath)...)
+		c.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME")}
+		out, _ := c.CombinedOutput()
+		results := *readSARIF(t, sarifPath).Runs[0].Results
+		if len(results) == 0 {
+			t.Fatalf("the fixture produced no findings; the fingerprint contract is untested.\n%s", out)
+		}
+		for i, r := range results {
+			fp := r.PartialFingerprints[sarifIdentityKey]
+			if len(fp) != 64 || strings.Trim(fp, "0123456789abcdef") != "" {
+				t.Errorf("results[%d] (%s) partialFingerprints[%q] = %q, want 64 lowercase hex",
+					i, r.RuleID, sarifIdentityKey, fp)
+			}
+			fps = append(fps, r.RuleID+" "+fp)
+		}
+		sort.Strings(fps)
+		return fps
+	}
+	before := scan(body)
+	after := scan("# unrelated header\n\n\n" + body)
+	if strings.Join(before, "\n") != strings.Join(after, "\n") {
+		t.Errorf("a line move changed the identity fingerprints:\nbefore %v\nafter  %v", before, after)
 	}
 }
 

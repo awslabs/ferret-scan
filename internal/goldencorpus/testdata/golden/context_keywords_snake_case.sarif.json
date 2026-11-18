@@ -31,6 +31,9 @@
           "message": {
             "text": "Social Security Number Detected in <golden:context_keywords_snake_case> at line 1 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "48180efc0cda0a33ba1bb675d3052af8a7dedbbb81fd1cdb802d7a64c844ee58"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -96,6 +99,9 @@
           ],
           "message": {
             "text": "Social Security Number Detected in <golden:context_keywords_snake_case> at line 2 (confidence: 100.0% - HIGH). Matched text: '449-87-4101'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "041a1736012e3fd162548d297179c2134be628346f020301aea8bc07159404c7"
           },
           "properties": {
             "confidence": 100,
@@ -163,6 +169,9 @@
           "message": {
             "text": "Date of Birth Detected in <golden:context_keywords_snake_case> at line 3 (confidence: 90.0% - HIGH). Matched text: '1985-03-14'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "773f11e78984a21c89eb5a94a3e3648095b138c417538804a248e2097be42b4d"
+          },
           "properties": {
             "confidence": 90,
             "confidenceLevel": "HIGH",
@@ -224,6 +233,9 @@
           ],
           "message": {
             "text": "Social Security Number Detected in <golden:context_keywords_snake_case> at line 6 (confidence: 65.0% - MEDIUM). Matched text: '449-87-4102'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "4bda2e7bd83ae5adf518cff87d17eaa2e7c4ef170e1e48b66a10e8059a6a6045"
           },
           "properties": {
             "confidence": 65,
@@ -294,6 +306,9 @@
           "message": {
             "text": "Credit Card Number Detected in <golden:context_keywords_snake_case> at line 4 (confidence: 15.0% - LOW). Matched text: '4532015112830366'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "69bf800212cdda3d265e0f3d66bac76cb7cdd60c69b61dfde41c98669ff72a84"
+          },
           "properties": {
             "confidence": 15,
             "confidenceLevel": "LOW",
@@ -358,6 +373,9 @@
           ],
           "message": {
             "text": "Credit Card Number Detected in <golden:context_keywords_snake_case> at line 5 (confidence: 15.0% - LOW). Matched text: '4012888888881881'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "7b1194d0825969f88a7c55e742a73dce8b6696e2aecf22b3062f5935663eedc5"
           },
           "properties": {
             "confidence": 15,

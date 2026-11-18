@@ -37,6 +37,9 @@
           "message": {
             "text": "Secret or API Key Detected in docker-compose.yml at line 5 (confidence: 100.0% - HIGH). Matched text: 'd7Q8N92jGKT5WdZ4'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "95c8fb705785a58b590562141bc4500ac7d9d41945c40cfdeff0e6feffa3e33e"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",

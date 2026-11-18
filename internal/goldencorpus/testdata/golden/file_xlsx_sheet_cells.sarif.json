@@ -37,6 +37,9 @@
           "message": {
             "text": "Social Security Number Detected in books.xlsx at line 2 (confidence: 100.0% - HIGH). Matched text: '449-87-4100'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "8d5f5e5e55c8f7435131e1dc4a4dfd7afa54a6d9b2d78c86bdc2986fc8498154"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -104,6 +107,9 @@
           "message": {
             "text": "Credit Card Number Detected in books.xlsx at line 3 (confidence: 100.0% - HIGH). Matched text: '4532-0151-1283-0366'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "cc37bbb4ef3bb26689332055880e3a8c6df92b25fe37ce0361bea432a0ba554e"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
@@ -163,6 +169,9 @@
           ],
           "message": {
             "text": "Sensitive Metadata Detected in books.xlsx at line 1 (confidence: 60.0% - MEDIUM). Matched text: 'Jane Analyst'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "df901d02b2539b47bd705739247f6112ea9908b55833ac63acc7cd4dc9457749"
           },
           "properties": {
             "confidence": 60,

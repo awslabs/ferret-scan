@@ -25,6 +25,9 @@
           "message": {
             "text": "Passport Number Detected in <golden:passport_mrz_line2_check_digits> at line 2 (confidence: 85.0% - MEDIUM). Matched text: 'L898902C36GBR7408122M1204159ZE184226B<<<<<10'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "245d1a634d4f94cd748ab1d0e470d1c2c1bfe7115c7a9dd34fcddd7177cb7ce2"
+          },
           "properties": {
             "confidence": 85,
             "confidenceLevel": "MEDIUM",
@@ -82,6 +85,9 @@
           ],
           "message": {
             "text": "Passport Number Detected in <golden:passport_mrz_line2_check_digits> at line 1 (confidence: 80.0% - MEDIUM). Matched text: 'P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "1288c0c99fa709aa7146bfe73237ab1edd905a5450bb22cb8d0a0a31b8f7f1e4"
           },
           "properties": {
             "confidence": 80,

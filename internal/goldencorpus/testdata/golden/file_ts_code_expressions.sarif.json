@@ -37,6 +37,9 @@
           "message": {
             "text": "Secret or API Key Detected in src/models.ts at line 29 (confidence: 95.0% - HIGH). Matched text: 'ConnStrS3cretVal77'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "df1db33a688e1d5ed44658f2c769c5adfc9996d034d712617f991abf54287fd6"
+          },
           "properties": {
             "confidence": 95,
             "confidenceLevel": "HIGH",
@@ -102,6 +105,9 @@
           ],
           "message": {
             "text": "Secret or API Key Detected in src/models.ts at line 30 (confidence: 95.0% - HIGH). Matched text: 'CommentS3cretVal88'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "d954e0a51169680d262befc5c2ac0447738db35d6d84521cb2d091c33a2a821d"
           },
           "properties": {
             "confidence": 95,

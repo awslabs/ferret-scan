@@ -37,6 +37,9 @@
           "message": {
             "text": "Secret or API Key Detected in .env at line 1 (confidence: 100.0% - HIGH). Matched text: 'kppbJJJ2vkV3mdqH'"
           },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "c6f61912ac5a94a39f6ceb53946f7b45aa278537ea55d4b699eb986a44c4bdd4"
+          },
           "properties": {
             "confidence": 100,
             "confidenceLevel": "HIGH",
