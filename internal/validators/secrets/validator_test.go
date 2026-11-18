@@ -255,8 +255,8 @@ func TestSecretsValidator_StripeKeys(t *testing.T) {
 			wantDetect: false,
 		},
 		{
-			name:       "Wrong prefix rk_live_",
-			match:      buildTestToken("rk_live_", "AbCdEfGhIjKlMnOpQrStUvWx"),
+			name:       "Wrong prefix rk_prod_",
+			match:      buildTestToken("rk_prod_", "AbCdEfGhIjKlMnOpQrStUvWx"),
 			wantDetect: false,
 		},
 	}
