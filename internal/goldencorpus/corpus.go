@@ -426,6 +426,33 @@ var Cases = []Case{
 			"Basic base64(username:password)\n",
 	},
 	{
+		Name: "secrets_hash_and_marker_decoys",
+		Description: "Right-hand sides of a secret-named assignment that are not literals (#931, and the " +
+			"redaction-marker half of #981). On main every line here reported API_KEY_OR_SECRET (or " +
+			"GITLAB_TOKEN) at 75-100, because the key name supplied the corroboration whatever the value " +
+			"was: a regular expression (the shipped config.yaml's own content pattern), a rooted path, " +
+			"a member chain quoted in prose, ferret-scan's own `simple` redaction marker (bare and as a " +
+			"JSON string ending in a `\\n` escape, which is what a redacted one-line PEM re-scans as), a " +
+			"format-preserving mask that kept its separators, a provider prefix around an all-`x` body, " +
+			"Slack's documented `xoxb-not-a-real-token-...` placeholder, a member access, a dotted call " +
+			"and a concatenation operand. nonLiteralValue (non_literal_values.go) rejects each by its own " +
+			"bytes, so every snapshot here renders \"No matches found\". A non-empty snapshot means a " +
+			"non-literal shape reads as a credential again. Recall for real values next to these shapes " +
+			"is pinned in non_literal_values_test.go, not here.",
+		Checks: []string{"SECRETS"},
+		Input: "trade_secret: \"\\\\b(Confidential|Trade\\\\s+Secret|Proprietary)\\\\b\"\n" +
+			"private_key=/etc/ssl/private/server.key\n" +
+			"Use `secret = config.secret_key` in application code.\n" +
+			"password = \"[API_KEY_OR_SECRET-REDACTED]\"\n" +
+			"{\"private_key\": \"[SSH_PRIVATE_KEY-REDACTED]\\n\"}\n" +
+			"card_token = \"****-****-****-****\"\n" +
+			"GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx\n" +
+			"SLACK_BOT_TOKEN=xoxb-not-a-real-token-this-will-not-work\n" +
+			"jwt_secret = process.env.JWT_SECRET\n" +
+			"password = os.getenv(DB_PASSWORD_ENV)\n" +
+			"apikey = \"+joinedValues[2]+\"\n",
+	},
+	{
 		Name: "secrets_file_wide_marker_hostname",
 		Description: "The #785 shape with a marker that IS a whole word: a comment naming a " +
 			"wiki.example.com URL two lines above a credential. detectEnvironmentType still " +
