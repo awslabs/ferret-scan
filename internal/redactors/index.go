@@ -195,10 +195,25 @@ func (a AuditStrategy) Valid() bool {
 // ("position_correlation" when the correlator placed it, "simple_text_search" when it fell back to
 // searching) and Score is the 0-1 placement score the redactor computed, already reduced when the
 // position had to be corrected. It is the only record of a fuzzy or relocated match (#519).
+//
+// Correlation and Corrected name what Score only implied (#865): which correlator step placed the
+// value ("exact", "fuzzy" or "heuristic"; present exactly when Method is "position_correlation"),
+// and whether the placed position held other text and had to be found again by searching (the
+// x0.7 in Score). Before them, dup.txt's two entries read 0.8 and 0.56 with nothing saying fuzzy
+// or corrected.
 type Placement struct {
-	Method string   `json:"method"`
-	Score  *float64 `json:"score,omitempty"`
+	Method      string   `json:"method"`
+	Correlation string   `json:"correlation,omitempty"`
+	Corrected   bool     `json:"corrected,omitempty"`
+	Score       *float64 `json:"score,omitempty"`
 }
+
+// CorrelationMethodKey and PositionCorrectedKey are the RedactionMapping.Metadata keys the
+// text-family redactor sets for Placement.Correlation and Placement.Corrected.
+const (
+	CorrelationMethodKey = "correlation_method"
+	PositionCorrectedKey = "position_corrected"
+)
 
 // MetadataRedaction represents audit information for a metadata redaction operation
 type MetadataRedaction struct {

@@ -623,6 +623,12 @@ func placementOf(m RedactionMapping) *Placement {
 		return nil
 	}
 	p := &Placement{Method: method}
+	if c, ok := m.Metadata[CorrelationMethodKey].(string); ok {
+		p.Correlation = c
+	}
+	if c, ok := m.Metadata[PositionCorrectedKey].(bool); ok {
+		p.Corrected = c
+	}
 	if _, ok := m.Metadata["original_confidence"].(float64); ok && m.Confidence >= 0 && m.Confidence <= 1 {
 		score := m.Confidence
 		p.Score = &score
