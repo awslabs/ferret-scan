@@ -169,7 +169,13 @@ configuration and no suppression rule reaches any of them.
   Every value surface 1 reported is looked for in its file's redacted copy, as written, XML-escaped
   and as UTF-16LE, inside every part of an OOXML container; values under 4 bytes are counted and
   skipped. A surviving value fails, and so does a file with findings that has neither a copy nor an
-  entry in the run's own `unredacted` disclosure. A disclosed refusal is counted, not failed.
+  entry in the run's own `unredacted` disclosure. A disclosed refusal is counted, not failed. The
+  product caps that list at 50 entries (#450) and keeps the full count in
+  `stats.files_not_redacted`; when the list is at the cap and the total equals the 50 listed plus
+  the files with findings that have neither a copy nor an entry, those files are disclosed by
+  count, and the report says so on a line of its own (`N refused file(s) beyond the 50-entry
+  unredacted list; the total matches stats.files_not_redacted=T`). When the total does not close
+  the arithmetic, every unlisted file still fails (#984).
 - **Runtime facts**: the container's `--version` equals the host binary's on version and commit
   (`built:`, `go:` and `platform:` are recorded, not compared: the host binary has no build date and
   may target another OS); the image's `USER` resolves to a non-zero uid in its `/etc/passwd`; a

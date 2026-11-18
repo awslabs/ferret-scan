@@ -4,10 +4,15 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/awslabs/ferret-scan/v2/internal/formatters"
 )
 
 // The redaction check counts a value only as a token of its own. The decoy case is the one measured
@@ -134,5 +139,70 @@ func TestMultisetDiffCountsDuplicates(t *testing.T) {
 	onlyA, onlyB := multisetDiff([]finding{f, f, g}, []finding{f, g, g})
 	if len(onlyA) != 1 || onlyA[0] != f || len(onlyB) != 1 || onlyB[0] != g {
 		t.Errorf("onlyA=%v onlyB=%v, want one f and one g", onlyA, onlyB)
+	}
+}
+
+// #984: the product caps the "unredacted" list at 50 entries and keeps the full count in
+// stats.files_not_redacted. 60 refused files with 50 listed are all disclosed when the total says 60;
+// the same run with a total of 55 leaves 5 files nobody counted, and that still fails.
+func TestRedactionCountsRefusedFilesPastTheListCap(t *testing.T) {
+	if unredactedCap != formatters.MaxUnredactedEntries {
+		t.Fatalf("unredactedCap = %d, the product caps at %d", unredactedCap, formatters.MaxUnredactedEntries)
+	}
+	for _, tc := range []struct {
+		name          string
+		listed, total int
+		omitTotal     bool
+		wantFail      bool
+		wantLine      string
+	}{
+		{"total closes", 50, 60, false, false, "10 refused file(s) beyond the 50-entry unredacted list; the total matches stats.files_not_redacted=60"},
+		{"total short", 50, 55, false, true, "the arithmetic does not close: stats.files_not_redacted=55"},
+		{"total over", 50, 61, false, true, "the arithmetic does not close: stats.files_not_redacted=61"},
+		{"list below the cap", 49, 60, false, true, "the arithmetic does not close: the unredacted list holds 49 entries, not the 50-entry cap"},
+		{"no total", 50, 0, true, true, "missing+undisclosed=10"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base := t.TempDir()
+			runDir := filepath.Join(base, "redact", "simple__tmp")
+			if err := os.MkdirAll(filepath.Join(runDir, "extracted"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			values := map[string][]string{}
+			var list []string
+			for i := 1; i <= 60; i++ {
+				rel := fmt.Sprintf("pdf/f%02d.pdf", i)
+				values[rel] = []string{"jane.doe@example.com"}
+				if i <= tc.listed {
+					list = append(list, fmt.Sprintf(`{"path":"%s/%s","cause":"no redactor for this file type","reported_values":1}`, containerRoot, rel))
+				}
+			}
+			stats := fmt.Sprintf(`"files_not_redacted":%d`, tc.total)
+			if tc.omitTotal {
+				stats = `"total_files":60`
+			}
+			doc := fmt.Sprintf(`{"stats":{%s},"results":[],"unredacted":[%s]}`, stats, strings.Join(list, ","))
+			if err := os.WriteFile(filepath.Join(runDir, "run.json"), []byte(doc), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(runDir, "run.meta"), []byte("exit=0\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var buf bytes.Buffer
+			r := &report{out: bufio.NewWriter(&buf)}
+			r.redaction(set{name: "corpus", hostRoot: base}, base, values)
+			r.out.Flush()
+			out := buf.String()
+			if got := len(r.failures) > 0; got != tc.wantFail {
+				t.Errorf("failed = %v, want %v; failures %q\n%s", got, tc.wantFail, r.failures, out)
+			}
+			if !strings.Contains(out, tc.wantLine) {
+				t.Errorf("report lacks %q:\n%s", tc.wantLine, out)
+			}
+			undisclosed := strings.Count(out, "no redacted copy and not disclosed")
+			if want := 60 - tc.listed; tc.wantFail && undisclosed != want || !tc.wantFail && undisclosed != 0 {
+				t.Errorf("%d file(s) named as undisclosed:\n%s", undisclosed, out)
+			}
+		})
 	}
 }
