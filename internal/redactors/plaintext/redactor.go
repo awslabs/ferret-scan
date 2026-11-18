@@ -248,7 +248,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 		return "", nil, err
 	}
 
-	redactedText := originalText
+	redactedText := newSpliceText(originalText)
 	var redactionMap []redactors.RedactionMapping
 
 	// Line start offsets, computed ONCE for the whole document and reused by
@@ -280,7 +280,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 
 		// Try position correlation if enabled
 		if ptr.enablePositionCorrelation && ptr.positionCorrelator != nil {
-			correlatedPos, correlationErr := ptr.correlateMatchPosition(match, originalText)
+			correlatedPos, correlationErr := ptr.correlateMatchPosition(match, originalText, offsets)
 			if correlationErr == nil && correlatedPos.ConfidenceScore >= ptr.confidenceThreshold {
 				// Use position correlation result
 				startPos = correlatedPos.OriginalPosition.CharOffset
@@ -372,12 +372,12 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 		}
 
 		// Validate positions
-		if startPos < 0 || endPos > len(redactedText) || startPos >= endPos {
+		if startPos < 0 || endPos > redactedText.Len() || startPos >= endPos {
 			ptr.logEvent("invalid_position_warning", false, map[string]interface{}{
 				"warning":          "invalid position calculated",
 				"start_pos":        startPos,
 				"end_pos":          endPos,
-				"text_length":      len(redactedText),
+				"text_length":      redactedText.Len(),
 				"correlation_used": correlationUsed,
 			})
 			if unit.group.IsGroup() {
@@ -387,7 +387,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 		}
 
 		// Verify the text at the calculated position matches what we expect
-		actualText := redactedText[startPos:endPos]
+		actualText := redactedText.Slice(startPos, endPos)
 		if actualText != match.Text {
 			ptr.logEvent("text_mismatch_warning", false, map[string]interface{}{
 				"match_type":       match.Type,
@@ -432,7 +432,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 		// coverage one — and it is deliberately kept even though #522's detection half makes the
 		// known trigger unreachable, so the next value type that masks to itself cannot quietly
 		// re-enter the audit trail as a redaction.
-		if replacement == redactedText[startPos:endPos] {
+		if replacement == redactedText.Slice(startPos, endPos) {
 			ptr.logEvent("replacement_identical_to_original", false, map[string]interface{}{
 				"match_type":   match.Type,
 				"match_line":   match.LineNumber,
@@ -443,7 +443,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 		}
 
 		// Replace the text
-		redactedText = redactedText[:startPos] + replacement + redactedText[endPos:]
+		redactedText.Replace(startPos, endPos, replacement)
 
 		// Create redaction mapping with enhanced metadata
 		mapping := redactors.RedactionMapping{
@@ -498,15 +498,16 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 	//
 	// Measured on 480 real files before this: 143 reported values — including 44 recovery codes and 5
 	// OTP secrets — survived inside 29 files this redactor reported as successfully redacted.
-	swept, sweptValues, sweepErr := redactverify.SweepRemaining(redactedText, sweepMatches,
+	swept, sweptValues, sweepErr := redactverify.SweepRemaining(redactedText.String(), sweepMatches,
 		func(m detector.Match) (string, error) {
 			return ptr.generateReplacement(m.Text, m.Type, strategy, scope)
 		})
 	if sweepErr != nil {
 		return "", nil, fmt.Errorf("completeness sweep: %w", sweepErr)
 	}
+	result := redactedText.String()
 	if len(sweptValues) > 0 {
-		redactedText = swept
+		result = swept
 		// Recorded as its own event rather than folded into redaction_applied: a value the sweep had
 		// to remove is one the positional pass did NOT locate, which is a signal about the
 		// correlator's coverage and not just another redaction. The VALUES are never logged, only
@@ -516,7 +517,7 @@ func (ptr *PlainTextRedactor) redactText(originalText string, matches []detector
 		})
 	}
 
-	return redactedText, redactionMap, nil
+	return result, redactionMap, nil
 }
 
 // generateReplacement delegates to the shared replacement package.
@@ -647,16 +648,19 @@ func lineBounds(text string, offsets []int, lineNumber int) (start, end int, ok 
 // does not actually contain its text (a bounded/consolidated match, or a
 // line-number drift from an extractor) — such a match is still located and
 // still redacted, exactly as before.
-func (ptr *PlainTextRedactor) findMatchPosition(text string, match detector.Match, offsets []int) (int, int, error) {
-	if start, end, ok := lineBounds(text, offsets, match.LineNumber); ok {
-		if idx := strings.Index(text[start:end], match.Text); idx >= 0 {
-			pos := start + idx
-			return pos, pos + len(match.Text), nil
+func (ptr *PlainTextRedactor) findMatchPosition(text *spliceText, match detector.Match, offsets []int) (int, int, error) {
+	if match.LineNumber >= 1 && match.LineNumber <= len(offsets) {
+		start := offsets[match.LineNumber-1]
+		if line, ok := text.lineFrom(start); ok {
+			if idx := strings.Index(line, match.Text); idx >= 0 {
+				pos := start + idx
+				return pos, pos + len(match.Text), nil
+			}
 		}
 	}
 
 	// Fall back to the first occurrence anywhere in the document.
-	startPos := strings.Index(text, match.Text)
+	startPos := strings.Index(text.String(), match.Text)
 	if startPos == -1 {
 		return 0, 0, fmt.Errorf("match text not found in document")
 	}
@@ -811,9 +815,9 @@ func (ptr *PlainTextRedactor) logEvent(operation string, success bool, metadata 
 }
 
 // correlateMatchPosition correlates a detector match position with the original document
-func (ptr *PlainTextRedactor) correlateMatchPosition(match detector.Match, originalText string) (*position.PositionCorrelation, error) {
+func (ptr *PlainTextRedactor) correlateMatchPosition(match detector.Match, originalText string, offsets []int) (*position.PositionCorrelation, error) {
 	// Calculate character positions from line number and text
-	startChar, endChar, err := ptr.calculateCharacterPositions(match, originalText)
+	startChar, endChar, err := ptr.calculateCharacterPositions(match, originalText, offsets)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate character positions: %w", err)
 	}
@@ -823,6 +827,10 @@ func (ptr *PlainTextRedactor) correlateMatchPosition(match detector.Match, origi
 		Line:      match.LineNumber,
 		StartChar: startChar,
 		EndChar:   endChar,
+	}
+
+	if c, ok := ptr.correlateWithinLine(match, originalText, offsets, startChar, endChar); ok {
+		return c, nil
 	}
 
 	// Use the original text as both extracted and original content for plain text
@@ -847,14 +855,15 @@ func (ptr *PlainTextRedactor) correlateMatchPosition(match detector.Match, origi
 }
 
 // calculateCharacterPositions calculates start and end character positions from a match
-func (ptr *PlainTextRedactor) calculateCharacterPositions(match detector.Match, text string) (int, int, error) {
-	lines := strings.Split(text, "\n")
-
-	if match.LineNumber < 1 || match.LineNumber > len(lines) {
-		return 0, 0, fmt.Errorf("line number %d is out of range (1-%d)", match.LineNumber, len(lines))
+func (ptr *PlainTextRedactor) calculateCharacterPositions(match detector.Match, text string, offsets []int) (int, int, error) {
+	// offsets holds one entry per line strings.Split(text, "\n") would yield, so the bound and the
+	// line are the same as before without allocating every line of the document per match.
+	if match.LineNumber < 1 || match.LineNumber > len(offsets) {
+		return 0, 0, fmt.Errorf("line number %d is out of range (1-%d)", match.LineNumber, len(offsets))
 	}
 
-	line := lines[match.LineNumber-1] // Convert to 0-based indexing
+	start, end, _ := lineBounds(text, offsets, match.LineNumber)
+	line := text[start:end]
 
 	// Find the match text in the line
 	startChar := strings.Index(line, match.Text)
@@ -998,4 +1007,47 @@ func writeRedactedOutput(outputPath string, data []byte) error {
 		return fmt.Errorf("failed to write redacted file: %w", err)
 	}
 	return nil
+}
+
+// correlateWithinLine runs the default correlator over the match's own line alone and reports ok when
+// that answer is the one a run over the whole document gives.
+//
+// Handing the correlator the whole document made each match cost O(document): it converts the
+// content to a string, walks the newlines to the line, and counts the lines before the hit, so the
+// pass was quadratic in the number of matches (#1005). The exact and fuzzy matchers resolve a match
+// against the line it was reported on (searchScope, and tryFuzzyMatch's own-line scope), and
+// calculateCharacterPositions has already found the text in that line, so for them the line is all
+// there is to see: same index within the line, same occurrence count, same confidence, same method.
+// The heuristic matcher is the one that reads the rest of the document (it estimates a position from
+// the line number), so a heuristic answer, an error, or any other correlator is NOT taken from the
+// window: ok is false and the caller makes the whole-document call it always made.
+//
+// The returned correlation carries the fields redactText reads (ExtractedPosition, ConfidenceScore,
+// Method, OriginalPosition.CharOffset) at their whole-document values. Context and Metadata, which
+// nothing here reads, describe the window.
+func (ptr *PlainTextRedactor) correlateWithinLine(match detector.Match, text string, offsets []int, startChar, endChar int) (*position.PositionCorrelation, bool) {
+	dpc, ok := ptr.positionCorrelator.(*position.DefaultPositionCorrelator)
+	if !ok {
+		return nil, false
+	}
+	lineStart, lineEnd, ok := lineBounds(text, offsets, match.LineNumber)
+	if !ok {
+		return nil, false
+	}
+	line := text[lineStart:lineEnd]
+	c, err := dpc.CorrelatePosition(redactors.TextPosition{Line: 1, StartChar: startChar, EndChar: endChar}, line, []byte(line), "text")
+	if err != nil || c == nil || c.OriginalPosition == nil ||
+		(c.Method != position.CorrelationExact && c.Method != position.CorrelationFuzzy) {
+		return nil, false
+	}
+	if err := dpc.ValidateCorrelation(c); err != nil {
+		return nil, false
+	}
+	whole := *c
+	whole.ExtractedPosition = redactors.TextPosition{Line: match.LineNumber, StartChar: startChar, EndChar: endChar}
+	pos := *c.OriginalPosition
+	pos.CharOffset += lineStart
+	pos.BoundingBox.Y = float64(match.LineNumber)
+	whole.OriginalPosition = &pos
+	return &whole, true
 }
