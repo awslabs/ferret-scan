@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -173,8 +174,25 @@ func scanSession(w http.ResponseWriter, r *http.Request) (string, error) {
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   requestOverHTTPS(r),
 	})
 	return v, nil
+}
+
+// requestOverHTTPS reports whether the client reached this request over HTTPS: a TLS connection to
+// this process, or a reverse proxy that terminated TLS and says so in X-Forwarded-Proto (the first
+// value, when a chain of proxies appended theirs). The session cookie is marked Secure exactly then
+// (#1014, CodeQL go/cookie-secure-not-set), and not unconditionally: this server speaks plain HTTP
+// and documents an SSH port-forward for remote use, so the browser's origin is http://localhost,
+// where Safari refuses to store a Secure cookie (Chrome and Firefox accept one there) and where
+// nothing is in transit to protect. Trusting the header is safe because a spoofed value only ADDS
+// the flag, which can at most make the spoofer's own browser drop its own cookie.
+func requestOverHTTPS(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	proto, _, _ := strings.Cut(r.Header.Get("X-Forwarded-Proto"), ",")
+	return strings.EqualFold(strings.TrimSpace(proto), "https")
 }
 
 // existingScanSession returns the request's session value, or "" when it has none: /export never mints
