@@ -1,0 +1,3 @@
+### 🐛 Bug Fixes
+
+- **secrets:** three more shapes that are not credentials are no longer read as one on the right of a secret-named key (#931): prose that says where a token goes (`token = your-bot-token-goes-here-replace-me`, `token = replace-with-your-token`; three or more lower-case words joined by `-`, at least two of them marker words such as `your`, `replace`, `here`), an angle-bracket redaction marker (`secret: "<REDACTED>"`), and an index expression (`secret = os.environ["SECRET_KEY"]`). On main these reported `API_KEY_OR_SECRET` at 75 to 100. A passphrase of dictionary words with one marker word in it, a password inside angle brackets and a credential next to any of these keys still report.
