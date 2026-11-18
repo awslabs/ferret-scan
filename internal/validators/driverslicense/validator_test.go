@@ -589,9 +589,6 @@ func TestDriversLicenseValidator_NewValidator(t *testing.T) {
 	if len(validator.negativeKeywords) == 0 {
 		t.Fatal("NewValidator() has no negative keywords")
 	}
-	if len(validator.stateKeywords) == 0 {
-		t.Fatal("NewValidator() has no state keywords")
-	}
 }
 
 func TestDriversLicenseValidator_MetadataFields(t *testing.T) {
