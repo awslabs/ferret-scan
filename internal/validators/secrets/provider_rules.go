@@ -126,7 +126,7 @@ var providerRules = []providerRule{
 	{
 		// The rest of GitLab's "Token prefixes" table (https://docs.gitlab.com/security/tokens/),
 		// which says they are fixed and designed as standard identifications: gloas- OAuth
-		// application secret, gldt- deploy, glrt- and glrtr- runner authentication, glcbt- CI/CD
+		// application secret, gldt- deployment, glrt- and glrtr- runner authentication, glcbt- CI/CD
 		// job, glptt- trigger, glft- feed, glimt- incoming mail, glagent- agent for Kubernetes,
 		// glwt- workspace, glsoat- SCIM, glffct- feature flags client (#881). GitLab publishes
 		// no body length, so the minimum is the one glpat- has always had. No routable-token
@@ -147,7 +147,7 @@ var providerRules = []providerRule{
 	},
 	{
 		Type: "SLACK_TOKEN", Prefixes: []string{"xoxp-"},
-		// Slack's own example is xoxp-111-222-333-<32 hex> (https://docs.slack.dev/authentication/tokens,
+		// the shape on Slack's token page is xoxp-111-222-333-<32 hex> (https://docs.slack.dev/authentication/tokens,
 		// "Rotating a short token secret"): ids are not fixed at 11-12 digits (#881). The pre-2016
 		// 6- and 10-character secrets that page describes stay below the minimum.
 		Head: `[0-9]{3,13}-[0-9]{3,13}-[0-9]{3,13}-`, Charset: `[a-zA-Z0-9]`, MinBody: 32, Mode: modeAtLeast, Base: 94,
