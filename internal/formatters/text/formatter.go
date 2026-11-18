@@ -215,7 +215,9 @@ func (f *Formatter) writeFormattedOutput(w io.Writer, matches []detector.Match, 
 	}
 }
 
-// scopeLine is the one "Scope:" line a NARROWED run's text report carries, or "" (#904).
+// scopeLine is the "Scope:" line a NARROWED run's text report carries, then a "Config:" line when a
+// configuration other than the built-in one governed the run, or "" (#904, #1007). A discovered
+// project config is named whether or not it narrowed anything.
 //
 // Without it, `--checks SSN` over a file holding an email address printed "No matches found." — the
 // exact words a clean full scan prints. A full-scope run has no scope, so its text keeps every byte,
@@ -227,7 +229,14 @@ func scopeLine(options formatters.FormatterOptions) string {
 	if options.Scan == nil {
 		return ""
 	}
-	return displaytext.SanitizeDisplayText(options.Scan.TextLine())
+	var lines []string
+	if options.Scan.Narrowed() {
+		lines = append(lines, options.Scan.TextLine())
+	}
+	if c := options.Scan.ConfigLine(); c != "" {
+		lines = append(lines, c)
+	}
+	return displaytext.SanitizeDisplayText(strings.Join(lines, "\n"))
 }
 
 // withScopeLine appends the scope line to a "no matches" report, which has no trailing newline.
