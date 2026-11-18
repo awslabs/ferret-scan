@@ -143,7 +143,7 @@ var providerRules = []providerRule{
 	},
 	{
 		Type: "SLACK_TOKEN", Prefixes: []string{"xoxb-"},
-		Head: `[0-9]{10,13}-[0-9]{10,13}-`, Charset: `[a-zA-Z0-9]`, MinBody: 24, Mode: modeAtLeast, Base: 94,
+		Head: `[0-9]{11,13}-[0-9]{11,13}-`, Charset: `[a-zA-Z0-9]`, MinBody: 24, Mode: modeAtLeast, Base: 94,
 		Describe: "Slack Tokens: xoxb-[bot tokens], xoxp-[user tokens], xapp-[app-level tokens]; the final section is the secret and is taken whole",
 	},
 	{

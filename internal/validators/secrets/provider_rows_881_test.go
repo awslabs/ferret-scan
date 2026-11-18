@@ -127,6 +127,8 @@ func TestNewProviderRowsDecoys(t *testing.T) {
 		"rk_live_",
 		"rk_live_short",
 		"glft-feed-token-goes-here",
+		// Ten-digit ids: the placeholder docs/examples/integration-demo.md carries. Slack ids are 11 to 13 digits.
+		"SLACK_WEBHOOK=xoxb-" + "1234567890-1234567890-abcdefghijklmnopqrstuvwx",
 		// Identifier-shaped values: a snake_case name has `_` inside its run.
 		"github_pat_rotation_schedule_for_the_platform_team_every_ninety_days",
 		"kubectl get glwt-workspace-token-secret-name-for-the-dev-cluster -o yaml",
