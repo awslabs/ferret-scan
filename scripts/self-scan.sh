@@ -45,8 +45,11 @@
 #   --out DIR         write the reports to DIR (default: a new directory under $TMPDIR, kept, printed)
 #   --regenerate F    write a candidate ledger to F: the current ledger, a disabled rule for every
 #                     HIGH finding of either gate that no rule covers, the rules the binary re-anchored
-#                     or migrated rewritten, and every other rule kept byte for byte. Prints the new,
-#                     rewritten and stale rules. Review F, then copy it over the ledger. Needs python3.
+#                     or migrated rewritten, a stale rule whose file is gone renamed onto the new rule
+#                     with its type, confidence and line text (#954), and every other rule kept byte
+#                     for byte. Prints the new, rewritten, renamed and stale rules, and writes their
+#                     counts to regenerate.env in --out. Review F, then copy it over the ledger. Needs
+#                     python3.
 #   --print-state     print the checkout state a green tree run records, and exit (scripts/pr-checklist.sh)
 #
 # Environment: FERRET_BIN, a binary to use instead of building ./cmd; FERRET_BASE_BIN, likewise for
@@ -582,10 +585,10 @@ fi
 # --regenerate: the candidate ledger
 
 if [ -n "$regenerate" ] && [ "$status" -eq 0 ]; then
-    python3 - "$ledger" "$tmp/candidate.yaml" "$regenerate" <<'PY' || fail_closed "--regenerate: the candidate ledger could not be written"
-import re, sys
+    python3 - "$ledger" "$tmp/candidate.yaml" "$regenerate" "$repo" "$out/regenerate.env" <<'PY' || fail_closed "--regenerate: the candidate ledger could not be written"
+import collections, functools, os, re, subprocess, sys
 
-orig_path, regen_path, out_path = sys.argv[1:4]
+orig_path, regen_path, out_path, repo, env_path = sys.argv[1:6]
 RULE = re.compile(r"^(\s*)- id:\s*(\S+)\s*$")
 
 def split(path):
@@ -625,31 +628,126 @@ def number(rid):
     m = re.match(r"^SUP-(\d+)$", rid)
     return int(m.group(1)) if m else 0
 
-kept, rewritten, stale, new, dropped = [], [], [], [], 0
-result = []
-next_id = max([number(rid) for rid in orig] + [0]) + 1
+kept, rewritten, stale, new, renamed, dropped = [], [], [], [], [], 0
+result = []  # [rid, block]; a new rule's rid is None until it is numbered below
 for rid, block in regen_blocks:
     if rid in orig:
         ob = orig[rid]
         if field(block, "hash") == field(ob, "hash") and field(block, "line_number") == field(ob, "line_number"):
-            result.append(ob)
+            result.append([rid, ob])
             kept.append(rid)
             if field(block, "last_seen_at") == field(ob, "last_seen_at"):
                 stale.append(rid)
         else:
-            result.append(block)
+            result.append([rid, block])
             rewritten.append(rid)
     elif float(field(block, "confidence") or 0) >= 90:
-        # The binary numbered this rule after every rule it generated, the dropped ones included; the
-        # candidate numbers the rules it keeps in order instead.
-        new_id = f"SUP-{next_id:08d}"
-        next_id += 1
-        indent = RULE.match(block[0]).group(1)
-        block = [f"{indent}- id: {new_id}\n"] + block[1:]
-        result.append(block)
-        new.append(new_id)
+        result.append([None, block])
     else:
         dropped += 1
+
+# Rename-aware (#954). A rule names its file by basename and its hash includes it, so when a file is
+# renamed or its lines move into another file (the release copies every changelog.d/ fragment into
+# CHANGELOG.md byte for byte and deletes the fragment), the old rule matches nothing and the same
+# value comes back as a new disabled rule. Pair them: a stale rule whose file no longer exists in the
+# checkout, and a new rule with the same type, confidence and line text, where the stale rule's line
+# is read from HEAD (a deletion not yet committed, as the release leaves it) or else from the commit
+# before the one that deleted the file. The stale rule keeps its id, reason, enabled and created_at;
+# hash, last_seen_at, filename and line_number are the new rule's. A line text two stale rules with
+# different reasons share is ambiguous and is left for a person.
+def git(*args):
+    return subprocess.run(["git", *args], cwd=repo, capture_output=True, check=True).stdout
+
+@functools.lru_cache(maxsize=None)
+def tree_at(rev):
+    return paths(git("ls-tree", "-r", "-z", "--name-only", rev))
+
+@functools.lru_cache(maxsize=None)
+def blob(rev, path):
+    return git("show", f"{rev}:{path}")
+
+def paths(raw):
+    return [p for p in raw.decode("utf-8", "surrogateescape").split("\0") if p]
+
+def line_at(data, n):
+    lines = data.split(b"\n")
+    return lines[n - 1].rstrip(b"\r") if 1 <= n <= len(lines) else None
+
+checkout = [p for p in paths(git("ls-files", "-z", "--cached", "--others", "--exclude-standard"))
+            if os.path.lexists(os.path.join(repo, p))]
+in_checkout = collections.defaultdict(list)
+for p in checkout:
+    in_checkout[os.path.basename(p)].append(p)
+
+def gone_texts(block):
+    name, n = field(block, "filename"), int(field(block, "line_number") or 0)
+    if not name or in_checkout[name]:
+        return []
+    for rev in ("HEAD", None):
+        if rev is None:
+            gone = git("log", "-1", "--diff-filter=D", "--format=%H", "--", ":(glob)**/" + name).decode().strip()
+            if not gone:
+                return []
+            rev = gone + "^"
+        try:
+            olds = [p for p in tree_at(rev) if os.path.basename(p) == name]
+        except subprocess.CalledProcessError:
+            olds = []
+        texts = [t for t in (line_at(blob(rev, p), n) for p in olds) if t is not None]
+        if texts:
+            return texts
+    return []
+
+def key(block, text):
+    return (field(block, "finding_type"), field(block, "confidence"), text)
+
+pool = collections.defaultdict(list)
+for rid in stale:
+    for text in gone_texts(orig[rid]):
+        pool[key(orig[rid], text)].append(rid)
+used, ambiguous = set(), 0
+for entry in result:
+    if entry[0] is not None or not pool:
+        continue
+    block = entry[1]
+    n = int(field(block, "line_number") or 0)
+    for p in in_checkout[field(block, "filename")]:
+        with open(os.path.join(repo, p), "rb") as fh:
+            text = line_at(fh.read(), n)
+        candidates = [rid for rid in pool.get(key(block, text), []) if rid not in used]
+        if not candidates:
+            continue
+        if len({field(orig[rid], "reason") for rid in candidates}) > 1:
+            ambiguous += 1
+            break
+        rid = candidates[0]
+        fresh = {k: next((l for l in block if re.match(r"^\s+" + k + r":", l)), None)
+                 for k in ("hash", "last_seen_at", "filename", "line_number")}
+        merged = []
+        for l in orig[rid]:
+            m = re.match(r"^\s+(\w+):", l)
+            merged.append(fresh[m.group(1)] if m and fresh.get(m.group(1)) else l)
+        entry[0], entry[1] = rid, None  # the new rule goes; the stale one takes its place below
+        used.add(rid)
+        renamed.append((rid, merged))
+        break
+merged_by_id = dict(renamed)
+result = [[rid, merged_by_id.get(rid, block)] for rid, block in result if block is not None]
+stale = [rid for rid in stale if rid not in used]
+kept = [rid for rid in kept if rid not in used]
+
+# The binary numbered each new rule after every rule it generated, the dropped ones included; the
+# candidate numbers the rules it keeps in order instead.
+next_id = max([number(rid) for rid in orig] + [0]) + 1
+for entry in result:
+    if entry[0] is None:
+        new_id = f"SUP-{next_id:08d}"
+        next_id += 1
+        indent = RULE.match(entry[1][0]).group(1)
+        entry[1] = [f"{indent}- id: {new_id}\n"] + entry[1][1:]
+        entry[0] = new_id
+        new.append(new_id)
+result = [block for _, block in result]
 
 with open(out_path, "w", encoding="utf-8") as fh:
     fh.write("".join(header))
@@ -665,13 +763,21 @@ for block in result:
     m = RULE.match(block[0])
     blocks[m.group(2)] = block
 print(f"self-scan: candidate ledger {out_path}: {len(kept)} rules kept as they were, {len(rewritten)} rewritten "
-      f"(re-anchored or migrated by the binary), {len(new)} new and DISABLED (review each), {dropped} generated "
+      f"(re-anchored or migrated by the binary), {len(renamed)} renamed (the file is gone; the reason is carried), "
+      f"{len(new)} new and DISABLED (review each), {dropped} generated "
       f"rules for findings below HIGH dropped, {len(stale)} kept rules matched nothing in this run")
-for title, ids in (("new, disabled until reviewed", new), ("rewritten", rewritten), ("stale (no finding matched)", stale)):
+if ambiguous:
+    print(f"  {ambiguous} new rule(s) share their line text with stale rules of different reasons; left new for a person")
+for title, ids in (("new, disabled until reviewed", new), ("rewritten", rewritten),
+                   ("renamed (file gone, reason carried)", [rid for rid, _ in renamed]),
+                   ("stale (no finding matched)", stale)):
     if ids:
         print(f"  {title}:")
         for rid in ids:
             print(f"    {label(rid, blocks[rid])}")
+with open(env_path, "w", encoding="utf-8") as fh:
+    fh.write(f"kept={len(kept)}\nrewritten={len(rewritten)}\nrenamed={len(renamed)}\nnew={len(new)}\n"
+             f"stale={len(stale)}\nambiguous={ambiguous}\n")
 PY
 fi
 
