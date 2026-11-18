@@ -60,7 +60,9 @@ func TestValuePatternsAreASCIIOnly(t *testing.T) {
 	}
 	all = append(all,
 		named{"anchor US", reUSPassport}, named{"anchor UK", reUKPassport},
-		named{"anchor Canada", reCanadaPassport}, named{"anchor EU", reEUPassport})
+		named{"anchor Canada", reCanadaPassport}, named{"anchor EU", reEUPassport},
+		named{"anchor CanadaCurrent", reCanadaCurrentPassport}, named{"anchor Germany", reGermanPassport},
+		named{"anchor France", reFrancePassport})
 	for _, n := range all {
 		if strings.Contains(n.re.String(), "(?i)") {
 			t.Errorf("%s is %s: a value pattern must not use (?i)", n.name, n.re)
@@ -92,6 +94,11 @@ var caseExemplars = map[string]struct{ upper, mixed []string }{
 	"UK":         {upper: []string{"100000001"}},
 	"Canada":     {upper: []string{"GK123456"}, mixed: []string{"gk123456", "Gk123456", "gK123456"}},
 	"EU":         {upper: []string{"DE1234567", "CF12X4567"}, mixed: []string{"de1234567", "De1234567", "cf12x4567"}},
+	// #888 Part 3. R123456KX is deliberately listed only under CanadaCurrent:
+	// it is the documented DE / CA-current overlap (TestGermanCanadaOverlapRule).
+	"CanadaCurrent": {upper: []string{"R123456KX", "A100001BC"}, mixed: []string{"r123456kx", "R123456kx"}},
+	"Germany":       {upper: []string{"C1234567K", "C01X00T47", "L0R9T3CFG"}, mixed: []string{"c1234567k", "C1234567k"}},
+	"France":        {upper: []string{"12CF34567", "05AB00001"}, mixed: []string{"12cf34567", "12Cf34567"}},
 }
 
 // uppercaseOnlyBuckets are the patterns that deliberately have no mixed-case form.
@@ -162,10 +169,14 @@ func TestCaseExemplarsAgreeWithTheirBucket(t *testing.T) {
 // TestNationalAnchorsAreDisjoint is the disjointness guard: no national exemplar
 // passes another bucket's anchor. keepOutermostSpans copies the higher confidence
 // onto an identical surviving span, so two buckets that both claimed one value
-// would make its score depend on which pattern claimed it first.
+// would make its score depend on which pattern claimed it first. The one
+// exception is the documented DE / CA-current overlap.
 func TestNationalAnchorsAreDisjoint(t *testing.T) {
-	anchors := map[string]*regexp.Regexp{
-		"US": reUSPassport, "UK": reUKPassport, "Canada": reCanadaPassport, "EU": reEUPassport,
+	anchors := map[string]func(string) bool{
+		"US": reUSPassport.MatchString, "UK": reUKPassport.MatchString,
+		"Canada": reCanadaPassport.MatchString, "EU": reEUPassport.MatchString,
+		"CanadaCurrent": reCanadaCurrentPassport.MatchString, "Germany": isGermanPassport,
+		"France": reFrancePassport.MatchString,
 	}
 	for owner := range anchors {
 		ex := caseExemplars[owner]
@@ -174,10 +185,17 @@ func TestNationalAnchorsAreDisjoint(t *testing.T) {
 			values = append(values, asciiUpper(s))
 		}
 		for _, s := range values {
-			for other, re := range anchors {
-				if other != owner && re.MatchString(s) {
-					t.Errorf("%q (a %s exemplar) also passes the %s anchor", s, owner, other)
+			for other, match := range anchors {
+				if other == owner || !match(s) {
+					continue
 				}
+				// The one documented overlap (TestGermanCanadaOverlapRule): allowed
+				// only while determineCountry resolves it to its documented owner.
+				if owner == "CanadaCurrent" && other == "Germany" &&
+					NewValidator().determineCountry(s) == "CanadaCurrent" {
+					continue
+				}
+				t.Errorf("%q (a %s exemplar) also passes the %s anchor", s, owner, other)
 			}
 		}
 	}

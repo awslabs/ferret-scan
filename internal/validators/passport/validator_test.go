@@ -171,9 +171,11 @@ func TestPassportValidator_EUPassports(t *testing.T) {
 		wantCountry string
 	}{
 		{
-			name:        "Valid EU passport C01X00T47",
+			// The German specimen number: digit second, so not the EU shape;
+			// it is the German bucket's (#888 Part 3).
+			name:        "German specimen C01X00T47 is the German bucket",
 			match:       "C01X00T47",
-			wantCountry: "",
+			wantCountry: "Germany",
 		},
 		{
 			name:        "Valid EU passport 2 letters + 7 alphanum",

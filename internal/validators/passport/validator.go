@@ -25,6 +25,26 @@ var (
 	reCanadaPassport = regexp.MustCompile(`^[A-Z]{2}\d{6}$`)
 	reEUPassport     = regexp.MustCompile(`^[A-Z]{2}[A-Z0-9]{7}$`)
 
+	// National shapes (#888 Part 3). See nationalBuckets for the gate they share.
+	//
+	// Germany, digit second: 9 characters from 0-9 and C F G H J K L M N P R T V
+	// W X Y Z, first a letter (Wikipedia, "German passport": the serial uses
+	// 1-9 and those 17 letters, and 0 until November 2021, so old numbers such
+	// as the specimen C01X00T47 keep a 0). A letter second is the EU shape and
+	// stays there. reGermanPassport alone also admits a letter + 8 digits, the US
+	// shape; isGermanPassport requires a letter after the second character, which
+	// is what keeps the two disjoint.
+	reGermanPassport = regexp.MustCompile(`^[CFGHJKLMNPRTVWXYZ][0-9][0-9CFGHJKLMNPRTVWXYZ]{7}$`)
+	// Canada, current series: 1 letter, 6 digits, 2 letters (Wikipedia,
+	// "Canadian passport"). The legacy 2 letters + 6 digits is "Canada".
+	reCanadaCurrentPassport = regexp.MustCompile(`^[A-Z]\d{6}[A-Z]{2}$`)
+	// France: 2 digits, 2 letters, 5 digits. Source: France Titres (ANTS), the
+	// issuing agency, answering on the government's Services Publics+ site
+	// (plus.transformation.gouv.fr/experiences/4124633_passeport, 2023-10-31):
+	// "Le numéro de l'ancien passeport à renseigner se compose de 9 caractères -
+	// (2 chiffres, 2 lettres, 5 chiffres)."
+	reFrancePassport = regexp.MustCompile(`^\d{2}[A-Z]{2}\d{5}$`)
+
 	// MRZ and generic character validation
 	reMRZChars     = regexp.MustCompile(`^[A-Z0-9<]+$`)
 	reGenericChars = regexp.MustCompile(`^[A-Z0-9]+$`)
@@ -135,6 +155,12 @@ func NewValidator() *Validator {
 		"UK":     `\b\d{9}\b`,               // UK: 9 digits
 		"Canada": `\b[A-Z]{2}\d{6}\b`,       // Canada: 2 letters followed by 6 digits
 		"EU":     `\b[A-Z]{2}[A-Z0-9]{7}\b`, // EU: 2 letters followed by 7 alphanumeric chars
+		// National shapes (#888 Part 3), reported only behind a passport label
+		// (nationalBuckets). "Germany" claims a letter + 8 digits too; that
+		// candidate fails isGermanPassport and stays the US bucket's.
+		"Germany":       `\b[CFGHJKLMNPRTVWXYZ][0-9][0-9CFGHJKLMNPRTVWXYZ]{7}\b`,
+		"CanadaCurrent": `\b[A-Z]\d{6}[A-Z]{2}\b`,
+		"France":        `\b\d{2}[A-Z]{2}\d{5}\b`,
 		// Removed overly broad Generic pattern - it was causing too many false positives
 		// Machine Readable Zone (ICAO 9303). Line 1 of a TD3 passport MRZ is
 		// "P" + document-type filler + 3-letter issuing state + name field,
@@ -152,8 +178,14 @@ func NewValidator() *Validator {
 		// token like "PRUSA...<no fillers>" from matching: a real line-1 MRZ
 		// for a passport begins "P<". The name field is then "<"-padded, which
 		// the surfacing logic additionally checks (see hasMRZStructure).
-		"MRZ":     `\bP<[A-Z]{3}[A-Z0-9<]{38,40}`, // Machine Readable Zone line 1 (~44-46 chars)
-		"MRZ_TD3": `\bP<[A-Z]{3}[A-Z0-9<]{39}`,    // MRZ TD3 line 1 (exactly 44 chars)
+		//
+		// The issuing state is three letters, or "D<<" for Germany: ICAO Doc 9303
+		// Part 3 lists Germany as "D", the one code that is not three letters, and
+		// the MRZ fills it to width with "<" (#588, #888). Without it a German line
+		// 1, the holder's name, matched nothing and stayed in clear under
+		// redaction while line 2 was masked.
+		"MRZ":     `\bP<(?:[A-Z]{3}|D<<)[A-Z0-9<]{38,40}`, // Machine Readable Zone line 1 (~44-46 chars)
+		"MRZ_TD3": `\bP<(?:[A-Z]{3}|D<<)[A-Z0-9<]{39}`,    // MRZ TD3 line 1 (exactly 44 chars)
 
 		// MRZ line 2 (ICAO 9303 TD3). Line 1 carries the holder's NAME; line 2
 		// carries the passport NUMBER, date of birth, sex, expiry date and
@@ -198,7 +230,7 @@ func NewValidator() *Validator {
 	// layout that must satisfy five check digits), and putting it ahead of the
 	// national formats stops "US" or "EU" claiming a substring of a line-2 MRZ
 	// and reporting a fragment instead of the whole line.
-	patternOrder := []string{"MRZ_TD3_L2", "MRZ_TD3", "MRZ", "US", "UK", "Canada", "EU"}
+	patternOrder := []string{"MRZ_TD3_L2", "MRZ_TD3", "MRZ", "US", "UK", "Canada", "EU", "CanadaCurrent", "Germany", "France"}
 
 	// The national shapes above with their letters widened to both ASCII cases, so
 	// "Passport Number: gk123456" and "Gk123456" are candidates at all (#888): the
@@ -216,6 +248,11 @@ func NewValidator() *Validator {
 		"US":     `\b[A-Za-z]\d{8}\b`,
 		"Canada": `\b[A-Za-z]{2}\d{6}\b`,
 		"EU":     `\b[A-Za-z]{2}[A-Za-z0-9]{7}\b`,
+		// The national shapes follow the same case rule, and are gated by the
+		// label for every case (nationalBuckets).
+		"Germany":       `\b[CFGHJKLMNPRTVWXYZcfghjklmnprtvwxyz][0-9][0-9CFGHJKLMNPRTVWXYZcfghjklmnprtvwxyz]{7}\b`,
+		"CanadaCurrent": `\b[A-Za-z]\d{6}[A-Za-z]{2}\b`,
+		"France":        `\b\d{2}[A-Za-z]{2}\d{5}\b`,
 	}
 
 	compiledPatterns := make(map[string]*regexp.Regexp, len(patterns))
@@ -438,6 +475,12 @@ func initValidMRZCountryCodes() map[string]bool {
 		// ICAO 9303 Part 3 specials that are NOT ISO 3166-1 codes (13 codes).
 		"UTO": true, "XXA": true, "XXB": true, "XXC": true, "XOM": true, "XCC": true, "GBD": true, "GBN": true,
 		"GBO": true, "GBP": true, "GBS": true, "RKS": true, "EUE": true,
+
+		// Germany: ICAO Doc 9303 Part 3 gives it the one-letter code "D", the only
+		// issuing-state code that is not three letters; in the 3-character field it
+		// is filled to "D<<" (#588 listed the gap, #888 Part 3 closes it). Without
+		// it a German line 2 lost the valid-code credit (75 where FRA's scores 85).
+		"D<<": true,
 	}
 }
 
@@ -801,6 +844,12 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			if re == nil {
 				continue
 			}
+			// A national bucket is reported only behind a passport label, and
+			// needs a line that can carry one (see nationalBuckets).
+			national := nationalBuckets[country]
+			if national && !mixedCaseLine {
+				continue
+			}
 			// Use FindAllStringIndex so each match's byte offset is known up
 			// front. This eliminates the per-match strings.Index(line, match)
 			// rescan (O(lineLength) each) AND fixes a latent correctness bug:
@@ -817,6 +866,9 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				// O(log fields) rather than a rescan. Empty for non-tabular
 				// documents, which leaves scoring exactly as it was.
 				lc.columnHeader = table.HeaderAt(lineBounds, loc[0])
+				if national && !v.mixedCaseLabelled(line, loc[0], lc) {
+					continue
+				}
 
 				if sm, ok := v.scoreCandidate(&cl, country, loc[0], loc[1], line[loc[0]:loc[1]]); ok {
 					lineMatches = append(lineMatches, sm)
@@ -911,6 +963,14 @@ func (v *Validator) scoreCandidate(cl *candidateLine, country string, start, end
 	actualCountry := v.determineCountry(canon)
 	if actualCountry == "" {
 		return spannedMatch{}, false // Skip matches that don't fit any specific passport format
+	}
+	// A national bucket keeps only the values its own anchor resolves to. The
+	// "Germany" pattern also claims a US letter + 8 digits and every
+	// current-Canadian value whose letters are German ones (R123456KX); those are
+	// the other bucket's, so each value is scored by exactly one bucket and its
+	// score does not depend on which pattern claimed it first.
+	if nationalBuckets[country] && actualCountry != country {
+		return spannedMatch{}, false
 	}
 
 	confidence, checks := v.CalculateConfidence(canon + ":" + country)
@@ -1797,6 +1857,43 @@ func (v *Validator) CalculateConfidence(match string) (float64, map[string]bool)
 			checks["valid_country_code"] = false
 		}
 
+	case "Germany":
+		// German passport, digit second (#888 Part 3). No country prefix to
+		// credit; the label gate in the scan loop is what admits it.
+		if !isGermanPassport(cleanMatch) {
+			confidence -= 30
+			checks["format"] = false
+		}
+		if len(cleanMatch) != 9 {
+			confidence -= 20
+			checks["length"] = false
+		}
+
+	case "CanadaCurrent":
+		// Canadian passport, current series: 1 letter, 6 digits, 2 letters
+		// (#888 Part 3). Scored like Germany so the documented DE / CA-current
+		// overlap (R123456KX) scores the same whichever bucket owns it.
+		if !reCanadaCurrentPassport.MatchString(cleanMatch) {
+			confidence -= 30
+			checks["format"] = false
+		}
+		if len(cleanMatch) != 9 {
+			confidence -= 20
+			checks["length"] = false
+		}
+
+	case "France":
+		// French passport: 2 digits, 2 letters, 5 digits (#888 Part 3; source on
+		// reFrancePassport). Gated by the label like the other national buckets.
+		if !reFrancePassport.MatchString(cleanMatch) {
+			confidence -= 30
+			checks["format"] = false
+		}
+		if len(cleanMatch) != 9 {
+			confidence -= 20
+			checks["length"] = false
+		}
+
 	case "MRZ", "MRZ_TD3":
 		// Machine Readable Zone (ICAO 9303) line 1:
 		// "P" + document-type sub-code + 3-letter issuing-state code + name field.
@@ -1971,6 +2068,35 @@ func isWordShaped(text string) bool {
 	return true
 }
 
+// isGermanPassport reports whether s is a German passport serial with a digit
+// second: reGermanPassport, plus at least one letter after the second character.
+// Without that letter the value is a letter + 8 digits, the US bucket's shape.
+func isGermanPassport(s string) bool {
+	if !reGermanPassport.MatchString(s) {
+		return false
+	}
+	for i := 2; i < len(s); i++ {
+		if s[i] >= 'A' && s[i] <= 'Z' {
+			return true
+		}
+	}
+	return false
+}
+
+// nationalBuckets are the national shapes added by #888 Part 3. They are
+// reported only behind a passport label (mixedCaseLabelled: the label right
+// before the value, a passport column header, or a passport label on the line
+// above), in EVERY case, not only for lowercase values: an uppercase token of
+// these shapes is ordinary in IDs, part numbers and wifi codes next to the word
+// "passport" ("passport scanner model L1024N160", "passport kiosk S482071US").
+// Measured on the #888 national decoys with only the existing context rules,
+// 12 of 12 reported at 77.5-100; behind the label, none.
+//
+// France (2 digits, 2 letters, 5 digits) is the shape invoice, batch and case
+// references take ("Passport renewal invoice 24FR00317"), which is why it needs
+// the label most of all.
+var nationalBuckets = map[string]bool{"Germany": true, "CanadaCurrent": true, "France": true}
+
 // determineCountry tries to identify the country format based on the match pattern
 func (v *Validator) determineCountry(match string) string {
 	cleanMatch := strings.ReplaceAll(match, " ", "")
@@ -1984,6 +2110,16 @@ func (v *Validator) determineCountry(match string) string {
 		return "Canada"
 	} else if reEUPassport.MatchString(cleanMatch) {
 		return "EU"
+	} else if reCanadaCurrentPassport.MatchString(cleanMatch) {
+		// Before Germany on purpose: a value such as R123456KX fits both shapes
+		// (any letter + 6 digits + 2 letters whose letters are all German ones).
+		// The documented rule is that the current-Canadian bucket owns it; it is
+		// reported, gated and scored the same either way.
+		return "CanadaCurrent"
+	} else if isGermanPassport(cleanMatch) {
+		return "Germany"
+	} else if reFrancePassport.MatchString(cleanMatch) {
+		return "France"
 	} else if strings.HasPrefix(cleanMatch, "P") && len(cleanMatch) > 40 {
 		if len(cleanMatch) == 44 {
 			return "MRZ_TD3"
