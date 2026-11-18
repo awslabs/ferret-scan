@@ -16,8 +16,11 @@ The validator automatically detects and categorizes the following credit card ty
 | **JCB** | 35xx-xxxx-xxxx-xxxx | Cards starting with 35 |
 | **UNIONPAY** | 62xx-xxxx-xxxx-xxxx | Cards starting with 62 |
 | **MAESTRO** | 5xxx-xxxx-xxxx-xxxx | Cards starting with 50 or 56-58 |
-| **PRIVATE_LABEL_CARD** | 8xxx-xxxx-xxxx-xxxx | Cards starting with 8 (private label/regional) |
-| **CREDIT_CARD** | Various | Generic type for unrecognized patterns |
+| **CREDIT_CARD** | Various | Generic type for unrecognized patterns, including cards starting with 8 (private label/regional) |
+
+Two more types are not card brands: **CARD_TRACK_DATA** (a whole magnetic-stripe track or EMV tag 57
+value) and **CARD_SECURITY_CODE** (a labelled CVV2/CVC2/CID). See
+[Card track data and security codes](#card-track-data-and-security-codes).
 
 ## Detection Capabilities
 
@@ -78,6 +81,51 @@ page are listed, never numbers that are merely common in tutorials or generator 
 
 The same published ceiling now holds the test-pattern literals (`4111111111111111`, ...) and
 repeating shapes (`6011111111111117`), which a CSV export used to lift from 15 to 35.
+
+## Card track data and security codes
+
+PCI DSS v4.0 Requirements 3.3.1.1 and 3.3.1.2 forbid keeping a card's full track data or its
+security code after authorisation, so both are reported under their own types (#905; up to
+v2.6.0 they were reported under the PAN's brand type and `CREDIT_CARD` with `metadata.card_frame`).
+`--checks CREDIT_CARD` reports both.
+
+**`CARD_TRACK_DATA`** is one of three frames, each with the PAN first:
+
+| Frame | Shape | `card_frame` |
+|-------|-------|--------------|
+| ISO/IEC 7813 Track 1 | `%B<PAN>^SURNAME/GIVEN^YYMM<service code><discretionary>?` | `track1` |
+| ISO/IEC 7813 Track 2 | `;<PAN>=YYMM<service code><discretionary>?`, also URL-encoded (`%3B`, `%3D`, `%3F`) | `track2` |
+| EMV tag 57 (Track 2 Equivalent Data) | `<PAN>DYYMM<service code><discretionary>[F]`, bare or inside a TLV | `emv57` |
+
+The sentinels are optional. The finding's text is the whole frame, from its first byte to its
+last, so redaction removes the expiry, service code, discretionary data and Track 1's cardholder
+name together with the PAN. `metadata.card_type` names the PAN's brand. The PAN is also reported
+on its own under its brand type. A frame needs a Luhn-valid PAN of a valid length, a month from
+01 to 12, a valid service code and at most the format's length (79 characters for Track 1, 40 for
+Track 2, 38 nibbles for tag 57); when one of the last three fails, only the PAN is reported. A
+service code starting with 9 (a test card) holds both findings at LOW.
+
+**`CARD_SECURITY_CODE`** is a three- or four-digit value after a label on the same line
+(`CVV: 123`, `cvv=123`, `"cvv": "123"`, `CID 1234`); the text runs from the label to the last
+digit, so the label is masked with the value, and `card_frame` is `security_code`.
+
+- With a card on the same line or within 3 lines, the code takes that card's confidence.
+- An unambiguous label (`cvv`, `cvv2`, `cvc`, `cvc2`, `ccv`, `cav2`, `card security code`,
+  `card verification value/code/number`) with no card in reach is reported at 40 (LOW).
+- A context-only label (`cid`, `csc`, `cvn`, `cvn2`, `security code`) also names a caller ID, a
+  MIME Content-ID or a date, so it is reported only with a card in reach.
+- Digits with no label (a CSV `cvv` column, `PAN|12/28|123`) are not reported.
+
+Redaction, measured on a Track 2, a Track 1 and `cvv: 123` beside a card:
+
+| Strategy | Track data | Security code |
+|----------|------------|---------------|
+| `simple` | `[CARD_TRACK_DATA-REDACTED]` | `[CARD_SECURITY_CODE-REDACTED]` |
+| `format_preserving` | every byte `*` (name and sentinels included) | every byte `*` (label included) |
+| `synthetic` | a fake frame of the same shape whose PAN fails the Luhn check, with a fake name | a random string |
+
+A suppression rule written in v2.6.0 for a frame or code finding hashed the old type and no
+longer matches; regenerate it.
 
 ## Implementation Details
 

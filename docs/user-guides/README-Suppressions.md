@@ -25,8 +25,12 @@ The suppression system uses **cryptographic hashing** to uniquely identify findi
   file of the same name, and only when exactly one finding fits (see
   [Re-anchoring](../suppression-system.md#re-anchoring)). A renamed file or an edited line needs a new
   rule. `--generate-suppressions` also rewrites a rule it matched through an older formula to v5. A binary
-  that predates formula v5 does not read it, so upgrade every binary that reads a shared suppression
-  file before regenerating it. The formulas are listed in
+  that predates formula v5 (v2.5.5 and earlier; v5 shipped in v2.6.0) does not read it, so upgrade every
+  binary that reads a shared suppression file before regenerating it. A rule file written by v2.5.5 needs
+  no change to keep working on a newer binary: its v2 rules still match every finding whose type, text and
+  line are unchanged, and `--generate-suppressions`
+  migrates the ones it matched to v5 (reported as `migrated N to the current hash formula`). The formulas
+  are listed in
   [the suppression system architecture](../suppression-system.md#hash-generation-algorithm).
 
 - **A suppression file is as sensitive as a report.** It does not contain the value verbatim, but its
@@ -47,6 +51,34 @@ The suppression system uses **cryptographic hashing** to uniquely identify findi
   carried in its metadata and **nothing in the tool ever read**. Those are gone
   ([#673](https://github.com/awslabs/ferret-scan/issues/673)); existing rule files keep matching,
   because the identity hash is unchanged.
+
+## When a rule stops matching
+
+A scan says so when an enabled rule matched nothing. After a line is inserted above three suppressed
+findings, the scan reports the three findings again (exit code unchanged) and prints one stderr line:
+
+```
+Note: 3 enabled suppression rule(s) for files scanned in this run matched no finding (the finding moved, changed, or was removed): SUP-00000001, SUP-00000002, SUP-00000003. Run --generate-suppressions to re-anchor the ones whose finding only moved.
+```
+
+The json and yaml reports carry the same count as `stats.suppression_rules_unmatched` (the key is absent
+when it is zero). `--file` and `--stdin` behave the same; on the `--stdin --enable-redaction` gateway,
+whose stderr is the findings document, the count is in that document and the note is not printed.
+
+- Only rules for files the run scanned in full are counted: a rule for a file the run did not read is not
+  named, and on a run narrowed by `--checks`, a rule of a type the run reported no finding of is not checked
+  (the note says so).
+- A note, not a warning: a rule that matched nothing hides nothing, so the exit code does not change.
+- `--generate-suppressions` re-anchors a rule whose finding only moved and names neither the rules it
+  re-anchored nor the ones it migrated to formula v5:
+
+  ```
+  Updated suppression rules: added 0 (disabled by default), refreshed 0, re-anchored 3, migrated 0 to the current hash formula
+  Note: 3 rule(s) whose finding moved to another line now name that line (hash, metadata.line_number and last_seen_at rewritten; enabled, expiry and reason kept)
+  ```
+
+  A rule whose line was edited, or whose finding was removed, stays as it is and keeps being named:
+  delete it, or write a new one.
 
 ## Expiry
 

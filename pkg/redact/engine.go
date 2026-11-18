@@ -40,9 +40,9 @@ type Engine struct {
 	// payload.
 	validatorsList []detector.Validator
 
-	// observer is the package-internal observer that EnhancedManager
-	// shares for its lifetime. Callers can provide their own
-	// LogWriter; observer respects that writer.
+	// observer is the package-internal observer the Detector facade
+	// (validators.NewDetector) shares for the Engine's lifetime. Callers
+	// can provide their own LogWriter; observer respects that writer.
 	observer *observability.StandardObserver
 
 	// redactor is the in-memory plaintext redactor reused across

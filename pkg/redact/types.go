@@ -59,7 +59,7 @@ const (
 // these directly; ferret-scan does not load them from disk on the public
 // path. Each rule matches a finding by Type and (optionally) by location
 // scope, and may carry an expiry — expired rules are dormant, not
-// actively whitelisting.
+// actively allowlisting.
 //
 // Field semantics:
 //
@@ -68,10 +68,13 @@ const (
 //     SSN validator emits "SSN" and "ITIN". The email validator emits the
 //     class of address it found ("BUSINESS", "GMAIL", ...), and "EMAIL"
 //     only for an address no class fits. The credit-card validator emits
-//     the brand: "VISA", "MASTERCARD", "AMERICAN_EXPRESS", "DISCOVER",
-//     "JCB", "DINERS_CLUB", "MAESTRO", "UNIONPAY", or "CREDIT_CARD" when
-//     the brand is unknown. To suppress all of one validator's findings
-//     you must enumerate its types.
+//     the brand for a card number: "VISA", "MASTERCARD", "AMERICAN_EXPRESS",
+//     "DISCOVER", "JCB", "DINERS_CLUB", "MAESTRO", "UNIONPAY", or
+//     "CREDIT_CARD" when the brand is unknown; and two types that are not
+//     brands: "CARD_TRACK_DATA" for a whole magnetic-stripe track or EMV
+//     tag 57 value, and "CARD_SECURITY_CODE" for a labelled CVV2/CVC2/CID.
+//     To suppress all of one validator's findings you must enumerate its
+//     types.
 //
 //     TODO(future): a redact.ExpandTypeAliases([]string{"CREDIT_CARD"})
 //     helper or an Aliases []string field would close the gap. Tracked
@@ -85,7 +88,7 @@ const (
 //
 //   - ExpiresAt, when non-nil, marks the rule dormant after the
 //     specified time. Expired rules do not suppress matches; expiry
-//     means the rule is inactive, not that it actively whitelists. A
+//     means the rule is inactive, not that it actively allowlists. A
 //     nil ExpiresAt means the rule never expires.
 //
 //   - Reason is a human-readable string explaining why the rule exists.
@@ -146,11 +149,12 @@ type Finding struct {
 	// this is the check name (e.g. "PHONE"); for others it is a
 	// sub-type: the SSN validator emits "SSN" or "ITIN", the email
 	// validator the class of address ("BUSINESS", "GMAIL", ...; "EMAIL"
-	// when no class fits), and the credit-card validator the brand
-	// ("VISA", "MASTERCARD", "AMERICAN_EXPRESS", "DISCOVER", "JCB",
-	// "DINERS_CLUB", "MAESTRO", "UNIONPAY", or "CREDIT_CARD" when the
-	// brand is unknown). Suppression rules match this exact string —
-	// see Rule.Type.
+	// when no class fits), and the credit-card validator the brand of a
+	// card number ("VISA", "MASTERCARD", "AMERICAN_EXPRESS", "DISCOVER",
+	// "JCB", "DINERS_CLUB", "MAESTRO", "UNIONPAY", or "CREDIT_CARD" when
+	// the brand is unknown), "CARD_TRACK_DATA" for a whole track or EMV
+	// tag 57 value, or "CARD_SECURITY_CODE" for a labelled security code.
+	// Suppression rules match this exact string — see Rule.Type.
 	//
 	// To enumerate the actual type names produced by a given input,
 	// inspect Result.AuditRecord().FindingsByType after a Redact call.

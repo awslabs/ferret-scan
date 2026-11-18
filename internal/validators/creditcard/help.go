@@ -27,13 +27,21 @@ A bare run of digits (no spaces or dashes between groups) reaches HIGH only when
 - **JCB** - Cards starting with 35
 - **UNIONPAY** - Cards starting with 62
 - **MAESTRO** - Cards starting with 50 or 56-58 range
-- **PRIVATE_LABEL_CARD** - Cards starting with 8 (private label or regional cards)
-- **CREDIT_CARD** - Generic type for unrecognized patterns`,
+- **CREDIT_CARD** - Generic type for unrecognized patterns, including cards starting with 8 (private label or regional cards)
+
+**Card track data and security codes (CARD_TRACK_DATA, CARD_SECURITY_CODE):**
+- **CARD_TRACK_DATA** - A whole magnetic-stripe track (ISO/IEC 7813 Track 1 %B...^NAME^... or Track 2 ;PAN=...?, including a URL-encoded %3B...%3D...%3F) or a chip card's Track 2 Equivalent Data (EMV tag 57, PAN D YYMM ..., bare or inside a TLV). The finding's text is the whole frame, from its first byte to its last, so redaction removes the expiry, service code, discretionary data and Track 1's cardholder name with the PAN. metadata.card_frame names the frame (track1, track2, emv57) and metadata.card_type the PAN's brand. The PAN inside the frame is also reported under its brand type. A frame whose expiry month, service code or length is invalid reports the PAN only.
+- **CARD_SECURITY_CODE** - A labelled CVV2/CVC2/CID: the value must follow its label on the same line (cvv: 123, cvv=123, "cvv": "123", CID 1234). The finding's text runs from the label to the last digit, with metadata.card_frame security_code. With a card on the same line or within 3 lines it takes the card's confidence; an unambiguous label (cvv, cvv2, cvc, cvc2, ccv, cav2, card security code, card verification value/code/number) with no card in reach is reported at 40 (LOW); a context-only label (cid, csc, cvn, cvn2, security code) is reported only with a card in reach. Three or four digits with no label (a CSV column, PAN|12/28|123) are not reported.
+
+Both types belong to this check: --checks CREDIT_CARD reports them, and a suppression rule names the type itself (a rule written in v2.6.0, when these were reported under the brand type and CREDIT_CARD, no longer matches: regenerate it). Redaction: simple writes [CARD_TRACK_DATA-REDACTED] and [CARD_SECURITY_CODE-REDACTED]; format_preserving masks every byte of the frame, or of the label and code, with *; synthetic writes a fake frame of the same shape whose PAN fails the Luhn check, and a random string for a code.`,
 
 		Patterns: []string{
 			"4 groups of 4 digits (e.g., 1234 5678 9012 3456)",
 			"16 consecutive digits (e.g., 1234567890123456)",
 			"4 groups of 4 digits with dashes (e.g., 1234-5678-9012-3456)",
+			"Track 1 (e.g., %B<PAN>^SURNAME/GIVEN^YYMM<service code>...?) as CARD_TRACK_DATA",
+			"Track 2 (e.g., ;<PAN>=YYMM<service code>...?) or EMV tag 57 (<PAN>DYYMM...) as CARD_TRACK_DATA",
+			"A labelled security code (e.g., CVV: 123, cvc=123) as CARD_SECURITY_CODE",
 		},
 
 		SupportedFormats: []string{
@@ -41,7 +49,7 @@ A bare run of digits (no spaces or dashes between groups) reaches HIGH only when
 			"MasterCard (starts with 51-55, 2221-2720)",
 			"American Express (starts with 34 or 37)",
 			"Discover (starts with 6011 or 65)",
-			"JCB (starts with 35, 2131, or 1800)",
+			"JCB (starts with 35)",
 			"Diners Club (starts with 30, 36, or 38)",
 		},
 

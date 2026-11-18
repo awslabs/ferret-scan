@@ -319,6 +319,12 @@ var typeDisplays = map[string]typeDisplay{
 	// worst-reading line in the audit.
 	"INTELLECTUAL_PROPERTY": {"intellectual property", ""},
 	"RECOVERY_CODES":        {"recovery codes", ""},
+
+	// The two creditcard types that are not brands (#905). A frame finding carries card_type but
+	// no vendor, so it reaches this table; the fallback read "a card track data". "Track data" is a
+	// mass noun, so it takes no article. The code entry pins what the fallback already wrote.
+	"CARD_TRACK_DATA":    {"card track data", ""},
+	"CARD_SECURITY_CODE": {"card security code", "a"},
 }
 
 // emailProviderDisplay renders the display name for an email provider subtype.

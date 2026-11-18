@@ -133,6 +133,10 @@ func TestAcronymTypesRenderWithTheRightCaseAndArticle(t *testing.T) {
 		// Mass and plural nouns take no article at all.
 		{"INTELLECTUAL_PROPERTY", "intellectual property"},
 		{"RECOVERY_CODES", "recovery codes"},
+
+		// The two creditcard types that are not brands (#905); the fallback read "a card track data".
+		{"CARD_TRACK_DATA", "card track data"},
+		{"CARD_SECURITY_CODE", "a card security code"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.typ, func(t *testing.T) {

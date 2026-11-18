@@ -31,11 +31,11 @@
 - **Session-Only Processing**: Optimized for CLI application lifecycle
 - **Advanced Configuration**: Granular control over enhanced features
 
-#### **Phase 3: Cross-Validator Intelligence** ✅ **COMPLETE & SESSION-OPTIMIZED**
-- **Cross-Validator Signal Analysis**: Session-only correlation patterns
-- **Confidence Calibration**: Statistical performance-based adjustments
-- **Session Analytics**: Real-time metrics for current execution
-- **Memory-Only Operation**: No persistence, pure session-based processing
+#### **Phase 3: Cross-Validator Intelligence** ❌ **REMOVED**
+- **Cross-Validator Signal Analysis**, **Confidence Calibration** and **Session Analytics** were never
+  wired into a production entry point and were deleted in v2 Phase 2 with `enhanced_integration.go`;
+  no file in the repository implements them. Cross-path confidence adjustment now lives in the
+  dual-path bridge (`internal/validators/dual_path_bridge.go`).
 
 ### 🔧 **ARCHITECTURAL COMPONENTS**
 
@@ -63,28 +63,12 @@
 - **Metadata**: Context-aware metadata validation
 - **Comprehend PII**: ❌ **REMOVED** - the Amazon Comprehend validator (`COMPREHEND_PII` check) was deleted; the feature no longer exists
 
-### 🔄 **MINOR PLACEHOLDERS (2% Remaining)**
+### 🔄 **MINOR PLACEHOLDERS** ❌ **REMOVED**
 
-#### **Language Detection** 🔄 **PLACEHOLDER**
-**File**: `internal/validators/enhanced_integration.go`
-```go
-func (l *LanguageDetector) DetectLanguage(content string) string {
-    // Simple placeholder - returns default language
-    return l.defaultLanguage
-}
-```
-**Impact**: Low - Returns default language "en", system works normally
-**Enhancement**: Could implement actual language detection using character frequency analysis
-
-#### **Recommendation Generation** 🔄 **PLACEHOLDER**
-**File**: `internal/validators/enhanced_integration.go`
-```go
-func (m *EnhancedValidatorManager) generateRecommendations(results []BatchValidationResult, context context.ContextInsights) []ValidationRecommendation {
-    return []ValidationRecommendation{}
-}
-```
-**Impact**: Low - Returns empty recommendations, doesn't affect core scanning
-**Enhancement**: Could add ML-driven recommendations for improving validation
+The two placeholders this section listed, `LanguageDetector.DetectLanguage` (always returned "en")
+and `EnhancedValidatorManager.generateRecommendations` (always returned an empty list), lived in
+`internal/validators/enhanced_integration.go`, which v2 Phase 2 deleted. Neither exists in the
+repository.
 
 ### 💯 **WORKING FEATURES**
 
