@@ -37,10 +37,9 @@ var publishedExampleSecrets = map[string]string{
 	// https://github.com/stripe/stripe-js
 	"pk_test_TYooMQauvdEDq54NiTphI7jx": "Stripe stripe-js README, loadStripe example",
 
-	// Google, the google-authenticator wiki, "Key Uri Format", read 2026-11-18: "Provision a TOTP key
-	// for user alice@google.com, to use with a service provided by Example, Inc:
-	// otpauth://totp/Example:alice@google.com?secret=JBSWY3DPEHPK3PXP&issuer=Example"; the page says the
-	// Base32 key decodes to the bytes of `Hello!` and four fixed bytes.
+	// Google, the google-authenticator wiki, "Key Uri Format", Examples, read 2026-11-18: the first
+	// example provisions a TOTP key with `secret=JBSWY3DPEHPK3PXP&issuer=Example`, and the page says
+	// the Base32 key decodes to the bytes of `Hello!` and four fixed bytes.
 	// https://github.com/google/google-authenticator/wiki/Key-Uri-Format
 	"JBSWY3DPEHPK3PXP": "Google Authenticator Key Uri Format wiki, example TOTP secret",
 }
