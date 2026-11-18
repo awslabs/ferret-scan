@@ -26,7 +26,7 @@ func TestNPI_UnixSecondsNotReported(t *testing.T) {
 		{"logfmt key binds alone after a npi field", "rendering_npi=1104332188 ts=1751328000", "1751328000"},
 		{"json created_at", `{"event": "npi_refresh", "created_at": 1751328000}`, "1751328000"},
 		{"json ts with provider context", `{"provider": "npi-directory", "ts": 1751328000}`, "1751328000"},
-		{"json quoted participle key", `{"npi":"1234567893","updated":1751328000}`, "1751328000"},
+		{"json quoted participle key", `{"npi":"1234567885","updated":1751328000}`, "1751328000"},
 		{"camelCase key", `{"provider": "x", "updatedAt": 1751328000}`, "1751328000"},
 		{"compound participle key", "provider last_updated: 1751328000", "1751328000"},
 		{"jwt iat claim", `{"sub":"npi-lookup","iat":1751328000,"provider":"x"}`, "1751328000"},
@@ -37,7 +37,7 @@ func TestNPI_UnixSecondsNotReported(t *testing.T) {
 		{"milliseconds unit after the value", "provider cache ttl 1761609639 ms", "1761609639"},
 		{"bracketed unit after the value", "Physician 1735689600 (unix)", "1735689600"},
 		{"time call on the left of =", "provider export time.time()=1751328000.123456", "1751328000"},
-		{"second value on an NPI line", "NPI 1234567893 updated at 1751328000", "1751328000"},
+		{"second value on an NPI line", "NPI 1234567885 updated at 1751328000", "1751328000"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if !npiLuhnValid(tc.epoch) {
@@ -68,12 +68,12 @@ func TestNPI_UnixSecondsRuleKeepsRealNPIs(t *testing.T) {
 	}{
 		// The issue's acceptance lines: a labelled NPI keeps its score, including one
 		// whose digits are also a plausible timestamp.
-		{"labelled CMS example", "NPI: 1234567893", "1234567893", 90},
+		{"labelled NPI", "NPI: 1234567885", "1234567885", 90},
 		{"labelled value that is also an epoch", "Provider NPI: 1751328000", "1751328000", 100},
 		{"npi key on the left of =", "npi=1751328000", "1751328000", 90},
 		{"filler between label and value", "NPI number: 1751328000", "1751328000", 90},
-		{"labelled with a time unit after it", "NPI 1234567893 seconds", "1234567893", 90},
-		{"NPI label beats at", "Listed under NPI at 1234567893", "1234567893", 90},
+		{"labelled with a time unit after it", "NPI 1234567885 seconds", "1234567885", 90},
+		{"NPI label beats at", "Listed under NPI at 1234567885", "1234567885", 90},
 
 		// 1-led NPIs are all inside the 2001-2033 window, so these are the cases the
 		// rule could reach and must not.
@@ -83,13 +83,13 @@ func TestNPI_UnixSecondsRuleKeepsRealNPIs(t *testing.T) {
 		{"NPI#", "Provider NPI#1104332188", "1104332188", 100},
 		{"ends in 00, labelled", "Provider NPI: 1357920200", "1357920200", 100},
 		{"ends in 00, unlabelled", "Physician 1618030500 on the claim", "1618030500", 90},
-		{"time words elsewhere on the line", "Provider NPI 1234567893 record created 2025-07-01T00:00:00Z", "1234567893", 100},
+		{"time words elsewhere on the line", "Provider NPI 1234567885 record created 2025-07-01T00:00:00Z", "1234567885", 100},
 		{"time word after the next word", "Physician 1104332188 verified, see timestamp column", "1104332188", 90},
-		{"prose participle", "NPI updated: 1234567893", "1234567893", 90},
-		{"prose participle without npi", "Provider updated: 1234567893", "1234567893", 90},
-		{"possessive s is not a unit", "The provider's 1234567893 record is current", "1234567893", 90},
+		{"prose participle", "NPI updated: 1234567885", "1234567885", 90},
+		{"prose participle without npi", "Provider updated: 1234567885", "1234567885", 90},
+		{"possessive s is not a unit", "The provider's 1234567885 record is current", "1234567885", 90},
 		{"npi beside a ts field", "rendering_npi=1104332188 ts=1751328000", "1104332188", 90},
-		{"npi beside an updated field", `{"npi":"1234567893","updated":1751328000}`, "1234567893", 90},
+		{"npi beside an updated field", `{"npi":"1234567885","updated":1751328000}`, "1234567885", 90},
 
 		// 2-led NPIs read as dates after 2033-05-18, outside the window, so the rule
 		// never touches them whatever surrounds them.
@@ -126,14 +126,14 @@ func TestNPI_UnixSecondsRuleKeepsRealNPIs(t *testing.T) {
 // but still emitted at or above the floor, because the NPI label wins.
 func TestNPI_UnixSecondsRuleKeepsTheFloor(t *testing.T) {
 	v := NewValidator()
-	line := "NPI 1234567893 seconds test example fake mock sample serial tracking invoice order " +
+	line := "NPI 1234567885 seconds test example fake mock sample serial tracking invoice order " +
 		"timestamp unix epoch ts created_at"
 	matches, err := v.ValidateContent(line, "padded.txt")
 	if err != nil {
 		t.Fatalf("ValidateContent() error = %v", err)
 	}
 	for _, m := range matches {
-		if m.Type == "NPI" && m.Text == "1234567893" {
+		if m.Type == "NPI" && m.Text == "1234567885" {
 			if m.Confidence < intrinsicValueFloor {
 				t.Errorf("confidence %.1f fell below the floor %.1f", m.Confidence, intrinsicValueFloor)
 			}

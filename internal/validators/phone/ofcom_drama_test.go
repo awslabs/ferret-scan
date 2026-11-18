@@ -26,6 +26,16 @@ func TestOfcomDramaNumbersAreHeldAtLow(t *testing.T) {
 		{"Phone: 0044 20 7946 0958", "0044 20 7946 0958"},
 		{"Phone: +44 (0)20 7946 0958", "+44 (0)20 7946 0958"},
 		{"Tel: 020 7946 0123 ext 42", "020 7946 0123"},
+		// Manchester's block (#930): "Phone: 0161 496 0815" read PHONE 100 on main @ 3aa380e.
+		{"Phone: 0161 496 0815", "0161 496 0815"},
+		{"Phone: 0161 496 0000", "0161 496 0000"},
+		{"Phone: 0161 496 0999", "0161 496 0999"},
+		{"Ring 0161 496 0000 today", "0161 496 0000"},
+		{"Phone: (0161) 496 0815", "(0161) 496 0815"},
+		{"Phone: 01614960815", "01614960815"},
+		{"Phone: +44 161 496 0123", "+44 161 496 0123"},
+		{"Phone: +44 (0)161 496 0815", "+44 (0)161 496 0815"},
+		{"Phone: 0044 161 496 0958", "0044 161 496 0958"},
 	} {
 		m := wantOneWhole(t, c.line, c.text)
 		if m.Confidence > reservedFictionalCeiling {
@@ -37,8 +47,9 @@ func TestOfcomDramaNumbersAreHeldAtLow(t *testing.T) {
 	}
 }
 
-// The controls: one digit outside each block, and the Manchester block's "0161 496 0000", which the
-// score corpus holds as a real UK number, keep the 100 they score on main.
+// The controls: one digit outside each block keeps the 100 it scores on main, and so does
+// "0161 498 0000", the real-format Manchester number the score corpus holds in place of the drama
+// block's "0161 496 0000" (#930).
 func TestOfcomDramaNeighboursKeepTheirScore(t *testing.T) {
 	for _, c := range []struct{ line, text string }{
 		{"Phone: 020 7946 1991", "020 7946 1991"},
@@ -50,7 +61,10 @@ func TestOfcomDramaNeighboursKeepTheirScore(t *testing.T) {
 		{"Phone: +44 20 7946 1958", "+44 20 7946 1958"},
 		{"Phone: +44 1632 961123", "+44 1632 961123"},
 		{"Phone: +44 7700 910123", "+44 7700 910123"},
-		{"Phone: 0161 496 0000", "0161 496 0000"},
+		{"Phone: 0161 497 0000", "0161 497 0000"},
+		{"Phone: 0161 496 1000", "0161 496 1000"},
+		{"Phone: +44 161 496 1123", "+44 161 496 1123"},
+		{"Phone: 0161 498 0000", "0161 498 0000"},
 		{"Phone: 020 7123 4567", "020 7123 4567"},
 	} {
 		m := wantOneWhole(t, c.line, c.text)
@@ -80,7 +94,14 @@ func TestIsOfcomDramaNumber(t *testing.T) {
 		"00012079460958": false,
 		"+4407700900123": true,
 		"+447700900123":  true,
-		"0161 496 0000":  false,
+		"0161 496 0000":  false, // not cleaned
+		"01614960000":    true,
+		"01614960999":    true,
+		"+441614960815":  true,
+		"+4401614960815": true, // "+44 (0)161 ..."
+		"00441614960958": true,
+		"01614961000":    false,
+		"01614970000":    false,
 	} {
 		if got := isOfcomDramaNumber(clean); got != want {
 			t.Errorf("isOfcomDramaNumber(%q) = %t, want %t", clean, got, want)
@@ -94,7 +115,9 @@ func TestMayBeReservedFictional(t *testing.T) {
 		"02079460958":   true,
 		"+441632960123": true,
 		"07700900123":   true,
+		"01614960815":   true,
 		"02071234567":   false,
+		"01614980000":   false,
 	} {
 		if got := mayBeReservedFictional(clean); got != want {
 			t.Errorf("mayBeReservedFictional(%q) = %t, want %t", clean, got, want)
