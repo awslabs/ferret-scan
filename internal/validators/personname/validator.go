@@ -165,7 +165,7 @@ func (v *Validator) findNamesInLine(line string, lineNum int, filePath string) [
 	var matches []detector.Match
 
 	// Use pattern manager to find matches
-	patternMatches := v.findPatternCandidates(line)
+	patternMatches := v.dropListBoundaryCandidates(line, v.findPatternCandidates(line))
 
 	// Per-line context work (lowercasing the line, keyword scans, pattern/regex
 	// scans, context-keyword list) is identical for every match on this line, so
@@ -252,7 +252,7 @@ func (v *Validator) findNamesInLineWithContext(line string, lineNum int, filePat
 	var matches []detector.Match
 
 	// Use pattern manager to find matches
-	patternMatches := v.findPatternCandidates(line)
+	patternMatches := v.dropListBoundaryCandidates(line, v.findPatternCandidates(line))
 
 	// Per-line context work (lowercasing the line, keyword scans, pattern/regex
 	// scans, context-keyword list) is identical for every match on this line, so
@@ -853,7 +853,7 @@ func (v *Validator) isCommonWordBigram(components NameComponents) bool {
 //
 // The database check comes FIRST and wins. "will", "may" and "an" appear in both
 // the function-word vocabulary and the shipped name data, and they belong to real
-// people — Will Smith, May Chen, An Nguyen — so the data is authoritative and the
+// people, as given names, so the data is authoritative and the
 // word list only rejects what the data has no opinion about. Without that ordering
 // this precision fix would delete real names, and an unreported name is never
 // handed to the redactor: it stays in cleartext in the output.
@@ -875,7 +875,7 @@ func (v *Validator) isToponymPrefixGiven(first string) bool {
 // isNonNameGiven reports whether first appears in vocab and the shipped name data has no opinion on it.
 //
 // The database check comes FIRST and wins, for both vocabularies. "will", "may" and "an" are function
-// words that belong to real people (Will Smith, May Chen, An Nguyen); "Santa", "Val", "Isla" and
+// words that are also given names of real people; "Santa", "Val", "Isla" and
 // "Monte" are given names and "La", "Le", "Fort", "Lake" and "Villa" are surnames. The data is
 // authoritative and the word lists only reject what it has no opinion about. Without that ordering
 // this precision work would delete real names, and an unreported name is never handed to the redactor

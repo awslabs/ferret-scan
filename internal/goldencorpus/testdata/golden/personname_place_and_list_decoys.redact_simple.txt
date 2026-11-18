@@ -8,4 +8,5 @@ Ciudad Juarez, Villa Nueva, Bahia Blanca, Isla Mujeres, Monte Plata.
 Customer region: North East; shipping desk: Russian Far East
 Residence: 77 August Lane, Boise ID 83702
 Located at 100 Martin Luther King Blvd
+Houston, Madison, Jackson, Phoenix and Charlotte are all city names
 === FINDINGS (sorted) ===

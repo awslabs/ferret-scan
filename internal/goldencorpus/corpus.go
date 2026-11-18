@@ -1279,7 +1279,10 @@ var Cases = []Case{
 			"street names (#935's second half): the words between a house number and a street type, " +
 			"and a street type plus the town after it read as `Surname, Given`. main @ 3aa380e " +
 			"reports `August Lane` 92, `Lane, Boise` 67 and `Martin Luther King` 93 there; the fix " +
-			"reports none, and the address validator still reports both streets when it runs.",
+			"reports none, and the address validator still reports both streets when it runs. " +
+			"Line 10 is #936: a list of cities whose comma the `Surname, Given` pattern read across, " +
+			"pairing the last word of one item with the next item; main @ 3aa380e reports two such " +
+			"pairs at 97, the fix none.",
 		Checks: []string{"PERSON_NAME"},
 		Input: "\"Hong Kong\" and \"Middle East\" as PERSON_NAME at confidence 92-100, read from workbook labels\n" +
 			"PERSON_NAME \"Flushing Meadows<ENDASH>Corona\" is a park; so is Flushing Meadows-Corona\n" +
@@ -1289,7 +1292,8 @@ var Cases = []Case{
 			"Ciudad Juarez, Villa Nueva, Bahia Blanca, Isla Mujeres, Monte Plata.\n" +
 			"Customer region: North East; shipping desk: Russian Far East\n" +
 			"Residence: 77 August Lane, Boise ID 83702\n" +
-			"Located at 100 Martin Luther King Blvd\n",
+			"Located at 100 Martin Luther King Blvd\n" +
+			"Houston, Madison, Jackson, Phoenix and Charlotte are all city names\n",
 	},
 	{
 		Name: "medical_hex_member_ids",
