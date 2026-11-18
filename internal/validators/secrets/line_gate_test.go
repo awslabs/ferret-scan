@@ -609,6 +609,8 @@ func TestKeywordStemCoversEveryPattern(t *testing.T) {
 		"plausibleUnquotedSecret":    "a filter",
 		"isQueryKeyByte":             "a filter",
 		"queryParamSeparator":        "splits an unquoted match",
+		"escapedBreakCut":            "shortens an unquoted match at an escaped line break (#932)",
+		"queryParamOpener":           "a filter: whether an unquoted match is a query/fragment parameter (#932)",
 		"appendValue":                "a closure applying plausibleUnquotedSecret to one split segment",
 		"FindAllStringSubmatchIndex": "regexp method",
 		"FindAllStringIndex":         "regexp method",

@@ -81,8 +81,8 @@ func TestTrailingNewlineDoesNotDecideWhetherAFileReports(t *testing.T) {
 
 	a := findingKeys(t, v, withNewline)
 	b := findingKeys(t, v, withoutNewline)
-	if len(a) != 6 {
-		t.Errorf("six credential lines with a trailing newline reported %d findings, want 6:\n%s",
+	if len(a) != 7 { // the callback line's access_token and refresh_token are two findings (#932)
+		t.Errorf("six credential lines with a trailing newline reported %d findings, want 7:\n%s",
 			len(a), strings.Join(a, "\n"))
 	}
 	if strings.Join(a, "\n") != strings.Join(b, "\n") {
