@@ -2809,6 +2809,14 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 				// AWS-secret path at findAWSSecretKeys already spells it this way.
 				checks["not_test_data"] = false
 			}
+			if c := publishedExampleCap(match); c > 0 {
+				if ceiling == 0 || c < ceiling {
+					ceiling = c
+				}
+				// The same disclosure as the AWS placeholder above, under the key the other
+				// validators use for a published example (#930).
+				checks["not_published_example"] = false
+			}
 			if c := cand.ceiling; c > 0 && (ceiling == 0 || c < ceiling) {
 				ceiling = c
 			}
