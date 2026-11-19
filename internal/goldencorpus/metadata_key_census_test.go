@@ -5,6 +5,8 @@ package goldencorpus
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -190,12 +192,14 @@ func TestMetadataKeyCensusOverTheRealValidatorSet(t *testing.T) {
 				byType[m.Type] = cur
 			}
 			cur.n++
-			if n > cur.widest {
-				keys := make([]string, 0, n)
-				for k := range m.Metadata {
-					keys = append(keys, k)
-				}
-				sort.Strings(keys)
+			keys := make([]string, 0, n)
+			for k := range m.Metadata {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			// Widest wins; among equals the smaller sorted key list does, so the record does not
+			// depend on the order the cases are registered in.
+			if n > cur.widest || (n == cur.widest && strings.Join(keys, ",") < strings.Join(cur.keys, ",")) {
 				cur.widest, cur.keys = n, keys
 			}
 		}
@@ -223,33 +227,67 @@ func TestMetadataKeyCensusOverTheRealValidatorSet(t *testing.T) {
 		overFirstCliff, withMetadata, 100*float64(overFirstCliff)/float64(withMetadata),
 		firstMetadataCliff, totalBytes/float64(withMetadata))
 
-	names := make([]string, 0, len(byType))
-	for name := range byType {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	var b strings.Builder
-	b.WriteString("# Metadata key census: the widest finding of each type, over the real validator set.\n")
-	b.WriteString("# Regenerate with UPDATE_GOLDEN=1. A changed count is a per-finding memory change:\n")
-	b.WriteString("# see the band boundaries logged by TestMetadataKeyCensusOverTheRealValidatorSet and #621.\n")
-	b.WriteString("# Counts and key names only -- no byte figures, which are allocator-dependent.\n")
-	for _, name := range names {
-		c := byType[name]
-		fmt.Fprintf(&b, "%s\tkeys=%d\tband=%d\n", name, c.widest, bandOf(c.widest))
-		for _, k := range c.keys {
-			fmt.Fprintf(&b, "\t%s\n", k)
-		}
-	}
-	b.WriteString("# histogram of key counts across all findings carrying metadata\n")
 	counts := make([]int, 0, len(hist))
 	for n := range hist {
 		counts = append(counts, n)
 	}
 	sort.Ints(counts)
 	for _, n := range counts {
-		fmt.Fprintf(&b, "# %d keys: %d findings (band %d)\n", n, hist[n], bandOf(n))
+		t.Logf("%d keys: %d findings (band %d)", n, hist[n], bandOf(n))
+	}
+
+	names := make([]string, 0, len(byType))
+	for name := range byType {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	// THE ARTIFACT MUST MERGE (#841). Two PRs that each add a golden case used to conflict here:
+	// a histogram and a count line summed over every finding, so ANY added finding rewrote them.
+	// The file now holds one record per TYPE and nothing aggregated across types, so a case
+	// rewrites a record only when it WIDENS that type; the finding counts and the histogram are
+	// logged above, where they cannot conflict. A blank line follows every record because git
+	// treats edits to two ADJACENT lines as one conflicting hunk: with the separator, two PRs that
+	// widen neighbouring types still merge. What the guard pins is unchanged (#621): the widest
+	// finding of each type, its key count and its band.
+	var b strings.Builder
+	b.WriteString("# Metadata key census: the widest finding of each type, over the real validator set.\n")
+	b.WriteString("# One record per type: TYPE, keys=<count>, band=<n>, then the sorted key list. No totals.\n")
+	b.WriteString("# Regenerate with UPDATE_GOLDEN=1. A changed count is a per-finding memory change:\n")
+	b.WriteString("# see the band boundaries logged by TestMetadataKeyCensusOverTheRealValidatorSet and #621.\n")
+	b.WriteString("# Counts and key names only -- no byte figures, which are allocator-dependent.\n")
+	for _, name := range names {
+		c := byType[name]
+		fmt.Fprintf(&b, "\n%s\tkeys=%d\tband=%d\t%s\n", name, c.widest, bandOf(c.widest), strings.Join(c.keys, ","))
 	}
 
 	checkGolden(t, "metadata-key-census.txt", b.String())
+}
+
+// TestMetadataKeyCensusHasNoAggregateLines holds the #841 property: the committed census is one
+// record per type, sorted, with nothing summed across types, so two PRs that each add a case do
+// not both rewrite it. A totals or histogram line would fail here.
+func TestMetadataKeyCensusHasNoAggregateLines(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(goldenDir, "metadata-key-census.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev, records := "", 0
+	for _, line := range strings.Split(strings.TrimRight(string(raw), "\n"), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Split(line, "\t")
+		if len(f) != 4 || !strings.HasPrefix(f[1], "keys=") || !strings.HasPrefix(f[2], "band=") {
+			t.Fatalf("census line is not `TYPE<TAB>keys=N<TAB>band=N<TAB>key,key`: %q", line)
+		}
+		if f[0] <= prev {
+			t.Errorf("census records must be unique and sorted by type: %q after %q", f[0], prev)
+		}
+		prev = f[0]
+		records++
+	}
+	if records < 10 {
+		t.Fatalf("only %d census records parsed; the file is not the census", records)
+	}
 }
