@@ -380,6 +380,61 @@
           },
           "rank": 95,
           "ruleId": "CL_RUT"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:nationalid_americas>"
+                },
+                "region": {
+                  "endColumn": 20,
+                  "snippet": {
+                    "text": "CPF: 172.984.064-78"
+                  },
+                  "startColumn": 6,
+                  "startLine": 9
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "National Identification Number Detected in <golden:nationalid_americas> at line 9 (confidence: 40.0% - LOW). Matched text: '172.984.064-78'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "ea09fa1b6b97e7b6c25803b49bf534cd60c7d9e01c7b86b3a77f3affb87f11d8"
+          },
+          "properties": {
+            "confidence": 40,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "checksum_valid": false,
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 40,
+              "context_confidence": 0.5,
+              "context_doctype": "Unknown",
+              "context_domain": "HR_Payroll",
+              "country": "BR",
+              "original_confidence": 40,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_path": "document"
+            },
+            "positiveKeywords": [
+              "cpf"
+            ],
+            "validator": "nationalid"
+          },
+          "rank": 70,
+          "ruleId": "BR_CPF"
         }
       ],
       "tool": {

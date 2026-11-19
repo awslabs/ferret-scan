@@ -188,6 +188,7 @@ var typeParent = map[string]string{
 	"AR_CUIL": "NATIONAL_ID",
 	"CA_SIN":  "NATIONAL_ID",
 	"MX_CURP": "NATIONAL_ID",
+	"MX_RFC":  "NATIONAL_ID",
 }
 
 // supplementalDescriptors supplies copy the migrated registry does not have — both for families that

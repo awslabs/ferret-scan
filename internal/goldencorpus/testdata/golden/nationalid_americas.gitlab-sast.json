@@ -207,6 +207,32 @@
       "message": "National identification number detected: [HIDDEN] (confidence: HIGH)",
       "name": "National Identification Number Detected",
       "severity": "Critical"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected national identification number in this file.\n\n**Location:** <golden:nationalid_americas> (line 9)\n**Confidence:** LOW (40.0%)\n**Detected by:** nationalid validator\n\n**Context:**\n```\nCPF: 172.984.064-78\n```\n\n**Additional Information:**\n- source: preprocessed_content\n\n**Remediation:**\nRemove national identification numbers (CPF, RUT, CUIL, SIN, CURP) from code and documentation, or replace them with synthetic values that fail the check digit.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "BR_CPF"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "nationalid"
+        }
+      ],
+      "location": {
+        "end_line": 9,
+        "file": "<golden:nationalid_americas>",
+        "start_line": 9
+      },
+      "message": "National identification number detected: [HIDDEN] (confidence: LOW)",
+      "name": "National Identification Number Detected",
+      "severity": "Medium"
     }
   ]
 }

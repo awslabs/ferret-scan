@@ -369,6 +369,7 @@ var knownDetectionTypes = []string{
 	"AR_CUIL",               // NATIONAL_ID: Argentina's CUIL and personal CUIT (#884 Part B)
 	"CA_SIN",                // NATIONAL_ID: Canada's Social Insurance Number (#884 Part B)
 	"MX_CURP",               // NATIONAL_ID: Mexico's CURP (#884 Part B)
+	"MX_RFC",                // NATIONAL_ID: Mexico's RFC, a person's or a company's tax ID (#884)
 }
 
 // KnownTypes returns every detection type this tool can report, sorted.

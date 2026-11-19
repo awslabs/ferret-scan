@@ -162,9 +162,10 @@ var Cases = []Case{
 		Description: "#884 Part B: the five Americas national IDs (synthetic, check-digit-valid, seed 884, " +
 			"none a published example). Lines 1-7 are positives, each beside its own label: a dotted CPF " +
 			"under 'CPF nº', a dotted RUT, a bare RUN, a dashed CUIL, a spaced SIN, a leading-9 dashed SIN " +
-			"under the long form, and a CURP. Lines 8-14 are decoys that must stay empty: the same CPF with " +
-			"no label, the CPF with a failing check digit under its label, and the #884 collision lines " +
-			"(Spanish 'sin', 'Sinónimo', English 'NAS' and lowercase 'run').",
+			"under the long form, and a CURP. Line 9, the CPF with a failing check digit under its label, " +
+			"reads LOW 40 with checksum_valid=false since #1044 (#884: a mistyped number is still a number). " +
+			"Lines 8 and 10-14 are decoys that must stay empty: the same CPF with no label and the #884 " +
+			"collision lines (Spanish 'sin', 'Sinónimo', English 'NAS', lowercase 'run', and an IETF RFC).",
 		Checks: []string{"NATIONAL_ID"},
 		Input: "CPF nº 172.984.064-77\n" +
 			"RUT: 6.001.216-4\n" +
@@ -180,6 +181,30 @@ var Cases = []Case{
 			"backup to the NAS 613 891 563\n" +
 			"run 6001216-4 times\n" +
 			"RFC 7231 section 6\n",
+	},
+	{
+		Name: "nationalid_label_distance_decoys",
+		Description: "#1021 and #884's remainder: decoys that must stay EMPTY, every line 'No matches found'. " +
+			"Lines 1-6 are labels (the long form, SIN, CPF, RUT, RFC) with filler words and no value. Lines 7-10 " +
+			"are 9 to 11 digit runs after a word that is not a label, including the digits of a valid CPF, SIN " +
+			"and RUT. Lines 11-12 are an RFC-shaped word in Spanish prose with no label. Lines 13-14 put " +
+			"three words, then a prose clause, between the label and the digits. A labelled value whose check " +
+			"digit fails is LOW, not a decoy, so none is here (the unit tests hold them).",
+		Checks: []string{"NATIONAL_ID"},
+		Input: "Our Social Insurance Number is on file\n" +
+			"Employee SIN number is confidential\n" +
+			"O CPF é obrigatório para o cadastro\n" +
+			"Mi RUT es el documento que pide el banco\n" +
+			"El RFC es el registro federal de cada empresa\n" +
+			"Número do CPF: informado no formulário\n" +
+			"The reference number is 613891563\n" +
+			"Número do pedido é 17298406477\n" +
+			"El número de factura es 600121640 hoy\n" +
+			"Nuestro número de pedido es 6001216-4\n" +
+			"La factura CSP990101AB6 fue emitida en enero\n" +
+			"Constancia ISO900101XY4 de la oficina\n" +
+			"Our Social Insurance Number is the one in the file 613 891 563\n" +
+			"O CPF do cliente é o que consta no cadastro 172.984.064-77\n",
 	},
 	{
 		Name:        "creditcard_brands",

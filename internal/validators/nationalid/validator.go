@@ -3,16 +3,16 @@
 
 // Package nationalid detects national identification numbers that no other check covers: the
 // Americas rows of #884 Part B, Brazil's CPF, Chile's RUT/RUN, Argentina's CUIL (with the personal
-// CUIT prefixes), Canada's SIN and Mexico's CURP.
+// CUIT prefixes), Canada's SIN and Mexico's CURP and RFC.
 //
 // Before it, a file holding only these numbers reported nothing and was never redacted: measured on
 // main @ 3aa380e, the issue's §1 files gave 2 findings (both ITIN) and the redacted copy of its
 // new-hire sink kept CPF, CURP, RUT, CUIL and SIN byte for byte.
 //
 // Every row is tier B (labels.go): a value is reported only beside its own label, and only when its
-// check digit and structural rules pass (checks.go). A labelled value whose check digit fails is not
-// reported, so a synthetic replacement that fails the check (internal/redactors/replacement) never
-// re-detects in a redacted copy.
+// structural rules pass (checks.go). With the check digit passing it is HIGH; with the check digit
+// failing it is LOW with checksum_valid=false. A synthetic replacement (internal/redactors/replacement)
+// fails the structure or is skipped by isSyntheticShape, so it never re-detects in a redacted copy.
 package nationalid
 
 import (
@@ -36,15 +36,18 @@ type shape struct {
 // required anyway. A SIN never matches the SSN's 3-2-4 grouping.
 var shapes = []shape{
 	{TypeBRCPF, regexp.MustCompile(`\d{3}\.\d{3}\.\d{3}-\d{2}|\d{9}-\d{2}|\d{11}`)},
-	{TypeCLRUT, regexp.MustCompile(`\d{1,2}\.\d{3}\.\d{3}-[0-9Kk]|\d{7,8}-[0-9Kk]`)},
+	{TypeCLRUT, regexp.MustCompile(`\d{1,2}\.\d{3}\.\d{3}-[0-9Kk]|\d{7,8}-[0-9Kk]|\d{7,8}[0-9Kk]`)},
 	{TypeARCUIL, regexp.MustCompile(`(?:20|23|24|27)-\d{8}-\d|(?:20|23|24|27)\d{9}`)},
 	{TypeCASIN, regexp.MustCompile(`\d{3}-\d{3}-\d{3}|\d{3} \d{3} \d{3}|\d{9}`)},
 	{TypeMXCURP, regexp.MustCompile(`(?i)[A-Z][AEIOUX][A-Z]{2}\d{6}[HMX][A-Z]{5}[0-9A-Z]\d`)},
+	// shortcut: ASCII only, so an RFC whose name letters include Ñ is not read; add it with the SAT's
+	// table value (38) when one is measured in a corpus.
+	{TypeMXRFC, regexp.MustCompile(`(?i)[A-Z&]{3,4}\d{6}[0-9A-Z]{3}`)},
 }
 
 // countryOf is each type's ISO 3166-1 alpha-2 country, carried in the finding's metadata.
 var countryOf = map[string]string{
-	TypeBRCPF: "BR", TypeCLRUT: "CL", TypeARCUIL: "AR", TypeCASIN: "CA", TypeMXCURP: "MX",
+	TypeBRCPF: "BR", TypeCLRUT: "CL", TypeARCUIL: "AR", TypeCASIN: "CA", TypeMXCURP: "MX", TypeMXRFC: "MX",
 }
 
 // Confidence. A labelled value whose check passes is HIGH; the label is the only context read.
@@ -53,7 +56,18 @@ const (
 	confidenceStrong = 95
 	// confidenceAcronym: a capitalised acronym directly before the value (a RUN printed as "RUN" and the value).
 	confidenceAcronym = 90
+	// checkFailedConfidence: the value is shaped right and sits beside its own label, but its check
+	// digit fails. A mistyped number is still a person's number, so it is reported (and redacted); the
+	// check is the only value-intrinsic evidence, so without it the finding is LOW. It is published as
+	// confidence_ceiling so a document-context boost cannot lift it.
+	checkFailedConfidence = 40.0
+	// genericRFCConfidence: the SAT's two generic RFCs (genericRFCs) name nobody. Held at the top of
+	// LOW, the number creditcard gives a published test card and bankaccount a published example IBAN.
+	genericRFCConfidence = 15.0
 )
+
+// confidenceCeilingKey is the metadata key the document bridge reads as a hard upper bound.
+const confidenceCeilingKey = "confidence_ceiling"
 
 // Validator detects the Americas national identifiers.
 type Validator struct {
@@ -134,22 +148,18 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 					continue
 				}
 				value := line[start:end]
-				if !Valid(sh.dataType, value) {
+				shapeOK, checkOK := assess(sh.dataType, value)
+				if !shapeOK {
 					continue
 				}
 				l, gap, ok := labelBefore(line, start, sh.dataType)
 				if !ok {
 					continue
 				}
-				confidence := float64(confidenceStrong)
-				if l.abbr && !strongSeparator(gap) {
-					confidence = confidenceAcronym
-				}
-				matches = append(matches, detector.Match{
+				m := detector.Match{
 					Text:       value,
 					LineNumber: lineNum + 1,
 					Type:       sh.dataType,
-					Confidence: confidence,
 					Filename:   originalPath,
 					Validator:  "nationalid",
 					Context: detector.ContextInfo{
@@ -157,11 +167,29 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 						PositiveKeywords: []string{l.text},
 					},
 					Metadata: map[string]any{
-						"country":           countryOf[sh.dataType],
-						"check_digit_valid": true,
-						"source":            "preprocessed_content",
+						"country": countryOf[sh.dataType],
+						"source":  "preprocessed_content",
 					},
-				})
+				}
+				switch {
+				case sh.dataType == TypeMXRFC && isGenericRFC(strings.ToUpper(value)):
+					m.Confidence = genericRFCConfidence
+					m.Metadata["checksum_valid"] = checkOK
+					m.Metadata[confidenceCeilingKey] = genericRFCConfidence
+				case checkOK:
+					m.Confidence = confidenceStrong
+					if l.abbr && !strongSeparator(gap) {
+						m.Confidence = confidenceAcronym
+					}
+					m.Metadata["check_digit_valid"] = true
+				case isSyntheticShape(sh.dataType, value):
+					continue
+				default:
+					m.Confidence = checkFailedConfidence
+					m.Metadata["checksum_valid"] = false
+					m.Metadata[confidenceCeilingKey] = checkFailedConfidence
+				}
+				matches = append(matches, m)
 			}
 		}
 	}
