@@ -42,9 +42,9 @@ var hashLineWithoutComment = regexp.MustCompile(`(?m)^(\s*hash:\s*\S+)[ \t]*$`)
 
 // annotateHashesWithAllowlistPragma appends `# pragma: allowlist secret` to
 // every `hash:` line in the marshaled YAML that doesn't already have a
-// trailing comment. The hash field is a SHA-256 of the finding identity, not
-// the secret itself, but it has enough entropy to trip secret scanners — this
-// keeps the suppression file from generating false-positive findings.
+// trailing comment. It keeps other scanners that read the pragma (detect-secrets)
+// off the hash. ferret-scan does not honour it: its words are no credential label
+// here and a finding beside it is reported as without it (#933); not a suppression.
 func annotateHashesWithAllowlistPragma(data []byte) []byte {
 	return hashLineWithoutComment.ReplaceAll(data, []byte("$1 # pragma: allowlist secret"))
 }

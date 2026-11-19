@@ -812,11 +812,12 @@ profiles:
 
 This allows you to create profiles tailored to specific companies or projects with their own internal URL patterns and intellectual property definitions.
 
-A warning for an unusable value under a profile names it by its path under `validators:` alone: with
+A warning for an unusable value under a profile names the profile in its path: with
 `profiles.share.validators.intellectual_property.internal_urls[0]` invalid and `--profile share`, the
-line reads `Warning: config value validators.intellectual_property.internal_urls[0]: …`, without the
-profile, and so does its `stats.config_warnings` entry. Look under the profile you ran as well as
-under the top-level `validators:` key.
+line reads `Warning: config value profiles.share.validators.intellectual_property.internal_urls[0]: …`,
+and so does its `stats.config_warnings` entry. A value from the top-level `validators:` block keeps the
+bare `validators.…` path. When the same bad value sits in both blocks you get two lines, one naming
+each, because fixing one block leaves the other's value dropped.
 
 ## Configuration Precedence
 

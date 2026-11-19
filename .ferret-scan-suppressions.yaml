@@ -240,16 +240,16 @@ rules:
         finding_type: ALIBABA_ARN
         line_number: "681"
     - id: SUP-00000068
-      hash: a2d8fc57a65c8d142bbf931d00ba2f877126f629bd2736e22d9b1e230c70e1e6 # pragma: allowlist secret
+      hash: accd5c198d6496a7e6c8a8c3d0c6fcf6f95c9074bf23d5fccf35aff49d00b512 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-12T00:49:05.328335413Z
+      last_seen_at: 2026-11-19T01:23:07.510372174Z
       metadata:
         confidence: "92.00"
         filename: configuration.md
         finding_type: PERSON_NAME
-        line_number: "1073"
+        line_number: "1074"
     - id: SUP-00000069
       hash: e01e926045fee7d8f3ff56f57cb9e8ae070d141591389f005f5c6f17530672df # pragma: allowlist secret
       reason: "detector FP: #931"
@@ -4530,60 +4530,60 @@ rules:
         finding_type: API_KEY_OR_SECRET
         line_number: "242"
     - id: SUP-00000505
-      hash: 849f0c3fea03e5ff037a79308d249cc20ae6ed0e641b822625c65c4066abb3cd # pragma: allowlist secret
+      hash: 276aa81d69bccf2b47447416dba9dd1ba08da5fb2f9d3a89b960b4ac5f226300 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-19T01:23:07.510372174Z
       metadata:
         confidence: "97.00"
         filename: README.md
         finding_type: API_KEY_OR_SECRET
-        line_number: "362"
+        line_number: "367"
     - id: SUP-00000506
-      hash: 0a41078f5991a2b324c5db2bcb57770380eaf62deeef6c338f6969ac941847aa # pragma: allowlist secret
+      hash: acb229cc7097b89195bdec234035601c1f6d50490eed3d8d466aa3656c999c2e # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-19T01:23:07.510372174Z
       metadata:
         confidence: "100.00"
         filename: README.md
         finding_type: GOOGLE_CLOUD_API_KEY
-        line_number: "534"
+        line_number: "608"
     - id: SUP-00000507
-      hash: 7c063ea01719621d260602680847ac0eae8921c54c6d74dc39dee7fb14526d87 # pragma: allowlist secret
+      hash: c89ad7de00d2c980b1cc385510d1512de5c4b8aa5d0d92b1a43713a968f05588 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-19T01:23:07.510372174Z
       metadata:
         confidence: "100.00"
         filename: README.md
         finding_type: STRIPE_API_KEY
-        line_number: "535"
+        line_number: "609"
     - id: SUP-00000508
-      hash: bb7f698dd109f581cbf53f1ff2c37bf95710c3e2e9d1b9b2960b0d8cf11bd2a3 # pragma: allowlist secret
+      hash: a176dfaeb39f28734b32283a6451cec8744bf6857678a12fe7bd8d20e2ac352d # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-19T01:23:07.510372174Z
       metadata:
         confidence: "100.00"
         filename: README.md
         finding_type: GITHUB_TOKEN
-        line_number: "538"
+        line_number: "612"
     - id: SUP-00000509
-      hash: 469e802bd15c0b9aa3f469a7bea5fa134501a42d81f0f7a962e1d490b8394bfa # pragma: allowlist secret
+      hash: 1cfd09753f26376d5d3bada9f74130f13cb97a5e8d5b7d67bce2d9182b6777db # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-19T01:23:07.510372174Z
       metadata:
         confidence: "97.00"
         filename: README.md
         finding_type: API_KEY_OR_SECRET
-        line_number: "538"
+        line_number: "612"
     - id: SUP-00000510
       hash: db6da9b70fd0d47f59a14e18d6417373638c8e68e65c94da52039c2f64c5c12a # pragma: allowlist secret
       reason: "detector FP: #931"
@@ -4596,71 +4596,71 @@ rules:
         finding_type: GITLAB_TOKEN
         line_number: "539"
     - id: SUP-00000511
-      hash: e9570ffaa1e743268e63efaf16917a63b176c9335ccaa2c9c70e1a4978f8eb2e # pragma: allowlist secret
+      hash: 1612b0bee8edf171e1156f005fca3b68397dc6141353171a01b4beddb3393ce4 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-19T01:23:07.510372174Z
       metadata:
         confidence: "100.00"
         filename: README.md
         finding_type: SLACK_TOKEN
-        line_number: "540"
+        line_number: "614"
     - id: SUP-00000512
-      hash: 291938d7c442540286dbffc29f5f3c32c21f361581ef660cea7e13e9dc7ecbc9 # pragma: allowlist secret
+      hash: cc36ab19008cfb5764ceac60371d097d9804096ffc2ced734335da688fe6e2bb # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-19T01:23:07.510372174Z
       metadata:
         confidence: "100.00"
         filename: README.md
         finding_type: DOCKER_TOKEN
-        line_number: "541"
+        line_number: "615"
     - id: SUP-00000513
-      hash: f04d905f5dbc55b1ac2d5c0877c401900bc146a7bf3c3134c2df5ab5c34d8c2a # pragma: allowlist secret
+      hash: a9cae8e3b7cdbcb345d88cab5fcc392b135ce13f49cb84309dbe492e324ae444 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-19T01:23:07.510372174Z
       metadata:
         confidence: "97.00"
         filename: README.md
         finding_type: API_KEY_OR_SECRET
-        line_number: "541"
+        line_number: "615"
     - id: SUP-00000514
-      hash: ac5427206a34d3f553bfb027968f717db5abbf70c509a3594dc7c778de04dbc1 # pragma: allowlist secret
+      hash: fcbb5c0cfb86a74b539e7e38ad8a32774091776830778abe56830f149ff457f9 # pragma: allowlist secret
       reason: "detector FP: #930"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-19T01:23:07.510372174Z
       metadata:
         confidence: "100.00"
         filename: README.md
         finding_type: JWT_TOKEN
-        line_number: "544"
+        line_number: "618"
     - id: SUP-00000515
-      hash: f087b91b9251e78a1c32ea0926341a7e5b26313e58c25b4511306441a0602064 # pragma: allowlist secret
+      hash: 2e539e8889d8ccfaf69a407aecde102e3db20f8a7053f71ab7e9098e0e5013cb # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-19T01:23:07.510372174Z
       metadata:
         confidence: "100.00"
         filename: README.md
         finding_type: STRIPE_API_KEY
-        line_number: "553"
+        line_number: "627"
     - id: SUP-00000516
-      hash: 4b645006ffb1bee35ee3872ecb893da42e29e8cb43f09d3b97c2b6ff651fd4d8 # pragma: allowlist secret
+      hash: b5423b592025e2f5340fc743870f1680caf7431ae426ca060aeba5a42f766871 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-19T01:23:07.510372174Z
       metadata:
         confidence: "97.00"
         filename: README.md
         finding_type: API_KEY_OR_SECRET
-        line_number: "554"
+        line_number: "628"
     - id: SUP-00000517
       hash: 2afb6c2ac530e941ad588c34aac4f0d95f8b10519b2bcd85fbefe54e8a2b728c # pragma: allowlist secret
       reason: "detector FP: #936"

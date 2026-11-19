@@ -136,7 +136,7 @@ func (h *System) ShowGeneralHelp() {
 	// names every form the parser accepts AND the config key, which is how the omission was caught:
 	// the flag shipped registered and unmentioned.
 	fmt.Fprintln(w, "  --suppression-expires\t<spec>\tLifetime for rules written by --generate-suppressions: 30 (days), 30d, 4w, 720h, an absolute date 2026-12-31, or never (default). Config: suppressions.expires_in")
-	fmt.Fprintln(w, "  --quiet\t\tSuppress progress output (useful for scripts and CI/CD)")
+	fmt.Fprintln(w, "  --quiet\t\tSuppress progress output and the suppression and exclusion notes on stderr (useful for scripts and CI/CD)")
 	fmt.Fprintln(w, "  --pre-commit-mode\t\tEnable pre-commit optimizations (quiet mode, no colors, appropriate exit codes)")
 	fmt.Fprintln(w, "  --fail-on-incomplete\t\tExit non-zero (3) if any file was not fully scanned -- coverage cut short (timeout, cancellation, or budget) or the file could not be opened at all. Default off: both conditions only warn on stderr.")
 	fmt.Fprintln(w, "  --disable-ip-types\t<types>\tComma-separated list of IP sub-types to skip: copyright,patent,trademark,trade_secret,internal_url (repeatable; values append)")

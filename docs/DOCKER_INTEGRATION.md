@@ -80,6 +80,11 @@ publishing it more widely. Keep every port on the way equal (the host port, the 
 `--port` and a tunnel's local port), as these examples do: the UI refuses a scan whose browser
 `Origin` names a port other than the one it listens on.
 
+A script that drives the container's web API exports a scan by its id: `/scan` returns a `scan_id`
+and sets a session cookie, and `/export` takes `{"format": …, "scan_ids": […]}` with that cookie.
+A body that posts `results` back is refused with 400. See
+[Exporting a scan from a script](user-guides/README-WebUI.md#exporting-a-scan-from-a-script).
+
 ## Pre-commit Integration
 
 ### Docker-based Pre-commit Hook
