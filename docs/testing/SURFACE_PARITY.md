@@ -59,28 +59,20 @@ web is leaking, and the entry is the record of a known leak with the issue that 
 `<select id="exportFormat">` in the embedded template and requires it to equal `formatters.List()`,
 naming the missing or extra format. Today both hold the seven formats.
 
-`TestWebExportMatchesCLIFormatter` takes a fixed set of real findings (the golden fixtures
-`file_txt_mixed_pii` and `file_docx_body_and_metadata`, scanned and then given what `runFullCLIScan`
-gives every web finding: the upload name and an explanation), renders them as `/scan` delivers them to
-the browser, posts that JSON to `/export` for every format under all four combinations of
-`show_match` and `verbose`, and compares each body byte for byte with `formatters.Export` for the same
-findings and handleExport's `FormatterOptions`. Stripped before comparing: gitlab-sast's
-`scan.start_time` and `scan.end_time`, JUnit `time="…"` durations and the INTELLECTUAL_PROPERTY
-`reconstruction_timestamp` value, plus JSON key order.
+`TestWebExportMatchesCLIFormatter` uploads the golden fixtures `file_txt_mixed_pii` and
+`file_docx_body_and_metadata` to `/scan`, posts the `scan_id` it returned to `/export` for every format
+under all four combinations of `show_match` and `verbose`, and requires each body to equal
+`formatters.Export` of the CLI's scan of the same bytes with the CLI's options. Only timestamps and JSON
+key order are normalised. Nothing is allowed to differ: before #923/#988 `/export` rebuilt findings
+from the JSON the browser posted back and lost the explanation, the context keywords and the typed
+metadata (18, 6 and 2 of 28 bodies).
 
-The comparison found that `/export` cannot reproduce three parts of a finding, because it rebuilds
-each `detector.Match` from the JSON the browser posts back. They are recorded in `exportLosses`, each
-stripped from the CLI side so every other difference still fails, and `TestWebExportLossesAreLive`
-measures each one:
-
-| Loss | Mechanism | Bodies it changes (of 28) |
-|---|---|---|
-| explanation | `/scan` sends the explanation as `JSONMatch.Explanation`; `handleExport` copies Text, LineNumber, Type, Confidence, Filename, Validator, Metadata and three context strings only | 18: json, yaml, sarif and gitlab-sast under every switch |
-| context-keywords | `JSONMatch` carries `full_line`, `before_text` and `after_text` of `ContextInfo`; `PositiveKeywords`, `NegativeKeywords` and `ConfidenceImpact` are lost, and SARIF's verbose message renders the first as "Positive indicators" | 6 |
-| metadata-types | metadata crosses as JSON, so `validation_checks` leaves as `map[string]bool` and returns as `map[string]any`; the text formatter's type assertion then skips its verbose "Validation results" block | 2 |
-
-Fixing them belongs in `handleExport` (and possibly `JSONMatch`); when one is fixed, its liveness test
-fails and the entry goes.
+`/export` takes `scan_ids` and the session cookie `/scan` set. A request that still carries `results`
+answers 400 (`TestWebExportRefusesPostedFindings`), and the four-surface gate (D, below) therefore
+exports the same way: one cookie jar per surface and set, the `scan_id` of every `/scan` response sent
+in groups of 100, and every format with both switch combinations. `spreport` fails a body that is not
+HTTP 200 on either surface (it used to count "refused on both" and pass) and holds each JSON body to the
+number of findings the `/scan` responses it names held.
 
 ## C. Capability inventory
 
@@ -130,7 +122,7 @@ through the four surfaces:
 | # | Surface | How |
 |---|---|---|
 | 1 | `cli` | the host binary, one `--file <set> --recursive` run |
-| 2 | `web` | the host binary's `--web --bind 127.0.0.1 --port <free port>`; one `/scan` per file, then `/export` of the results in every format the server lists |
+| 2 | `web` | the host binary's `--web --bind 127.0.0.1 --port <free port>`; one `/scan` per file, then `/export` of their `scan_id`s (with the session cookie) in every format the server lists |
 | 3 | `container-cli` | `docker create` the image with the same arguments against `/home/ferret/in`, `docker cp` the set in as a tar stream, `docker start -a`; no bind mount, no `-p`, so the result does not depend on the host's uid |
 | 4 | `container-web` | `docker run -d -p 127.0.0.1:<free port>:8080 <image> --web --port 8080`; the same requests as surface 2 |
 
@@ -240,9 +232,6 @@ for a change of docs alone.
 
 ## Follow-ups
 
-- The three `exportLosses` are web divergences to fix in `handleExport`.
-- `/export` refuses a body over 1 MiB, and the UI posts every result in one request: measured, 391
-  golden findings (572,492 bytes) export and 782 (1,144,919 bytes) are refused with HTTP 400.
 - `/scan` loses the response of any scan longer than the server's 30 s `WriteTimeout` (above).
 - `/scan` names a finding inside an embedded attachment by the upload alone, so the UI cannot say
   which attachment held it.

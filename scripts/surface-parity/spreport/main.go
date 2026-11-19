@@ -690,6 +690,8 @@ func (r *report) set(s set) {
 
 	if r.has("web") && r.has("container-web") {
 		r.exports(s, base)
+	} else if r.has("web") {
+		r.exportsHostOnly(s, base)
 	}
 	if r.has("container-cli") {
 		values := valuesOf(resolve, parsed["cli"], parsed["container-cli"])
@@ -852,7 +854,7 @@ func (r *report) exports(s set, base string) {
 	formats := map[string]bool{}
 	for _, e := range entries {
 		name := e.Name()
-		if strings.HasSuffix(name, ".code") {
+		if strings.HasSuffix(name, ".code") || strings.HasSuffix(name, ".expect") {
 			continue
 		}
 		format := name[strings.LastIndex(name, ".")+1:]
@@ -868,13 +870,15 @@ func (r *report) exports(s set, base string) {
 			continue
 		}
 		if hostCode != "200" || ctrCode != "200" {
+			// A refusal on both sides is a failure too: it used to count as "refused on both" and
+			// pass, which hid /export answering 400 to every request after #988.
 			refused++
-			if hostCode != ctrCode {
-				differ++
-				r.fail("%s: export %s answered %s on web and %s on container-web", s.name, name, hostCode, ctrCode)
-			}
+			differ++
+			r.fail("%s: export %s answered %s on web and %s on container-web", s.name, name, hostCode, ctrCode)
 			continue
 		}
+		r.exportCount(s, hostDir, name, format, hostBody, "web")
+		r.exportCount(s, ctrDir, name, format, ctrBody, "container-web")
 		if !bytes.Equal(normalizeExport(format, hostBody), normalizeExport(format, ctrBody)) {
 			differ++
 			r.fail("%s: export %s differs between web and container-web after normalisation", s.name, name)
@@ -887,6 +891,59 @@ func (r *report) exports(s set, base string) {
 	sort.Strings(names)
 	r.printf("exports web vs container-web: %d bodies over %d format(s) [%s], %d differ, %d refused on both\n",
 		compared, len(names), strings.Join(names, " "), differ, refused)
+}
+
+// exportCount holds a JSON /export body to the number of findings the /scan responses it names held
+// (<group>.expect, written by surface-parity.sh): a 200 with the wrong or no findings is not parity.
+func (r *report) exportCount(s set, dir, name, format string, body []byte, surface string) {
+	if format != "json" {
+		return
+	}
+	group := name[:strings.Index(name, ".")]
+	want, err := strconv.Atoi(strings.TrimSpace(readString(filepath.Join(dir, group+".expect"))))
+	if err != nil {
+		r.fail("%s: export %s on %s has no %s.expect", s.name, name, surface, group)
+		return
+	}
+	doc, err := decode(body)
+	m, _ := doc.(map[string]any)
+	var got []any
+	if err == nil {
+		got, _ = m["results"].([]any)
+		if got == nil {
+			got, _ = m["findings"].([]any)
+		}
+	}
+	if len(got) != want {
+		r.fail("%s: export %s on %s holds %d finding(s), the /scan responses it names held %d", s.name, name, surface, len(got), want)
+	}
+}
+
+// exportsHostOnly checks the host web surface's exports alone, for a run without the container:
+// every body answers 200 and the JSON ones hold the findings /scan returned.
+func (r *report) exportsHostOnly(s set, base string) {
+	dir := filepath.Join(base, "export", "web")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		r.printf("exports: none (%v)\n", err)
+		return
+	}
+	bodies, bad := 0, 0
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasSuffix(name, ".code") || strings.HasSuffix(name, ".expect") {
+			continue
+		}
+		bodies++
+		if code := strings.TrimSpace(readString(filepath.Join(dir, name+".code"))); code != "200" {
+			bad++
+			r.fail("%s: export %s answered %s on web", s.name, name, code)
+			continue
+		}
+		body, _ := os.ReadFile(filepath.Join(dir, name))
+		r.exportCount(s, dir, name, name[strings.LastIndex(name, ".")+1:], body, "web")
+	}
+	r.printf("exports web: %d bodies, %d refused\n", bodies, bad)
 }
 
 func readString(path string) string {

@@ -395,6 +395,7 @@ scan_files() { # surface base_url set root
         abs="$root/$rel"
         name="$(basename "$rel")"
         res="$(curl -sS -o "$out/$sf/$idx.json" -w '%{http_code}\t%{time_total}' --max-time 600 \
+            -b "$out/$sf.cookies" -c "$out/$sf.cookies" \
             -F "files=@\"$(formq "$abs")\";filename=\"$(formq "$name")\"" \
             --form-string "relative_path=$rel" --form-string checks=all --form-string confidence=all \
             --form-string verbose=false --form-string recursive=false "$url/scan" \
@@ -404,31 +405,31 @@ scan_files() { # surface base_url set root
     printf 'seconds=%s\n' "$(elapsed "$t0" "$(now)")" > "$out/$sf.meta"
 }
 
-# export_files posts the surface's own /scan results back to /export, as the UI's Export button does,
-# in every format the server lists, with the UI's default switches (show_match and verbose off) and
-# with both on. Results are chunked by size so a request body stays under 900,000 bytes: the server
-# refuses a JSON body over 1 MiB (maxJSONRequestBytes). One finding bigger than that on its own is
-# a chunk of its own, and the server's refusal is recorded rather than worked around.
+# export_files asks /export for the surface's own /scan results, as the UI's Export button does since
+# #988: the request carries the scan_id each /scan returned, never the findings, and the server finds
+# the result under the loopback session cookie scan_files kept in its jar. It runs every format the
+# server lists, with the UI's default switches (show_match and verbose off) and with both on. The ids
+# go in groups of 100 so one request stays small. A /scan with no scan_id (an error) contributes
+# nothing here. Each group records how many findings its /scan responses held in <group>.expect, so
+# spreport can hold the JSON export to that number: a refusal or an empty body is a failure.
 export_files() { # surface base_url set
     local sf="$1" url="$2" set="$3" out="$work/raw/$3" chunks="$work/raw/$3/chunks-$1" fmt show chunk name
     mkdir -p "$out/export/$sf" "$chunks"
     for f in "$out/$sf"/*.json; do
         [ -e "$f" ] || continue
-        jq -c '(.results // [])[]' "$f" 2> /dev/null || true
-    done > "$chunks/findings.jsonl"
-    LC_ALL=C awk -v d="$chunks" -v max=900000 '
-        { n = length($0) + 1
-          if (size > 0 && size + n > max) { close(f); size = 0 }
-          if (size == 0) { chunk++; f = sprintf("%s/%04d.jsonl", d, chunk) }
-          print > f; size += n }' "$chunks/findings.jsonl"
-    for chunk in "$chunks"/[0-9]*.jsonl; do
+        jq -r 'select((.scan_id // "") != "") | [.scan_id, ((.results // []) | length)] | @tsv' "$f" 2> /dev/null || true
+    done > "$chunks/ids.tsv"
+    split -l 100 -d -a 4 "$chunks/ids.tsv" "$chunks/group."
+    for chunk in "$chunks"/group.[0-9]*; do
         [ -e "$chunk" ] || continue
-        name="$(basename "$chunk" .jsonl)"
+        name="$(basename "$chunk" | sed 's/^group\.//')"
+        awk -F'\t' '{ n += $2 } END { print n + 0 }' "$chunk" > "$out/export/$sf/$name.expect"
         for show in false true; do
             for fmt in $formats; do
-                jq -s -c --arg f "$fmt" --argjson s "$show" '{format: $f, results: ., show_match: $s, verbose: $s}' "$chunk" \
-                    | curl -sS -o "$out/export/$sf/$name.$show.$fmt" -w '%{http_code}' --max-time 120 \
-                        -H 'Content-Type: application/json' --data-binary @- "$url/export" \
+                cut -f1 "$chunk" | jq -R -s -c --arg f "$fmt" --argjson s "$show" \
+                    '{format: $f, scan_ids: (split("\n") | map(select(. != ""))), show_match: $s, verbose: $s}' \
+                    | curl -sS -o "$out/export/$sf/$name.$show.$fmt" -w '%{http_code}' --max-time 300 \
+                        -b "$out/$sf.cookies" -H 'Content-Type: application/json' --data-binary @- "$url/export" \
                         > "$out/export/$sf/$name.$show.$fmt.code" 2>> "$out/$sf.curl.err" \
                     || echo 000 > "$out/export/$sf/$name.$show.$fmt.code"
             done
