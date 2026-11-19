@@ -248,7 +248,7 @@ var Cases = []Case{
 			"REPORTED, never dropped, so redaction still rewrites them, but at no more than 15 (LOW) " +
 			"with not_test=false and confidence_ceiling=15, where an unlisted Luhn-valid card on the " +
 			"same line scores 100. Lines: a labelled number, a space-grouped one beside the word " +
-			"'test', a JSON fixture, a markdown table row, a code assignment, then four bare lines. " +
+			"'test', a JSON fixture, a markdown table row, a code assignment, then five bare lines. " +
 			"A case WITH findings, so its type rows are in the metadata-key census (#841).",
 		Checks: []string{"CREDIT_CARD"},
 		Input: "Card number: 4242424242424242\n" +
