@@ -35,43 +35,49 @@ func growthFixture(n int) (string, []detector.Match) {
 	return doc.String(), ms
 }
 
-// growthBound is the ratio 4x the values may cost: linear reads about 4x, the per-value scan about 16x.
-const growthBound = 9.5
+// perValueBound is how many times the per-value implementation (kept in reference_test.go) must cost
+// what the one-pass sweep costs on the SAME 4,000-value input. Measured 15x; a sweep that went back to
+// one scan per value would read 1x.
+const perValueBound = 3.0
 
 // SweepRemaining must cost one pass over the document however many distinct values are reported.
 // It used to scan the whole document once per value, and per spelling of each value (occurrenceKinds,
 // redactverify.go:234, :239, :278, :305 on 3b9780b), so the cost was values x document and 90% of
 // RedactString at 4,000 values and up (#1005; 0.10 / 0.20 / 0.70 / 2.76 s at 4k / 8k / 16k / 32k values).
 //
-// The instrument is the CPU clock through internal/perfguard (CPU time, GC off, minimum of 4 pairs),
-// not allocated bytes: the defect copies nothing (the document is converted to []byte once, above the
-// loop), so it has no allocation signature, and a count of bytes allocated reads the same for the
-// regressed code. The document grows with the values, so correct code reads 4x, not 1x; what separates
-// the two is 4x against 16x, and the bound sits between them.
+// What is ASSERTED is the one-pass sweep's cost against the per-value implementation on one input,
+// 4,000 distinct values, both timed within the same measurement on the CPU clock (internal/perfguard:
+// GC off, minimum of 4 interleaved pairs). The two see the same machine at the same moment, so host
+// load, a runner image or the cache moves both and the ratio stays put; a growth ratio of the one-pass
+// code alone does not have that property here, and that is why it is logged and not asserted:
 //
-// Readings, linux/amd64 (16 CPUs, host load 45-60 from other jobs throughout), Go 1.27.4, 1,000 -> 4,000
-// distinct values (one-pass code: ~9 ms base, ~45 ms big; per-value code: ~32 ms and ~470 ms), ratio of
-// minimum CPU readings. Both margins, as TEST_PLAN requires (bound / worst correct reading, best
-// regressed reading / bound):
+//   - The defect copies nothing (the document is converted to []byte once, above the loop), so
+//     allocated bytes read the same for the regressed code and cannot be the unit.
+//   - A fixed document with 1k -> 4k values does not separate the populations either: the one-pass
+//     code's per-value work (XML spellings, the automaton, the result map) reads 4.3-4.7x for 4x the
+//     values, the same as the per-value scan's 4.3x.
+//   - Growing the document with the values (1k -> 4k, the shape the first version of this guard
+//     asserted at bound 9.5) reads 4x ideal for linear and 16x for the per-value scan, but the correct
+//     code's reading moves with the host: 5.1-6.3x at load 45-60, 6.2-7.1x at load 25-32, 9.08x once
+//     inside a whole-module run at load 75, 4.5-5.4x quiet, because the 4k automaton (~3 MB of tables)
+//     outgrows the cache that the 1k one fits. #1034's CPU-clock guard went red on macos-latest for the
+//     same reason (2.67x correct against a 2.6 bound), so this guard does not stake its assertion on it.
 //
-//	                correct, 4 pairs     regressed (control), 2 pairs    margins at bound 9.5
-//	no -race, 6 runs     5.14 - 6.33x         15.08 - 15.74x                 9.5/6.33 = 1.50x, 15.08/9.5 = 1.59x
-//	-race,    4 runs     4.84 - 5.40x         15.64 - 15.72x                 9.5/5.40 = 1.76x, 15.64/9.5 = 1.65x
+// Readings, linux/amd64 (16 CPUs, load 25-32), Go 1.27.4, 4,000 distinct values (3,000 lines):
 //
-// Correct code reads above 4x because the automaton and the result map outgrow the cache; on a quiet
-// host it read 4.5 - 5.4x. The bound is near the geometric middle of the worst correct and the best
-// regressed readings, so neither side is thin.
+//	                     one-pass (base)   per-value reference (big)   ratio           margin at bound 3.0
+//	no -race, 3 runs     31.5 - 31.9 ms      457 - 464 ms              14.45 - 14.65x  4.8x (StayAbove)
+//	-race,    2 runs     154 - 156 ms        2.39 - 2.45 s             15.5 - 15.7x    5.2x
+//	regressed (the one-pass arm replaced by the reference, overlay)     1.00x           0.33x: FAILS
 //
-// Inside a whole-module `go test ./...` at host load 75 on 16 CPUs the correct code (commit 78210fc4) read 9.08x once
-// (pairs 4.72 8.09 10.37 9.06x) while the control read 14.97x: the CPU clock of a 45 ms fixture moves
-// with its neighbours. The test name carries "ScalesLinearly" so the load skip list the wave scripts
-// already use (BRIEF section 6) skips it there, and it is run alone afterwards.
+// Per-pair samples sit within 12.5-16x on every run; the one-pass growth logged beside them on the same
+// runs read 6.1-6.5x (pairs 2.3-7.7x) plain and 5.2-5.4x under -race.
 //
-// The regressed side is the per-value implementation kept in reference_test.go, run on the same
-// fixture as a control: if it ever reads under the bound the guard has gone blind, and the control
-// fails rather than the guard passing for the wrong reason. -race does not preserve a growth ratio
-// (TEST_PLAN: it compresses it), but here it moves both populations the same way and the bound holds
-// under it, so there is no race/!race split; the readings under -race are recorded in the PR.
+// The growth of the one-pass code alone (1k -> 4k values, document growing with them) is logged on
+// every run so the curve stays visible in CI's -v output; it is not asserted.
+//
+// perfguard declines the assertion where the CPU tick is too coarse for the base reading (Windows:
+// 15.6 ms ticks against a ~30 ms base), as every guard in this repository does; the skip is logged.
 func TestSweepRemainingScalesLinearlyInDistinctValues(t *testing.T) {
 	if testing.Short() {
 		t.Skip("complexity guard skipped in -short mode")
@@ -80,49 +86,52 @@ func TestSweepRemainingScalesLinearlyInDistinctValues(t *testing.T) {
 	d0, m0 := growthFixture(base)
 	d1, m1 := growthFixture(big)
 
-	// Non-vacuity: every value is distinct, present, and swept, at both sizes. A ratio over a sweep
-	// that removed nothing times nothing.
+	// Non-vacuity: every value is distinct, present, and swept, at both sizes, by both implementations.
+	// A ratio over a sweep that removed nothing times nothing.
 	for _, tc := range []struct {
 		doc string
 		ms  []detector.Match
 	}{{d0, m0}, {d1, m1}} {
-		out, swept, err := SweepRemaining(tc.doc, tc.ms, maskFor)
-		if err != nil || len(swept) != len(tc.ms) || strings.Contains(out, "@corp") || strings.Contains(out, "@other") {
-			t.Fatalf("fixture of %d values: swept %d, err %v, values left: %v", len(tc.ms), len(swept), err,
-				strings.Contains(out, "@corp") || strings.Contains(out, "@other"))
+		for name, sweep := range map[string]func(string, []detector.Match, func(detector.Match) (string, error)) (string, []string, error){
+			"one-pass": SweepRemaining, "per-value reference": sweepRemainingReference,
+		} {
+			out, swept, err := sweep(tc.doc, tc.ms, maskFor)
+			if err != nil || len(swept) != len(tc.ms) || strings.Contains(out, "@corp") || strings.Contains(out, "@other") {
+				t.Fatalf("%s, fixture of %d values: swept %d, err %v, values left: %v", name, len(tc.ms), len(swept), err,
+					strings.Contains(out, "@corp") || strings.Contains(out, "@other"))
+			}
 		}
 	}
 	if len(m1) != 4*len(m0) {
 		t.Fatalf("fixture sizes are %d and %d values, want a 4x step", len(m0), len(m1))
 	}
 
+	// Logged, not asserted: the one-pass code's own growth for 4x the values.
 	g, err := perfguard.Measure(perfguard.DefaultPairs,
 		func() { _, _, _ = SweepRemaining(d0, m0, maskFor) },
 		func() { _, _, _ = SweepRemaining(d1, m1, maskFor) })
 	if err != nil {
-		t.Fatalf("measuring: %v", err)
+		t.Fatalf("measuring growth: %v", err)
 	}
-	t.Logf("4x values cost %s", g)
-	if _, ok := g.Ticks(); !ok {
-		t.Logf("growth ratio NOT asserted: %s", g.ResolutionNote())
-		return
-	}
-	perfguard.ReportMargin(t, "redactverify sweep, correct", g, growthBound, perfguard.StayBelow)
-	if g.Ratio > growthBound {
-		t.Errorf("4x the distinct values cost %s: linear is ~4x and one scan per value ~16x", g)
-	}
+	t.Logf("one-pass sweep, 4x values: %s (logged, not asserted; linear is ~4x, one scan per value ~16x)", g)
 
-	// The control: the same fixture through the implementation this one replaced must read ABOVE the
-	// bound. Two pairs, because each regressed reading is ~0.5 s and it sits far from the bound.
-	c, err := perfguard.Measure(2,
-		func() { _, _, _ = sweepRemainingReference(d0, m0, maskFor) },
+	// Asserted: at 4,000 values the per-value implementation must cost at least perValueBound times
+	// the one-pass sweep. "base" is the one-pass sweep and "big" the reference, so Ratio is
+	// reference / one-pass.
+	r, err := perfguard.Measure(perfguard.DefaultPairs,
+		func() { _, _, _ = SweepRemaining(d1, m1, maskFor) },
 		func() { _, _, _ = sweepRemainingReference(d1, m1, maskFor) })
 	if err != nil {
-		t.Fatalf("measuring the control: %v", err)
+		t.Fatalf("measuring the two implementations: %v", err)
 	}
-	t.Logf("control (one scan per value) %s", c)
-	perfguard.ReportMargin(t, "redactverify sweep, per-value control", c, growthBound, perfguard.StayAbove)
-	if c.Ratio <= growthBound {
-		t.Errorf("the per-value implementation reads %s, not above %.1f: this guard cannot tell it from linear", c, growthBound)
+	t.Logf("per-value reference / one-pass sweep at %d values: %s", len(m1), r)
+	if _, ok := r.Ticks(); !ok {
+		t.Logf("ratio NOT asserted: %s", r.ResolutionNote())
+		return
+	}
+	perfguard.ReportMargin(t, "redactverify sweep, per-value reference over one-pass", r, perValueBound, perfguard.StayAbove)
+	if r.Ratio < perValueBound {
+		t.Errorf("the one-pass sweep costs %s of one scan per value at %d values; want the per-value code at least %.1fx dearer (it reads ~15x): the sweep has a per-value pass again",
+			r, len(m1), perValueBound)
 	}
 }
