@@ -4,10 +4,13 @@
 package parallel
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"testing"
 
+	"github.com/awslabs/ferret-scan/v2/internal/resilience"
 	"github.com/awslabs/ferret-scan/v2/internal/router"
 )
 
@@ -124,5 +127,18 @@ func TestDiagnosticListsAreSortedByPath(t *testing.T) {
 	// testing anything.
 	if len(in) < 2 {
 		t.Fatal("fixture too small to detect an ordering bug")
+	}
+}
+
+// The worker pool hands ProcessFile's error to the retry manager and keeps what comes back as
+// Result.Error. The typed refusal (#1022) must still be recognisable after that trip, or
+// errors.Is at the consumers would stop matching the failure it exists to name.
+func TestAllPreprocessorsFailedSurvivesTheRetryManager(t *testing.T) {
+	rm := resilience.NewRetryManager()
+	err := rm.Retry(context.Background(), "file_processing", func(context.Context) error {
+		return fmt.Errorf("%w: %s", router.ErrAllPreprocessorsFailed, "/x/bad.docx")
+	})
+	if !errors.Is(err, router.ErrAllPreprocessorsFailed) {
+		t.Fatalf("after the retry manager the error is %v, which is not ErrAllPreprocessorsFailed", err)
 	}
 }
