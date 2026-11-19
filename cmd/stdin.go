@@ -606,6 +606,18 @@ func runStdinRedaction(
 		if err := writeStdinOutput(in.outputFile, formatted, precommitConfig); err != nil {
 			return 1
 		}
+	case !hasAnyFindings && report != nil && len(report.configWarnings) > 0:
+		// No finding, so no document is written and stderr would stay empty, which a gateway reads as
+		// "nothing to say": a configured pattern RE2 rejected was dropped, and the scan that found nothing
+		// may have found nothing because of it (#903). A format whose stats block carries the warnings
+		// writes its document, with an empty result list, so `2> findings.json` still parses; any other
+		// format, or an interactive terminal, gets the plain lines the file path prints. Prose cannot
+		// corrupt a document here because none is being written.
+		if !stdoutIsTTY && statsCarryConfigWarnings(finalCfg.format) {
+			fmt.Fprintln(os.Stderr, formatted)
+		} else {
+			writeConfigValueWarnings(os.Stderr, report.configWarnings)
+		}
 	case formatted != "" && hasAnyFindings && !stdoutIsTTY:
 		// Stdout is piped/redirected — emit findings on stderr so the
 		// caller can capture them with `2> findings.json` (or discard
@@ -687,6 +699,18 @@ func formatStdinFindings(
 		return formatter.Format(matches, suppressedMatches, opts)
 	}
 	return formatter.Format(matches, nil, opts)
+}
+
+// statsCarryConfigWarnings reports whether a format writes Stats.ConfigWarnings into its document:
+// json and yaml as stats.config_warnings, sarif as toolConfigurationNotifications. The other formats
+// have no place for them. TestStatsCarryConfigWarningsMatchesTheFormatters renders every format, so a
+// formatter that starts (or stops) carrying them fails there instead of silently here.
+func statsCarryConfigWarnings(format string) bool {
+	switch format {
+	case "json", "yaml", "sarif":
+		return true
+	}
+	return false
 }
 
 // stdinReport is what a --stdin findings report says about the run beyond the findings themselves.
