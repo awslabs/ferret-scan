@@ -60,6 +60,18 @@ const (
 	// three keeps that out.
 	minFields = 3
 
+	// minPairFields is the field count of a two-column table (#1018). Two fields is a table only
+	// under the extra tests of pairTable: the three-field floor above is what keeps "Smith, John"
+	// out, and a two-column export (phone,qty / passport_number,country) is still a table.
+	minPairFields = 2
+
+	// minPairRows is how many data rows a two-column table needs, every one with the header's
+	// field count. Three fields leave room for a ragged row (consistentFraction); two fields do not.
+	minPairRows = 3
+
+	// maxPairHeaderWords is the most words a two-column header cell may hold ("passport number").
+	maxPairHeaderWords = 3
+
 	// sampleRows is how many data rows after the header are checked for a
 	// consistent field count. Enough to reject prose that happens to start with a
 	// comma-rich line, cheap enough to stay O(1) per document.
@@ -180,7 +192,7 @@ func Analyze(content string) *Table {
 	}
 
 	cells := splitFields(header, delim)
-	if len(cells) < minFields {
+	if len(cells) < minPairFields || (len(cells) < minFields && !pairHeader(cells)) {
 		return &Table{}
 	}
 
@@ -217,6 +229,9 @@ func Analyze(content string) *Table {
 		}
 	}
 	if sampled == 0 || float64(matching)/float64(sampled) < consistentFraction {
+		return &Table{}
+	}
+	if len(cells) < minFields && !pairRows(lines[headerIdx+1:], delim, sampled, matching) {
 		return &Table{}
 	}
 
@@ -284,10 +299,48 @@ func pickDelimiter(header string) byte {
 			best, bestCount = d, n
 		}
 	}
-	if bestCount < minFields-1 {
+	if bestCount < minPairFields-1 {
 		return 0
 	}
 	return best
+}
+
+// pairHeader reports whether the two header cells of a two-column file read as column names: short
+// (at most maxPairHeaderWords words each) and without a digit, so "In 2020, 45 people left" and
+// "Smith, John" style lines do not qualify on their header alone.
+func pairHeader(cells []string) bool {
+	for _, c := range cells {
+		c = strings.TrimSpace(strings.Trim(strings.TrimSpace(c), `"`))
+		if len(strings.Fields(c)) > maxPairHeaderWords || strings.IndexFunc(c, unicode.IsDigit) >= 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// pairRows reports whether the data rows after a two-column header make it a table: at least
+// minPairRows rows, every one with exactly two fields, and a digit in at least one cell. A list of
+// names ("Doe, Jane") has no digit; a phone, passport or id column does.
+//
+// shortcut: a two-column table of words only (name,city) gets no header credit, because a list of
+// "surname, forename" lines cannot be told from it. Widen when a validator needs such a header.
+func pairRows(rows []string, delim byte, sampled, matching int) bool {
+	if sampled < minPairRows || matching != sampled {
+		return false
+	}
+	seen := 0
+	for _, line := range rows {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if strings.IndexFunc(line, unicode.IsDigit) >= 0 {
+			return true
+		}
+		if seen++; seen >= sampleRows {
+			break
+		}
+	}
+	return false
 }
 
 func countOutsideQuotes(s string, d byte) int {
