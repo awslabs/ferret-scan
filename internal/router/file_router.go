@@ -21,6 +21,12 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
 )
 
+// ErrAllPreprocessorsFailed is the error processFileInternal wraps when every preprocessor
+// able to take a file declined it or failed on it. Its text is the long-standing wording
+// ("all preprocessors failed for file: <path>"), which the unscanned report strips as a
+// prefix; match it with errors.Is, not by looking for that text (#1022).
+var ErrAllPreprocessorsFailed = errors.New("all preprocessors failed for file")
+
 // FileRouter handles file routing and preprocessing decisions
 type FileRouter struct {
 	registry      *PreprocessorRegistry
@@ -845,7 +851,7 @@ func (fr *FileRouter) processFileInternal(filePath string, config *ProcessingCon
 		}, nil
 	}
 
-	return nil, fmt.Errorf("all preprocessors failed for file: %s", filePath)
+	return nil, fmt.Errorf("%w: %s", ErrAllPreprocessorsFailed, filePath)
 }
 
 // CreateProcessingContext creates a standardized processing context for a file.

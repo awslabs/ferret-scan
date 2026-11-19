@@ -4,9 +4,11 @@
 package parallel
 
 import (
-	"errors"
+	"fmt"
 	"sort"
 	"testing"
+
+	"github.com/awslabs/ferret-scan/v2/internal/router"
 )
 
 // A file whose processing failed must be RECORDED, not just logged.
@@ -34,9 +36,9 @@ func TestFailedFilesAreRecordedNotSilentlyDropped(t *testing.T) {
 		err  error
 	}{
 		{"/x/valid.docx", nil},
-		{"/x/empty.docx", errors.New("all preprocessors failed for file: /x/empty.docx")},
-		{"/x/onebyte.docx", errors.New("all preprocessors failed for file: /x/onebyte.docx")},
-		{"/x/empty.ods", errors.New("all preprocessors failed for file: /x/empty.ods")},
+		{"/x/empty.docx", fmt.Errorf("%w: /x/empty.docx", router.ErrAllPreprocessorsFailed)},
+		{"/x/onebyte.docx", fmt.Errorf("%w: /x/onebyte.docx", router.ErrAllPreprocessorsFailed)},
+		{"/x/empty.ods", fmt.Errorf("%w: /x/empty.ods", router.ErrAllPreprocessorsFailed)},
 	}
 
 	var failed []FileDiagnostic
