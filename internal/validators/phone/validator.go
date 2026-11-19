@@ -200,6 +200,9 @@ type phonePattern struct {
 	// rather than a guess (#672).
 	minDigits int
 	maxDigits int
+
+	// continuesChain, when set, rejects a match the line carries on past its end (see FR_National).
+	continuesChain func(line string, start, end int) bool
 }
 
 // digitCount returns how many ASCII digits s contains.
@@ -418,6 +421,25 @@ func NewValidator() *Validator {
 			country: "US/CA",
 			format:  "+1-800-XXX-XXXX",
 		},
+		// French national format (#1052): "0" and a digit 1-9, then four pairs written with ONE
+		// separator (space, dot or dash). RE2 has no back-reference, so each separator is its own
+		// alternative and "01 42.34 56-78" stays unmatched. Appended last so every earlier pattern
+		// keeps its index (TestPatternIndexes in e164_gate_test.go).
+		{
+			name:      "FR_National",
+			regex:     regexp.MustCompile(`\b0[1-9](?: \d\d){4}\b|\b0[1-9](?:\.\d\d){4}\b|\b0[1-9](?:-\d\d){4}\b`),
+			minDigits: 10,
+			maxDigits: 10,
+			country:   "FR",
+			format:    "0X XX XX XX XX",
+			// A sixth pair ("01.42.34.56.78.90") is a longer dotted or dashed chain, a version or a
+			// serial, not a number; the compact form's \b has no such look-ahead for it, a
+			// separator-joined one needs it.
+			continuesChain: func(line string, start, end int) bool {
+				return end+2 < len(line) && line[end] == line[start+2] && line[end+1] >= '0' && line[end+1] <= '9' &&
+					line[end+2] >= '0' && line[end+2] <= '9'
+			},
+		},
 	}
 
 	return v
@@ -504,6 +526,11 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 				// Checked here rather than in the regex because the digits are spread across optional
 				// groups; see phonePattern.minDigits.
 				if !pattern.lengthAllowed(match) {
+					res.raw = append(res.raw, setAside)
+					continue
+				}
+
+				if pattern.continuesChain != nil && pattern.continuesChain(line, matchIndex, matchIndex+len(match)) {
 					res.raw = append(res.raw, setAside)
 					continue
 				}
@@ -1786,6 +1813,11 @@ func (v *Validator) countryFormat(phone string, pattern phonePattern) countrySta
 		if strings.HasPrefix(phone, "+44") || strings.HasPrefix(phone, "0") || strings.HasPrefix(phone, "(0") {
 			return countryValid
 		}
+		return countryNotChecked
+	case "FR":
+		// No rule to apply: FR_National's regex already fixes the shape (a trunk 0, a digit 1-9 and
+		// four pairs). Not checked scores as the compact "0142345678" does (US_Plain's
+		// countryImpossible adds nothing either), which is what #1052 asks of the spaced forms.
 		return countryNotChecked
 	case "International", "Europe", "Mobile":
 		// Basic international format validation. Whether the code is assigned and the national
