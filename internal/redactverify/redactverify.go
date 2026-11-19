@@ -69,7 +69,7 @@ func ResidualTypes(written []byte, matches []detector.Match) []string {
 		return nil
 	}
 	// One pass over written for every value and spelling, not one scan per value (#1005).
-	seen, asked, found := map[string]bool{}, map[string]bool{}, scanKinds(written, residualNeedles(matches))
+	seen, asked, res := map[string]bool{}, map[string]bool{}, scanResidual(written, matches)
 	for _, m := range matches {
 		// Scope must match the enforcer's exactly. A value the sweep is forbidden to remove must not
 		// be counted as residue, or the artifact becomes permanently unobtainable with no override:
@@ -88,7 +88,7 @@ func ResidualTypes(written []byte, matches []detector.Match) []string {
 		if seen[m.Type] {
 			continue
 		}
-		if survivesIn(found, m.Text) {
+		if res.survives(m.Text) {
 			t := m.Type
 			if t == "" {
 				t = "UNKNOWN"
@@ -220,7 +220,7 @@ func SweepRemaining(text string, matches []detector.Match, replacementFor func(m
 	// Every spelling of every candidate is looked up in ONE pass over the document (scanKinds), not one
 	// scan per spelling: the per-value scans were the whole quadratic cost (#1005). The kinds are read
 	// from the ORIGINAL text throughout, as the per-value scans read it.
-	first, texts, needles := sweepCandidates(matches)
+	first, texts, xml, needles := sweepCandidates(matches)
 	found := scanKinds(text, needles)
 	seen := map[string]detector.Match{}
 	for _, t := range texts {
@@ -233,8 +233,8 @@ func SweepRemaining(text string, matches []detector.Match, replacementFor func(m
 			seen[t] = first[t]
 			continue
 		}
-		for _, alt := range altSpellings(t, t) {
-			if found[alt.from].standalone {
+		for _, from := range fromsOf(t, xml[t]) {
+			if found[from].standalone {
 				seen[t] = first[t]
 				break
 			}
@@ -299,7 +299,7 @@ func SweepRemaining(text string, matches []detector.Match, replacementFor func(m
 		//
 		// Only spellings actually PRESENT are added. The trie is built from these pairs, and a file
 		// with 6,924 matches would otherwise pay for three unused patterns per value.
-		for _, alt := range altSpellings(v, repl) {
+		for _, alt := range altSpellingsWith(v, repl, xml[v]) {
 			if k := found[alt.from]; k.standalone && !k.embedded {
 				pairs = append(pairs, alt.from, alt.to)
 			}

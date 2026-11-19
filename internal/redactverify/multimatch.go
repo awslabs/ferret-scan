@@ -166,67 +166,13 @@ nextNeedle:
 	return out
 }
 
-// residualNeedles lists every spelling ResidualTypes may look for, over the distinct reported values at
-// least minSweepLen long (the same scope as its loop).
-func residualNeedles(matches []detector.Match) []string {
-	var needles []string
-	counted := map[string]bool{}
-	for _, m := range matches {
-		if len(m.Text) < minSweepLen || counted[m.Text] {
-			continue
-		}
-		counted[m.Text] = true
-		needles = append(needles, spellings(m.Text)...)
-	}
-	return needles
-}
-
-// spellings lists every byte string survives looks for: the literal, the two wide encodings, and the
-// XML entity variants.
-func spellings(value string) []string {
-	out := []string{value}
-	if w := utf16LE(value); len(w) > 0 {
-		out = append(out, string(w))
-	}
-	if w := utf16BE(value); len(w) > 0 {
-		out = append(out, string(w))
-	}
-	for _, v := range embedded.XMLEscapeVariants(value) {
-		if v != value {
-			out = append(out, v)
-		}
-	}
-	return out
-}
-
-// survivesIn is survives answered from a scanKinds result over spellings(value): the same four
-// spellings, the same standalone rule for the first three, and ANY occurrence for the entity variants.
-func survivesIn(found map[string]kinds, value string) bool {
-	if value == "" {
-		return false
-	}
-	if found[value].standalone {
-		return true
-	}
-	if w := utf16LE(value); len(w) > 0 && found[string(w)].standalone {
-		return true
-	}
-	if w := utf16BE(value); len(w) > 0 && found[string(w)].standalone {
-		return true
-	}
-	for _, v := range embedded.XMLEscapeVariants(value) {
-		if k := found[v]; v != value && (k.standalone || k.embedded) {
-			return true
-		}
-	}
-	return false
-}
-
 // sweepCandidates returns, for SweepRemaining, the first match of every distinct reported value of at
-// least minSweepLen bytes, those values in first-seen order, and every spelling of each (the value
-// itself, then its wide and entity forms) for scanKinds.
-func sweepCandidates(matches []detector.Match) (first map[string]detector.Match, texts, needles []string) {
+// least minSweepLen bytes, those values in first-seen order, each value's XML entity variants (computed
+// once: embedded.XMLEscapeVariants builds a strings.Replacer per call, which is most of the allocation
+// of a sweep), and every spelling of each value for scanKinds.
+func sweepCandidates(matches []detector.Match) (first map[string]detector.Match, texts []string, xml map[string][]string, needles []string) {
 	first = map[string]detector.Match{}
+	xml = map[string][]string{}
 	for _, m := range matches {
 		if m.Text == "" || len(m.Text) < minSweepLen {
 			continue
@@ -236,10 +182,100 @@ func sweepCandidates(matches []detector.Match) (first map[string]detector.Match,
 		}
 		first[m.Text] = m
 		texts = append(texts, m.Text)
+		xml[m.Text] = embedded.XMLEscapeVariants(m.Text)
 		needles = append(needles, m.Text)
-		for _, alt := range altSpellings(m.Text, m.Text) {
-			needles = append(needles, alt.from)
+		needles = append(needles, fromsOf(m.Text, xml[m.Text])...)
+	}
+	return first, texts, xml, needles
+}
+
+// fromsOf lists the non-literal spellings of value, in altSpellings' order, given its XML variants.
+func fromsOf(value string, xml []string) []string {
+	out := make([]string, 0, 3)
+	if le := utf16LE(value); len(le) > 0 {
+		out = append(out, string(le))
+	}
+	if be := utf16BE(value); len(be) > 0 {
+		out = append(out, string(be))
+	}
+	for _, v := range xml {
+		if v != value {
+			out = append(out, v)
 		}
 	}
-	return first, texts, needles
+	return out
+}
+
+// altSpellingsWith is altSpellings given value's XML variants already computed. It is written out
+// rather than shared so that the per-value reference in reference_test.go, which calls altSpellings,
+// stays an independent oracle: equivalence_test.go fails if the two disagree.
+func altSpellingsWith(value, repl string, xml []string) []spelling {
+	out := make([]spelling, 0, 3)
+	if le := utf16LE(value); len(le) > 0 {
+		out = append(out, spelling{string(le), string(utf16LE(repl))})
+	}
+	if be := utf16BE(value); len(be) > 0 {
+		out = append(out, spelling{string(be), string(utf16BE(repl))})
+	}
+	rv := embedded.XMLEscapeVariants(repl)
+	for i, v := range xml {
+		if v == value {
+			continue
+		}
+		to := repl
+		if i < len(rv) {
+			to = rv[i]
+		}
+		out = append(out, spelling{v, to})
+	}
+	return out
+}
+
+// residual answers survives(written, value) for every reported value from one scanKinds pass.
+type residual struct {
+	found map[string]kinds
+	xml   map[string][]string
+}
+
+// scanResidual looks up every spelling survives checks, for the distinct values of at least
+// minSweepLen bytes (ResidualTypes' scope), in one pass over written.
+func scanResidual(written []byte, matches []detector.Match) *residual {
+	r := &residual{xml: map[string][]string{}}
+	var needles []string
+	for _, m := range matches {
+		if len(m.Text) < minSweepLen {
+			continue
+		}
+		if _, dup := r.xml[m.Text]; dup {
+			continue
+		}
+		r.xml[m.Text] = embedded.XMLEscapeVariants(m.Text)
+		needles = append(needles, m.Text)
+		needles = append(needles, fromsOf(m.Text, r.xml[m.Text])...)
+	}
+	r.found = scanKinds(written, needles)
+	return r
+}
+
+// survives is survives(written, value) for a value scanResidual was given: a STANDALONE literal or
+// wide copy, or ANY copy of an XML entity variant.
+func (r *residual) survives(value string) bool {
+	if value == "" {
+		return false
+	}
+	if r.found[value].standalone {
+		return true
+	}
+	if w := utf16LE(value); len(w) > 0 && r.found[string(w)].standalone {
+		return true
+	}
+	if w := utf16BE(value); len(w) > 0 && r.found[string(w)].standalone {
+		return true
+	}
+	for _, v := range r.xml[value] {
+		if k := r.found[v]; v != value && (k.standalone || k.embedded) {
+			return true
+		}
+	}
+	return false
 }
