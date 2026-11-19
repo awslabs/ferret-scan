@@ -2,6 +2,7 @@ package secrets
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -60,6 +61,13 @@ type providerRule struct {
 	// Trailer is an optional regex fragment that may follow the body: GitLab's
 	// routable-token suffix. Only meaningful for modeAtLeast.
 	Trailer string
+	// RandomBody asks that the body carry a digit or an upper-case letter. A prefix of a few
+	// letters followed by lower-case words (`glft-feed-token-goes-here`,
+	// `github_pat_rotation_schedule_for_the_platform_team`) is a slug, not an issued token: a
+	// random body of 20 characters over base64url has none with probability about 5e-8, and
+	// 30 over base62 about 1e-13 (#881). Only the rows #881 added set it; a row that already
+	// reported slugs keeps reporting them, so no finding on main moves.
+	RandomBody bool
 	// Base is the confidence CalculateConfidence starts from for this type.
 	Base float64
 	// Describe is the GetCheckInfo line for the row, or "" for a row that shares
@@ -98,11 +106,16 @@ var providerRules = []providerRule{
 		Describe: "Google Cloud API Keys: AIza[35 characters]",
 	},
 	{
-		Type: "STRIPE_API_KEY", Prefixes: []string{"sk_live_", "pk_live_", "sk_test_", "pk_test_"},
+		// rk_live_ and rk_test_ are Stripe's restricted API keys, published beside the secret and
+		// publishable prefixes at https://docs.stripe.com/keys ("Key types" and "Switch to live
+		// mode"). Stripe publishes no length for any of them (#881).
+		Type: "STRIPE_API_KEY", Prefixes: []string{"sk_live_", "pk_live_", "sk_test_", "pk_test_", "rk_live_", "rk_test_"},
 		Charset: `[0-9a-zA-Z]`, MinBody: 24, Mode: modeAtLeast, Base: 95,
-		Describe: "Stripe API Keys: sk_live_, pk_live_, sk_test_, pk_test_ + at least 24 characters, to the end of the run",
+		Describe: "Stripe API Keys: sk_live_, pk_live_, rk_live_, sk_test_, pk_test_, rk_test_ + at least 24 characters, to the end of the run",
 	},
 	{
+		// glpat- is GitLab's personal access token prefix (https://docs.gitlab.com/security/tokens/,
+		// "Token prefixes"); its routable-token suffix is GitLab's routable_token.rb.
 		Type: "GITLAB_TOKEN", Prefixes: []string{"glpat-"},
 		Charset: `[a-zA-Z0-9_-]`, MinBody: 20, Mode: modeAtLeast,
 		// A routable token (GitLab's routable_token.rb) ends in `.` + 2 base36
@@ -112,18 +125,65 @@ var providerRules = []providerRule{
 		Describe: "GitLab Personal Access Tokens: glpat-[at least 20 characters], optionally followed by the routable-token suffix .vv.lliiiiiii",
 	},
 	{
+		// The rest of GitLab's "Token prefixes" table (https://docs.gitlab.com/security/tokens/),
+		// which says they are fixed and designed as standard identifications: gloas- OAuth
+		// application secret, gldt- deployment, glrt- and glrtr- runner authentication, glcbt- CI/CD
+		// job, glptt- trigger, glft- feed, glimt- incoming mail, glagent- agent for Kubernetes,
+		// glwt- workspace, glsoat- SCIM, glffct- feature flags client (#881). GitLab publishes
+		// no body length, so the minimum is the one glpat- has always had. No routable-token
+		// Trailer: the suffix is documented here for glpat- only, and was not checked for these prefixes.
+		Type: "GITLAB_TOKEN", Prefixes: []string{"gloas-", "gldt-", "glrt-", "glrtr-", "glcbt-", "glptt-", "glft-", "glimt-", "glagent-", "glwt-", "glsoat-", "glffct-"},
+		Charset: `[a-zA-Z0-9_-]`, MinBody: 20, Mode: modeAtLeast, RandomBody: true, Base: 93,
+		Describe: "GitLab Tokens: gloas-, gldt-, glrt-, glrtr-, glcbt-, glptt-, glft-, glimt-, glagent-, glwt-, glsoat-, glffct- + at least 20 characters, with a digit or an upper-case letter",
+	},
+	{
 		Type: "DOCKER_TOKEN", Prefixes: []string{"dckr_pat_"},
 		Charset: `[a-zA-Z0-9_-]`, MinBody: 36, Mode: modeExact, Base: 92,
 		Describe: "Docker Hub Tokens: dckr_pat_[36 characters]",
 	},
 	{
 		Type: "SLACK_TOKEN", Prefixes: []string{"xoxb-"},
-		Head: `[0-9]{11,12}-[0-9]{11,12}-`, Charset: `[a-zA-Z0-9]`, MinBody: 24, Mode: modeAtLeast, Base: 94,
-		Describe: "Slack Tokens: xoxb-[bot tokens], xoxp-[user tokens]; the final section is the secret and is taken whole",
+		Head: `[0-9]{11,13}-[0-9]{11,13}-`, Charset: `[a-zA-Z0-9]`, MinBody: 24, Mode: modeAtLeast, Base: 94,
+		Describe: "Slack Tokens: xoxb-[bot tokens], xoxp-[user tokens], xapp-[app-level tokens]; the final section is the secret and is taken whole",
 	},
 	{
 		Type: "SLACK_TOKEN", Prefixes: []string{"xoxp-"},
-		Head: `[0-9]{11,12}-[0-9]{11,12}-[0-9]{11,12}-`, Charset: `[a-zA-Z0-9]`, MinBody: 32, Mode: modeAtLeast, Base: 94,
+		// the shape on Slack's token page is xoxp-111-222-333-<32 hex> (https://docs.slack.dev/authentication/tokens,
+		// "Rotating a short token secret"): ids are not fixed at 11-12 digits (#881). The pre-2016
+		// 6- and 10-character secrets that page describes stay below the minimum.
+		Head: `[0-9]{3,13}-[0-9]{3,13}-[0-9]{3,13}-`, Charset: `[a-zA-Z0-9]`, MinBody: 32, Mode: modeAtLeast, Base: 94,
+	},
+	{
+		// App-level tokens begin xapp- (https://docs.slack.dev/authentication/tokens, "App-level
+		// tokens"). The page publishes the prefix only; the `1-<app id>-<digits>-<hex>` sections
+		// are the observed shape, and the final section is the secret, as for the rows above.
+		Type: "SLACK_TOKEN", Prefixes: []string{"xapp-"},
+		Head: `[0-9]-[A-Z0-9]{8,}-[0-9]{8,}-`, Charset: `[a-zA-Z0-9]`, MinBody: 32, Mode: modeAtLeast, Base: 94,
+	},
+	{
+		// github_pat_ is the fine-grained personal access token prefix
+		// (https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github,
+		// "GitHub's token formats"). GitHub publishes no length; the body carries `_` (observed
+		// shape: 22 characters, `_`, 59 characters), so it is its own row, not a ghp_-style window.
+		Type: "GITHUB_TOKEN", Prefixes: []string{"github_pat_"},
+		Charset: `[a-zA-Z0-9_]`, MinBody: 40, Mode: modeAtLeast, RandomBody: true, Base: 93,
+	},
+	{
+		// Hugging Face user access tokens begin hf_ (https://huggingface.co/docs/hub/security-tokens,
+		// "How to use User Access Tokens"). No length is published; 30 is below the observed 34.
+		Type: "API_KEY_OR_SECRET", Prefixes: []string{"hf_"},
+		Charset: `[a-zA-Z0-9]`, MinBody: 30, Mode: modeAtLeast, RandomBody: true, Base: 92,
+		Describe: "Hugging Face User Access Tokens: hf_[at least 30 characters]",
+	},
+	{
+		// Anthropic API keys begin sk-ant-api03- (the partial_key_hint in
+		// https://platform.claude.com/docs/en/api/admin/api_keys/update) and Admin API keys
+		// sk-ant-admin (https://platform.claude.com/docs/en/build-with-claude/administration-api,
+		// "Authentication"). The documented prefix of an admin key stops at `admin`; the `01-`
+		// is the observed shape. No length is published; the observed bodies are about 93 characters.
+		Type: "API_KEY_OR_SECRET", Prefixes: []string{"sk-ant-api03-", "sk-ant-admin01-"},
+		Charset: `[a-zA-Z0-9_-]`, MinBody: 80, Mode: modeAtLeast, RandomBody: true, Base: 92,
+		Describe: "Anthropic API Keys: sk-ant-api03-, sk-ant-admin01- + at least 80 characters",
 	},
 }
 
@@ -249,11 +309,32 @@ var allProviderPrefixes = func() []string {
 // and CalculateConfidence for provider literals.
 func providerTypeOf(match string) (string, float64) {
 	for _, c := range compiledProviderRules {
-		if c.whole.MatchString(match) {
+		if c.whole.MatchString(match) && (!c.RandomBody || hasRandomBodyByte(c.bodyOf(match))) {
 			return c.Type, c.Base
 		}
 	}
 	return "", 0
+}
+
+// bodyOf returns the part of a whole token of this row after its prefix, which is where
+// RandomBody looks: Slack's digit groups are not in a RandomBody row, so Head is empty there.
+func (c *compiledProviderRule) bodyOf(match string) string {
+	for _, p := range c.Prefixes {
+		if rest, ok := strings.CutPrefix(match, p); ok {
+			return rest
+		}
+	}
+	return match
+}
+
+// hasRandomBodyByte reports whether s holds a digit or an upper-case letter (RandomBody).
+func hasRandomBodyByte(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') {
+			return true
+		}
+	}
+	return false
 }
 
 // lineHasProviderPrefix is the containsSecretIndicators admit for provider
@@ -329,7 +410,7 @@ func findProviderRuns(line string) []candidate {
 				bodyStart := start + hm[1]
 				bm := c.body.FindStringIndex(line[bodyStart:])
 				end := bodyStart + bm[1]
-				if end-bodyStart < c.MinBody {
+				if end-bodyStart < c.MinBody || (c.RandomBody && !hasRandomBodyByte(line[bodyStart:end])) {
 					from = start + 1
 					continue
 				}
@@ -361,8 +442,12 @@ func findProviderRuns(line string) []candidate {
 	for _, r := range runs {
 		ends[r.end] = struct{}{}
 	}
+	nested := nestedRuns(len(runs), func(i int) (int, int) { return runs[i].start, runs[i].end })
 	out := make([]candidate, 0, len(runs))
-	for _, r := range runs {
+	for i, r := range runs {
+		if nested[i] {
+			continue
+		}
 		if r.typ == "STRIPE_API_KEY" {
 			if _, boundary := ends[r.start]; !boundary && stripeLeftGlue(line, r.start, r.bodyStart, r.end) {
 				continue
@@ -371,6 +456,44 @@ func findProviderRuns(line string) []candidate {
 		out = append(out, r.candidate)
 	}
 	return out
+}
+
+// nestedRuns marks the runs that lie wholly inside another run. A prefix inside a longer token
+// is body bytes that happen to spell a prefix, which the straddle cut already says for the end of
+// a run; this says it for the middle. It matters since #881 for short prefixes over a charset
+// that carries `_`: a `github_pat_` token whose first segment ends in `hf` holds `hf_` and 59 more
+// characters, which is a second, nested finding over the same secret (4 in 20,000 random
+// tokens). Runs of one line are few, so a sort and a sweep; a run that only partly overlaps the
+// previous one is kept, the leak-safe direction.
+func nestedRuns(n int, span func(int) (start, end int)) []bool {
+	nested := make([]bool, n)
+	if n < 2 {
+		return nested
+	}
+	order := make([]int, n)
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		sa, ea := span(order[a])
+		sb, eb := span(order[b])
+		if sa != sb {
+			return sa < sb
+		}
+		return ea > eb
+	})
+	maxEnd := -1
+	for k, i := range order {
+		start, end := span(i)
+		if k > 0 && start < maxEnd && end <= maxEnd {
+			nested[i] = true
+			continue
+		}
+		if end > maxEnd {
+			maxEnd = end
+		}
+	}
+	return nested
 }
 
 // straddleCut returns the offset in [floor, end) at which a provider prefix

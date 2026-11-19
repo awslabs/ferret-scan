@@ -568,6 +568,11 @@ func uncorroboratedHyphenatedCap(secretType, match string, kw lineKeywordState, 
 	if secretType != genericSecretType || structural || kw == lineKeywordPresent || !strings.Contains(match, "-") {
 		return 0
 	}
+	// A whole provider token (an Anthropic key, whose row has no type of its own) is corroborated
+	// by its published prefix, not by a word beside it (#881).
+	if typ, _ := providerTypeOf(match); typ != "" {
+		return 0
+	}
 	return uncorroboratedHyphenatedCeiling
 }
 

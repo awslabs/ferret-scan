@@ -27,6 +27,8 @@ func providerFixture(r providerRule, prefix string, bodyLen int) string {
 		b.WriteString("123456789012-123456789012-")
 	case "xoxp-":
 		b.WriteString("123456789012-123456789012-123456789012-")
+	case "xapp-":
+		b.WriteString("1-A0B1C2D3E4F-1234567890123-")
 	}
 	for i := 0; i < bodyLen; i++ {
 		b.WriteByte(alphabet[i%len(alphabet)])
@@ -95,6 +97,12 @@ func TestProviderGrammar(t *testing.T) {
 						s := strings.Index(line, want)
 						typed := 0
 						for _, m := range ms {
+							// A row typed API_KEY_OR_SECRET shares its type with the entropy path's
+							// finding over an enclosing JSON string (`"line\nhf_..."`); the row's own
+							// finding is the one whose text is the token.
+							if m.Type == r.Type && r.Type == genericSecretType && m.Text != want && strings.Contains(m.Text, want) {
+								continue
+							}
 							if m.Type == r.Type {
 								typed++
 								if m.Text != want {

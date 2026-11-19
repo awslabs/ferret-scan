@@ -477,6 +477,32 @@ var Cases = []Case{
 			"apikey = \"+joinedValues[2]+\"\n",
 	},
 	{
+		Name: "secrets_prefix_and_placeholder_decoys",
+		Description: "Text that carries a provider prefix #881 added to the provider table and is not a " +
+			"token (#881). A README names a prefix (`glrt-`, `github_pat_`, `hf_`, `sk-ant-api03-`, " +
+			"`rk_live_`); a prefix has no body or a body under the row's minimum; Python and shell " +
+			"identifiers begin `hf_`; a hyphenated slug follows `xapp-`, `glft-` or `glwt-`; a " +
+			"snake_case phrase follows `github_pat_`. The rows that took a new prefix without a vendor " +
+			"length cap their risk with a minimum body and, for the GitLab, GitHub, Hugging Face and " +
+			"Anthropic rows, with RandomBody (a digit or an upper-case letter in the body: a " +
+			"lower-case slug is not an issued token). Every line produces NO finding, so every " +
+			"snapshot renders \"No matches found\". Recall for real tokens of these prefixes, in " +
+			"eight contexts each, is pinned in provider_rows_881_test.go, not here.",
+		Checks: []string{"SECRETS"},
+		Input: "Runner tokens begin with glrt- and job tokens with glcbt-.\n" +
+			"Fine-grained tokens begin with github_pat_ and classic ones with ghp_.\n" +
+			"Hugging Face tokens begin with hf_ and Stripe restricted keys with rk_live_.\n" +
+			"Anthropic keys begin sk-ant-api03- and admin keys sk-ant-admin01-.\n" +
+			"hf_hub_download(repo_id, filename)\n" +
+			"from huggingface_hub import hf_api, hf_hub_url\n" +
+			"hf_transfer_enabled_for_large_model_downloads_in_this_deployment\n" +
+			"xapp-deploy-notes-for-the-whole-team-and-the-release-train\n" +
+			"glft-feed-token-goes-here\n" +
+			"rk_live_short\n" +
+			"github_pat_rotation_schedule_for_the_platform_team_every_ninety_days\n" +
+			"kubectl get glwt-workspace-token-secret-name-for-the-dev-cluster -o yaml\n",
+	},
+	{
 		Name: "secrets_file_wide_marker_hostname",
 		Description: "The #785 shape with a marker that IS a whole word: a comment naming a " +
 			"wiki.example.com URL two lines above a credential. detectEnvironmentType still " +
