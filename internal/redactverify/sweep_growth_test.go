@@ -36,7 +36,7 @@ func growthFixture(n int) (string, []detector.Match) {
 }
 
 // growthBound is the ratio 4x the values may cost: linear reads about 4x, the per-value scan about 16x.
-const growthBound = 9.0
+const growthBound = 9.5
 
 // SweepRemaining must cost one pass over the document however many distinct values are reported.
 // It used to scan the whole document once per value, and per spelling of each value (occurrenceKinds,
@@ -49,22 +49,23 @@ const growthBound = 9.0
 // regressed code. The document grows with the values, so correct code reads 4x, not 1x; what separates
 // the two is 4x against 16x, and the bound sits between them.
 //
-// Readings, linux/amd64, Go 1.27.4, 1,000 -> 4,000 distinct values (base ~9 ms, big ~42 ms for the
-// one-pass code; ~32 ms and ~470 ms for the per-value one), ratio of minimum CPU readings. Both
-// margins, as TEST_PLAN requires (bound / worst correct reading, best regressed reading / bound):
+// Readings, linux/amd64 (16 CPUs, host load 45-60 from other jobs throughout), Go 1.27.4, 1,000 -> 4,000
+// distinct values (one-pass code: ~9 ms base, ~45 ms big; per-value code: ~32 ms and ~470 ms), ratio of
+// minimum CPU readings. Both margins, as TEST_PLAN requires (bound / worst correct reading, best
+// regressed reading / bound):
 //
-//	                          correct, 4 pairs     regressed (control), 2 pairs   margins at bound 9.0
-//	no -race, 6 runs          4.55 - 5.35x         15.00 - 16.19x                 9.0/5.35 = 1.68x, 15.00/9.0 = 1.67x
-//	-race,    4 runs          4.49 - 5.40x         15.36 - 15.97x                 9.0/5.40 = 1.67x, 15.36/9.0 = 1.71x
-//	alone at host load 43-58  4.55 - 5.67x         15.19 - 15.64x                 9.0/5.67 = 1.59x, 15.19/9.0 = 1.69x
+//	                correct, 4 pairs     regressed (control), 2 pairs    margins at bound 9.5
+//	no -race, 6 runs     5.14 - 6.33x         15.08 - 15.74x                 9.5/6.33 = 1.50x, 15.08/9.5 = 1.59x
+//	-race,    4 runs     4.84 - 5.40x         15.64 - 15.72x                 9.5/5.40 = 1.76x, 15.64/9.5 = 1.65x
 //
-// Inside a whole-module `go test ./...` at host load 75 on 16 CPUs the correct code read 9.08x once
-// (pairs 4.72 8.09 10.37 9.06x) while the control read 14.97x: the CPU clock of a 40 ms fixture moves
+// Correct code reads above 4x because the automaton and the result map outgrow the cache; on a quiet
+// host it read 4.5 - 5.4x. The bound is near the geometric middle of the worst correct and the best
+// regressed readings, so neither side is thin.
+//
+// Inside a whole-module `go test ./...` at host load 75 on 16 CPUs the correct code (commit 78210fc4) read 9.08x once
+// (pairs 4.72 8.09 10.37 9.06x) while the control read 14.97x: the CPU clock of a 45 ms fixture moves
 // with its neighbours. The test name carries "ScalesLinearly" so the load skip list the wave scripts
 // already use (BRIEF section 6) skips it there, and it is run alone afterwards.
-//
-// Correct code reads above 4x because the automaton and the result map outgrow the cache; the bound
-// is the geometric middle of the worst correct and best regressed readings, so neither side is thin.
 //
 // The regressed side is the per-value implementation kept in reference_test.go, run on the same
 // fixture as a control: if it ever reads under the bound the guard has gone blind, and the control
