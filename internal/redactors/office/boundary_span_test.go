@@ -133,7 +133,7 @@ func TestBoundaryViewsReadWhatTheScannerReads(t *testing.T) {
 				files[p[0]] = []byte(p[1])
 				names = append(names, p[0])
 			}
-			views, toks := boundaryViews(files, names, f.docType)
+			views, toks := boundaryViews(files, names, f.docType, "x"+f.fx.ext)
 			if len(views) == 0 || len(toks) == 0 {
 				t.Fatalf("no boundary view for %s", f.fx.name)
 			}
@@ -163,7 +163,7 @@ func TestADOCXHasNoBoundaryView(t *testing.T) {
 		files[p[0]] = []byte(p[1])
 		names = append(names, p[0])
 	}
-	if views, toks := boundaryViews(files, names, DocumentTypeDOCX); len(views) != 0 || len(toks) != 0 {
+	if views, toks := boundaryViews(files, names, DocumentTypeDOCX, "x.docx"); len(views) != 0 || len(toks) != 0 {
 		t.Errorf("a DOCX produced %d views and %d tokens; the refusal is its only path", len(views), len(toks))
 	}
 }
@@ -176,7 +176,7 @@ func TestAFormulaCellKeepsItsFormula(t *testing.T) {
 		`</row></sheetData></worksheet>`
 	contents := &OfficeZipContents{Files: map[string][]byte{"xl/worksheets/sheet1.xml": []byte(sheet)}}
 	contents.Order = []string{"xl/worksheets/sheet1.xml"}
-	got := rewriteAcrossBoundaries(contents, DocumentTypeXLSX, []string{"600\t600"}, map[string]string{"600\t600": "[PHONE-REDACTED]"}, false)
+	got := rewriteAcrossBoundaries(contents, "x.xlsx", DocumentTypeXLSX, []string{"600\t600"}, map[string]string{"600\t600": "[PHONE-REDACTED]"}, false)
 	if len(got["600\t600"]) != 1 {
 		t.Fatalf("rewriteAcrossBoundaries placed nothing: %v", got)
 	}
@@ -195,15 +195,15 @@ func TestAFormulaCellKeepsItsFormula(t *testing.T) {
 // boundaries only when every piece is still text; otherwise the whole replacement goes to the first node.
 func TestASliceThatWouldCutACharacterFallsBackToTheFirstNode(t *testing.T) {
 	slide := `<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ` +
-		`xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><a:p><a:r><a:t>ab</a:t></a:r></a:p>` +
-		`<a:p><a:r><a:t>cd</a:t></a:r></a:p></p:sld>`
+		`xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><a:p><a:r><a:t>ab</a:t></a:r>` +
+		`<a:r><a:t>cd</a:t></a:r></a:p></p:sld>`
 	contents := &OfficeZipContents{Files: map[string][]byte{"ppt/slides/slide1.xml": []byte(slide)}}
 	contents.Order = []string{"ppt/slides/slide1.xml"}
 	with := "x\u00e9yz" // five bytes, like "ab cd", with a two-byte character across the first cut
 	if len(with) != len("ab cd") {
 		t.Fatalf("fixture: %q is %d bytes, want %d", with, len(with), len("ab cd"))
 	}
-	rewriteAcrossBoundaries(contents, DocumentTypePPTX, []string{"ab cd"}, map[string]string{"ab cd": with}, true)
+	rewriteAcrossBoundaries(contents, "x.pptx", DocumentTypePPTX, []string{"ab cd"}, map[string]string{"ab cd": with}, true)
 	out := string(contents.Files["ppt/slides/slide1.xml"])
 	if !strings.Contains(out, "<a:t>"+with+"</a:t>") || !strings.Contains(out, "<a:t></a:t>") {
 		t.Errorf("the replacement was not given whole to the first node:\n%s", out)
@@ -223,7 +223,7 @@ func TestANumericODSCellIsRetypedWhenItsTextIsRewritten(t *testing.T) {
 		num("600") + num("600") + num("1250") + num("42") +
 		`</table:table-row></table:table></office:spreadsheet></office:body></office:document-content>`
 	contents := &OfficeZipContents{Files: map[string][]byte{"content.xml": []byte(content)}, Order: []string{"content.xml"}}
-	got := rewriteAcrossBoundaries(contents, DocumentTypeODF, []string{"600 600 1250"},
+	got := rewriteAcrossBoundaries(contents, "x.ods", DocumentTypeODF, []string{"600 600 1250"},
 		map[string]string{"600 600 1250": "[PHONE-REDACTED]"}, false)
 	if len(got["600 600 1250"]) != 1 {
 		t.Fatalf("rewriteAcrossBoundaries placed nothing: %v", got)

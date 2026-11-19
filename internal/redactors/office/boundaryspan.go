@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"io"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -17,9 +18,11 @@ import (
 // Rewriting a value the scanner read ACROSS a node boundary (#914).
 //
 // The scanner's Office reader joins text nodes with a separator that is in no node: a space after every
-// DrawingML run (a:t) of a slide, notes page or master; a space after every OpenDocument paragraph
-// (text:p), which is also how it joins spreadsheet cells; a tab after every non-empty worksheet cell and a
-// newline after every non-empty row. A value it reports across such a join -- "<first> <last>" in one
+// DrawingML run (a:t) of a slide, notes page or master, and a newline after every DrawingML paragraph
+// (a:p); a newline after every OpenDocument paragraph (text:p) of a text or a presentation, and a space
+// after every one of a spreadsheet's cells; a tab after every non-empty worksheet cell and a newline after
+// every non-empty row. The newline is the paragraph boundary of #914: the reader drops the whitespace
+// around it and folds a run of them into one, and the views do the same. A value it reports across such a join -- "<first> <last>" in one
 // paragraph and "English ..." in the next, "600", "600" and "1250" in three adjacent cells -- is in no
 // single node, so the per-node rewrite cannot reach it, and the run-joined rewrite of #627 cannot either,
 // because that view joins nodes with nothing.
@@ -74,7 +77,7 @@ type boundarySpan struct {
 
 // boundaryView is the scanner's text for one part, with every byte that came from a node mapped back to it.
 type boundaryView struct {
-	sb    strings.Builder
+	sb    bytes.Buffer
 	spans []boundarySpan
 	last  byte
 
@@ -106,7 +109,7 @@ func (v *boundaryView) addText(tok int, s string) {
 			if s[i] != ' ' {
 				continue
 			}
-			follows := v.last == ' '
+			follows := v.last == ' ' || v.last == '\n'
 			if i > from {
 				follows = s[i-1] == ' '
 			}
@@ -121,17 +124,50 @@ func (v *boundaryView) addText(tok int, s string) {
 
 // addSeparator appends a byte the scanner writes between nodes and that is in no node.
 func (v *boundaryView) addSeparator(sep byte) {
-	if v.collapse && sep == ' ' && v.last == ' ' {
+	if v.collapse && sep == ' ' && (v.last == ' ' || v.last == '\n') {
 		return
+	}
+	if v.collapse && sep == '\n' {
+		// The reader drops the spaces before a paragraph's newline, and folds two newlines into one.
+		if v.last == '\n' {
+			return
+		}
+		v.trimTrailingSpaces()
 	}
 	v.sb.WriteByte(sep)
 	v.last = sep
 }
 
+// trimTrailingSpaces drops the spaces at the end of the view, and the part of any span that covered them.
+func (v *boundaryView) trimTrailingSpaces() {
+	n := v.sb.Len()
+	for n > 0 && v.sb.Bytes()[n-1] == ' ' {
+		n--
+	}
+	if n == v.sb.Len() {
+		return
+	}
+	v.sb.Truncate(n)
+	for len(v.spans) > 0 && v.spans[len(v.spans)-1].end > n {
+		last := &v.spans[len(v.spans)-1]
+		if last.at >= n {
+			v.spans = v.spans[:len(v.spans)-1]
+			continue
+		}
+		last.end = n
+	}
+	if n > 0 {
+		v.last = v.sb.Bytes()[n-1]
+	} else {
+		v.last = 0
+	}
+}
+
 // elementView builds the view of a part whose text the scanner takes from the character data inside
-// every `local` element, with a space after each one: a:t for slides, text:p for OpenDocument. With cells
-// set, each token also records the OpenDocument table cell it sits in (see boundaryToken.odfCell).
-func elementView(part string, content []byte, local string, cells bool, toks *[]boundaryToken) (*boundaryView, bool) {
+// every `local` element, with sep after each one: a:t for slides, text:p for OpenDocument. A non-empty
+// para names the element that ends a paragraph, which writes a newline after the runs before it (a:p).
+// With cells set, each token also records the OpenDocument table cell it sits in (see boundaryToken.odfCell).
+func elementView(part string, content []byte, local string, sep byte, para string, cells bool, toks *[]boundaryToken) (*boundaryView, bool) {
 	v := &boundaryView{collapse: true}
 	depth := 0
 	var open [][2]int // the table cells enclosing the current position, innermost last
@@ -157,7 +193,10 @@ func elementView(part string, content []byte, local string, cells bool, toks *[]
 		case xml.EndElement:
 			if t.Name.Local == local && depth > 0 {
 				depth--
-				v.addSeparator(' ')
+				v.addSeparator(sep)
+			}
+			if para != "" && t.Name.Local == para {
+				v.addSeparator('\n')
 			}
 			if cells && (t.Name.Local == "table-cell" || t.Name.Local == "covered-table-cell") && len(open) > 0 {
 				open = open[:len(open)-1]
@@ -407,28 +446,34 @@ func rewriteXLSXCell(content []byte, c *xlsxCell, text string) []byte {
 // with a separator. DOCX has none here: its reader joins runs inside a paragraph with nothing, which the
 // run-joined rewrite already covers, and a value across its paragraph or cell joins is left to the
 // refusal.
-func boundaryViews(files map[string][]byte, names []string, docType OfficeDocumentType) ([]*boundaryView, []boundaryToken) {
+func boundaryViews(files map[string][]byte, names []string, docType OfficeDocumentType, name string) ([]*boundaryView, []boundaryToken) {
 	var views []*boundaryView
 	var toks []boundaryToken
 	switch docType {
 	case DocumentTypePPTX:
-		for _, name := range names {
-			lower := strings.ToLower(name)
+		for _, part := range names {
+			lower := strings.ToLower(part)
 			if !strings.HasSuffix(lower, ".xml") ||
 				!(strings.HasPrefix(lower, "ppt/slides/") || strings.HasPrefix(lower, "ppt/notesslides/") ||
 					strings.HasPrefix(lower, "ppt/slidemasters/")) {
 				continue
 			}
-			if v, ok := elementView(name, files[name], "t", false, &toks); ok {
+			if v, ok := elementView(part, files[part], "t", ' ', "p", false, &toks); ok {
 				views = append(views, v)
 			}
 		}
 	case DocumentTypeODF:
-		for _, name := range names {
-			if lower := strings.ToLower(name); lower != "content.xml" && lower != "styles.xml" {
+		// The scanner reads a spreadsheet's cells apart from its paragraphs and joins them with a space; a
+		// text or a presentation ends every paragraph, a table cell's included, with a newline (#914).
+		sep := byte('\n')
+		if ext := strings.ToLower(filepath.Ext(name)); ext == ".ods" || ext == ".ots" {
+			sep = ' '
+		}
+		for _, part := range names {
+			if lower := strings.ToLower(part); lower != "content.xml" && lower != "styles.xml" {
 				continue
 			}
-			if v, ok := elementView(name, files[name], "p", true, &toks); ok {
+			if v, ok := elementView(part, files[part], "p", sep, "", true, &toks); ok {
 				views = append(views, v)
 			}
 		}
@@ -483,12 +528,12 @@ type boundaryPiece struct {
 //
 // An occurrence inside a single node is skipped: the per-node rewrite has already run, so one there is a
 // value that pass chose not to write, and the residue checks own that decision.
-func rewriteAcrossBoundaries(contents *OfficeZipContents, docType OfficeDocumentType, values []string, repl map[string]string, slice bool) map[string][]string {
+func rewriteAcrossBoundaries(contents *OfficeZipContents, name string, docType OfficeDocumentType, values []string, repl map[string]string, slice bool) map[string][]string {
 	if len(values) == 0 {
 		return nil
 	}
 	names := contents.orderedNames()
-	views, toks := boundaryViews(contents.Files, names, docType)
+	views, toks := boundaryViews(contents.Files, names, docType, name)
 	if len(views) == 0 {
 		return nil
 	}

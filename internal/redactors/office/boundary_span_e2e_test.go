@@ -55,12 +55,14 @@ func spanPPTX() spanFixture {
 	slide := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
 		`<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ` +
 		`xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:sp><p:txBody>` +
-		para("Contact:") + para(boundaryFirst+" "+boundaryLast) + para("English Language Arts &amp; Assessment") +
+		para("Contact:") + para(boundaryFirst, boundaryLast) + para("English Language Arts &amp; Assessment") +
 		para("Employee SSN: "+boundarySSN) +
 		`</p:txBody></p:sp></p:spTree></p:cSld></p:sld>`
-	name := boundaryFirst + " " + boundaryLast + " English" // the paragraph join reads as a third name token
+	// The name is in two runs of ONE paragraph, which the reader joins with a space. The paragraph after
+	// it is a boundary the reader ends with a newline (#914), so "English" is not part of the name.
+	name := boundaryFirst + " " + boundaryLast
 	return spanFixture{
-		name: "pptx paragraphs",
+		name: "pptx runs",
 		ext:  ".pptx",
 		parts: [][2]string{
 			{"[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
@@ -326,7 +328,7 @@ func TestFormatPreservingCutsTheMaskAtNodeBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	slide := zipPart(t, out, "ppt/slides/slide1.xml")
-	for _, want := range []string{"<a:t>************</a:t>", "<a:t>******* Language Arts &amp; Assessment</a:t>"} {
+	for _, want := range []string{"<a:t>****</a:t>", "<a:t>*******</a:t>", "<a:t>English Language Arts &amp; Assessment</a:t>"} {
 		if !strings.Contains(slide, want) {
 			t.Errorf("slide lacks %s:\n%s", want, slide)
 		}
@@ -343,7 +345,7 @@ func TestSimplePutsTheTokenInTheFirstNode(t *testing.T) {
 		t.Fatal(err)
 	}
 	slide := zipPart(t, out, "ppt/slides/slide1.xml")
-	want := `<a:t>[PERSON-NAME-REDACTED]</a:t></a:r></a:p><a:p><a:r><a:rPr lang="en-US"/><a:t> Language Arts &amp; Assessment</a:t>`
+	want := `<a:t>[PERSON-NAME-REDACTED]</a:t></a:r><a:r><a:rPr lang="en-US"/><a:t></a:t></a:r></a:p><a:p><a:r><a:rPr lang="en-US"/><a:t>English Language Arts &amp; Assessment</a:t>`
 	if !strings.Contains(slide, want) {
 		t.Errorf("slide lacks %s:\n%s", want, slide)
 	}
