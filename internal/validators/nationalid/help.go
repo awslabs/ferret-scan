@@ -15,23 +15,29 @@ func (v *Validator) GetCheckInfo() help.CheckInfo {
 	}
 	return help.CheckInfo{
 		Name:             "NATIONAL_ID",
-		ShortDescription: "Detects labelled Americas national ID numbers (BR CPF, CL RUT, AR CUIL, CA SIN, MX CURP)",
+		ShortDescription: "Detects labelled Americas national ID numbers (BR CPF, CL RUT, AR CUIL, CA SIN, MX CURP, MX RFC)",
 		DetailedDescription: `The NATIONAL_ID check detects national identification numbers that the SSN
 check does not cover: Brazil's CPF (BR_CPF), Chile's RUT/RUN (CL_RUT), Argentina's
 CUIL and personal CUIT (AR_CUIL), Canada's Social Insurance Number (CA_SIN) and
-Mexico's CURP (MX_CURP). A value is reported only when its own label sits right
-before it on the same line ("CPF nº", "RUT:", "Employee SIN:", "CURP:" or the
-long form), and only when its check digit and structural rules pass. A check
-digit passes about one random value in ten, so a valid value with no label is not
-reported. An acronym that is also a word (sin, run, NAS) counts only when it is
-written in capitals or followed by a colon or an ordinal sign.`,
+Mexico's CURP (MX_CURP) and RFC (MX_RFC). A value is reported only when its own
+label sits before it on the same line ("CPF nº", "RUT:", "Employee SIN:",
+"CURP:", "Our Social Insurance Number is" or the long form, with at most two
+filler words such as "is", "number" or "nº" between), and only when its
+structural rules pass. A check digit passes about one random value in ten, so a
+valid value with no label is not reported. A labelled value whose check digit
+fails is reported at LOW (40) with checksum_valid=false, since a mistyped number
+is still someone's number; the SAT's two generic RFCs (XAXX010101000,
+XEXX010101000) are held at LOW (15). An acronym that is also a word (sin, run,
+NAS) counts only when it is written in capitals or followed by a colon or an
+ordinal sign.`,
 
 		Patterns: []string{
 			"BR_CPF: XXX.XXX.XXX-XX, XXXXXXXXX-XX or 11 digits; two mod-11 check digits",
-			"CL_RUT: XX.XXX.XXX-D or XXXXXXXX-D; mod-11 verifier 0-9 or K",
+			"CL_RUT: XX.XXX.XXX-D, XXXXXXXX-D or XXXXXXXXD; mod-11 verifier 0-9 or K",
 			"AR_CUIL: 20/23/24/27-XXXXXXXX-X or 11 digits; mod-11 check digit",
 			"CA_SIN: XXX-XXX-XXX, XXX XXX XXX or 9 digits; Luhn; leading 0 and 8 (business) excluded",
 			"MX_CURP: 18 characters; birth date, sex, state code, consonants and check digit verified",
+			"MX_RFC: 12 (company) or 13 (person) characters; date and the SAT's verifier over its 37-symbol table",
 		},
 
 		SupportedFormats: []string{
@@ -40,8 +46,9 @@ written in capitals or followed by a colon or an ordinal sign.`,
 		},
 
 		ConfidenceFactors: []help.ConfidenceFactor{
-			{Name: "Check digit", Description: "The value passes its type's check digit and structure (required)", Weight: 0},
-			{Name: "Label", Description: "Its own label right before it (required): 95 for a long form or a label with ':'/'nº', 90 for a bare capitalised acronym", Weight: 95},
+			{Name: "Check digit", Description: "The value passes its type's check digit: without it a labelled value is reported at LOW (40) with checksum_valid=false", Weight: 0},
+			{Name: "Structure", Description: "The value passes its type's structural rules (required)", Weight: 0},
+			{Name: "Label", Description: "Its own label before it (required): 95 for a long form or a label with ':'/'nº', 90 for a bare capitalised acronym", Weight: 95},
 		},
 
 		PositiveKeywords: positive,
