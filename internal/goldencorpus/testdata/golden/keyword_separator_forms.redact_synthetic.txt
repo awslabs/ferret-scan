@@ -1,0 +1,18 @@
+=== REDACTED ===
+member_id: ojcglJXAWEL
+member-id: 0tgjqjRfW7A
+member	id: 179Pu0qQyzL
+subscriber_id: 42YfA14XLzu
+member  id: WByVMOAb8W8
+memberid: OOY2oOrOGji
+see member.id in the schema docs: W1231231234
+https://example.com/member/id/lookup?q=W4564564567
+remember id: W7897897890
+member idx column: W3213213210
+=== FINDINGS (sorted) ===
+type=INSURANCE_MEMBER_ID line=1 conf=80.00 match=W1234567801
+type=INSURANCE_MEMBER_ID line=2 conf=80.00 match=X9876543210
+type=INSURANCE_MEMBER_ID line=3 conf=80.00 match=W1122009988
+type=INSURANCE_MEMBER_ID line=4 conf=80.00 match=X5556667778
+type=INSURANCE_MEMBER_ID line=5 conf=80.00 match=W3344556677
+type=INSURANCE_MEMBER_ID line=6 conf=80.00 match=W9998887776

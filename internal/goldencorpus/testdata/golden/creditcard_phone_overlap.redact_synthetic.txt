@@ -1,0 +1,6 @@
+=== REDACTED ===
+card 4532 3645 2716 7233 here
+call 555-628-0558 today
+=== FINDINGS (sorted) ===
+type=PHONE line=2 conf=15.00 match=212-555-0142
+type=VISA line=1 conf=100.00 match=4532 0151 1283 0366

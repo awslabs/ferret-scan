@@ -1,0 +1,4 @@
+=== REDACTED ===
+© 2013 Redacted Corporation. All rights reserved. 
+=== FINDINGS (sorted) ===
+type=INTELLECTUAL_PROPERTY line=1 conf=100.00 match=© 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Amazon Confidential and Trademark. [+218 more matches on line]

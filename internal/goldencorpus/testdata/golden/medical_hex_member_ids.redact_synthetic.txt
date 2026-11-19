@@ -1,0 +1,18 @@
+=== REDACTED ===
+member id: gSlLcAW3o79
+member id: XYquhvmn0dtZ
+member id: uRuszTW87Ik
+subscriber id: CTGlFFyiBGVp
+member id: d72lTUdcC7Q8
+commit 9462e98abcdef1234567890abcdef1234567890a
+sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4
+member id verification hash: 1234abcd5678ef90
+cache blob 0xDEADBEEF12345678 evicted
+insurance member id for prescriber: SFlu3zcpw
+=== FINDINGS (sorted) ===
+type=DEA_NUMBER line=10 conf=100.00 match=AB1234563
+type=INSURANCE_MEMBER_ID line=1 conf=80.00 match=E1122334455
+type=INSURANCE_MEMBER_ID line=2 conf=80.00 match=ABCDEF123456
+type=INSURANCE_MEMBER_ID line=3 conf=80.00 match=BEEF1234567
+type=INSURANCE_MEMBER_ID line=4 conf=80.00 match=1234567890AB
+type=INSURANCE_MEMBER_ID line=5 conf=80.00 match=55DEADBEEF12

@@ -1,0 +1,21 @@
+=== REDACTED ===
+mail to kkEIo1a7IXd9MAqwvobRx0gC4QvqhW promptly
+mailing 1bHi6Cn8BwJI9g1U70NF, Roanoke, VA 24012
+send to KrNVLBitRPhnrE, Boston, MA 02101
+deliver kKviffQec0wEikXgq today
+new jersey driver license QcTzFXdTcfBp1Ic on record
+wisconsin dl 3uUvsoWJYxNoMW verified
+2fa secret: fLWctX0D91g8QjrE lowercase
+The package weighs VstE lbs on the scale
+APO is an abbreviation for Apollo
+123 O' clock reading on the dial
+the authentication protocol requires base configuration
+=== FINDINGS (sorted) ===
+type=DRIVERS_LICENSE line=5 conf=85.00 match=D12345678901234
+type=DRIVERS_LICENSE line=6 conf=70.00 match=J1234567890123
+type=OTP_SECRET line=7 conf=85.00 match=k5cuwy3znrxw4z3t
+type=US_MILITARY_ADDRESS line=1 conf=95.00 match=PSC 1523, Box 25, APO AE 09009
+type=US_RURAL_ROUTE line=2 conf=90.00 match=Rural Route 3 Box 88
+type=US_RURAL_ROUTE line=8 conf=40.00 match=RR 4
+type=US_STREET_ADDRESS line=3 conf=95.00 match=123 O'Brien St
+type=US_STREET_ADDRESS line=4 conf=90.00 match=456 King-Smith Rd
