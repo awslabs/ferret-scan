@@ -1,0 +1,12 @@
+=== REDACTED ===
+Order 5678 paid with card 4532364527167233
+Account Number for visa 5425224471535701
+Patient account number: oZs6XoW on chart
+imei 490128918413623 on the handset
+order id: 4532364527167233 catalog
+=== FINDINGS (sorted) ===
+type=MASTERCARD line=2 conf=100.00 match=5425233430109903
+type=MRN line=3 conf=65.00 match=1234567
+type=VISA line=1 conf=100.00 match=4532015112830366
+type=VISA line=4 conf=15.00 match=490154203237518
+type=VISA line=5 conf=15.00 match=4532015112830366

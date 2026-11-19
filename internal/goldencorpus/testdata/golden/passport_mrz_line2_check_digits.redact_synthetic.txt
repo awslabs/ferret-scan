@@ -1,0 +1,8 @@
+=== REDACTED ===
+E<JEVTWBUX<<UFFO<DHQZUV<<<<<<<<<<<<<<<<<<<<<
+V000503X95SAG2345154B3689051CX260797K<<<<<69
+corrupted check digit, must not be reported:
+L898902C30GBR7408122M1204159ZE184226B<<<<<10
+=== FINDINGS (sorted) ===
+type=PASSPORT line=1 conf=80.00 match=P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<
+type=PASSPORT line=2 conf=85.00 match=L898902C36GBR7408122M1204159ZE184226B<<<<<10

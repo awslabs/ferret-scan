@@ -1,0 +1,10 @@
+=== REDACTED ===
+otp_secret = RESPONSIBILITIES
+mfa_totp_secret = RESPONSIBILITIES
+Shared RESPONSIBILITIES: the customer enables MFA and rotates the multi-factor secret on schedule.
+Teams are OPERATIONALIZING MFA enforcement across every account.
+The MFA policy covers INTELLECTUALPROPERTY repositories and their secret stores.
+mfa CONFIGURATIONSVALIDATORS run before the two-factor rollout
+Two-factor setup is CRYPTOGRAPHICALLY enforced by the authenticator app.
+TOTP SECRET KEY: ADMINISTRATIVELY DISABLED FOR THIS ACCOUNT
+=== FINDINGS (sorted) ===

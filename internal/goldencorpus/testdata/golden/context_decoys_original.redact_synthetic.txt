@@ -1,0 +1,14 @@
+=== REDACTED ===
+employee ssn 666-60-6424 on file
+part number 666-60-6424 from the catalog
+requisition 922-32-9898 approved for shipment
+call us at 555-628-0558 today
+error code 555-628-0558 in the diagnostics log
+SKU 555-610-8395 restocked
+=== FINDINGS (sorted) ===
+type=PHONE line=4 conf=15.00 match=212-555-0142
+type=PHONE line=5 conf=15.00 match=212-555-0142
+type=PHONE line=6 conf=15.00 match=313-555-0175
+type=SSN line=1 conf=100.00 match=449-87-4100
+type=SSN line=2 conf=55.00 match=449-87-4100
+type=SSN line=3 conf=40.00 match=526-33-8210

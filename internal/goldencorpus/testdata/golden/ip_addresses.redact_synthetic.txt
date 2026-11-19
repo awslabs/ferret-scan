@@ -1,0 +1,6 @@
+=== REDACTED ===
+server 203.0.113.42 reached
+localhost 127.0.0.1 ignored-ish
+private 10.0.0.5 internal
+version string 1.2.3.4 maybe
+=== FINDINGS (sorted) ===

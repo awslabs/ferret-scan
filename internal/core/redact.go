@@ -51,6 +51,13 @@ type RedactConfig struct {
 	// LogWriter receives payload-free progress output; defaults to io.Discard
 	// here so in-process callers never leak to stderr.
 	LogWriter io.Writer
+
+	// SyntheticScope, when non-nil, is the scope the synthetic strategy draws from instead of the
+	// fresh one the redaction manager creates (#886). It exists for tests, which pass
+	// redactors.NewSeededSyntheticScope to make a synthetic copy byte-stable (the golden corpus) and
+	// share one across calls to model a multi-file run. Its type is internal, so no caller outside
+	// this module can set it, and no flag, environment variable or config key reaches it.
+	SyntheticScope redactors.SyntheticScope
 }
 
 // RedactResult reports the outcome of a redaction.
@@ -166,6 +173,9 @@ func RedactFileCtx(ctx context.Context, cfg RedactConfig) (*RedactResult, error)
 	redactionManager, outputManager, err := NewDefaultRedactionManager(cfg.OutputDir, strategy, observer)
 	if err != nil {
 		return nil, err
+	}
+	if cfg.SyntheticScope != nil {
+		redactionManager.SetSyntheticScope(cfg.SyntheticScope)
 	}
 
 	// The worker pool writes the redacted copy to the mirrored output path

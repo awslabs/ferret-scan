@@ -1,0 +1,15 @@
+=== REDACTED ===
+passport_number: redacted1
+Passport Number: password1
+passport: pending12
+passport no: unknown00
+Passport Number: document2
+Passport Number: missing01
+passport_number: tbd123456
+Passport Number: abc123456
+passport_number: sample001
+Passport Number: invalid01
+Passport Number: KA123456
+Passport Number: ſA123456
+Passport Number: GK123456
+=== FINDINGS (sorted) ===

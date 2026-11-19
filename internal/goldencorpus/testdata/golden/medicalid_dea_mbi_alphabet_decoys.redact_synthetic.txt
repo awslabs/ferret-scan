@@ -1,0 +1,13 @@
+=== REDACTED ===
+Patent EP1234563 was granted in 2019
+US patent US7654329 cites it
+Passport number: X91234563
+Ticket A97654329 closed
+XR1234563
+DEA registration number: QR1234563
+DEA registration number: XR1234564
+coverage report keys 9ad4ce7fa21 4ce1ad7fa90
+cms asset keys 9ad4ce7fa21 4ce1ad7fa90
+cache keys 9ad4ce7fa21 4ce1ad7fa90
+Medicare MBI: 1AK2DE3FG45
+=== FINDINGS (sorted) ===

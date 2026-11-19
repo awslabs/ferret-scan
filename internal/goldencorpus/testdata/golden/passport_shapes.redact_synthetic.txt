@@ -1,0 +1,10 @@
+=== REDACTED ===
+Passport Number: 185619767
+passport no 531483517
+E<JEVTWBUX<<UFFO<DHQZUV<<<<<<<<<<<<<<<<<<<<<
+512345670
+passport 123456789 sample data
+=== FINDINGS (sorted) ===
+type=PASSPORT line=1 conf=100.00 match=512345678
+type=PASSPORT line=2 conf=100.00 match=987654321
+type=PASSPORT line=3 conf=80.00 match=P<GBRSMITH<<JOHN<ALBERT<<<<<<<<<<<<<<<<<<<<<

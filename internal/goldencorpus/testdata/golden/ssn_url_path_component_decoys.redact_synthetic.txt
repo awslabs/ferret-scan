@@ -1,0 +1,8 @@
+=== REDACTED ===
+Profile: https://www.linkedin.com/in/michael-o-291135150
+Candidate	Michael O	https://www.linkedin.com/in/michael-o-291135150	555-0100	m.o@example.com
+Candidate	Michael O	https://www.linkedin.com/in/michael-o-291135150	555-0100	m.o@mail.invalid
+Michael O,https://www.linkedin.com/in/michael-o-291135150,555-0100
+Social: https://www.linkedin.com/in/michael-o-291135150
+[Portfolio](https://vimeo.com/291135150)
+=== FINDINGS (sorted) ===

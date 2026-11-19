@@ -1,0 +1,7 @@
+=== REDACTED ===
+Shared responsibilities: the customer enables MFA and rotates the multi-factor secret on schedule.
+Teams are operationalizing MFA enforcement across every account.
+The MFA policy covers intellectualproperty repositories and their secret stores.
+mfa configurationsvalidators run before the two-factor rollout
+Two-factor setup is cryptographically enforced by the authenticator app.
+=== FINDINGS (sorted) ===

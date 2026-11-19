@@ -1,0 +1,19 @@
+=== REDACTED ===
+func TestLineVeto(t *testing.T) {
+	pw := fixturePassword()
+	for _, c := range []struct {
+		name string
+		line string
+		want bool
+	}{
+		{"url member beside a password", `{"url": "https://github.com/orders/app", "password": "` + pw + `"}`, true},
+		{"homepage member in a minified document", `{"homepage":"https://github.com/orders/svc","db":{"password":"` + pw + `"}}`, true},
+		{"checksum beside a word holding sha", `{"bucket":"shared-assets","checksum":"crc32:00000000","password":"` + pw + `"}`, true},
+		{"keyword key with a version value", `  "password": "7.` + pw[:10] + `"`, true},
+	} {
+		if got := reported(c.line); got != c.want {
+			t.Errorf("%s: reported = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+=== FINDINGS (sorted) ===

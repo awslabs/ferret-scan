@@ -1,0 +1,16 @@
+=== REDACTED ===
+member identification number: ojcglJXAWEL
+subscriber identification number: 0tgjqjRfW7A
+medicare member identification number: CZpKodH56GT
+patient identification number: csqqLIJ
+policyholder id: XY8lJ7YMBFM
+member id: 179Pu0qQyzL
+X.509 certificate serial number: 0A1B2C3D4E5F6789
+policy identification for terraform module: MODULEVERSION123
+=== FINDINGS (sorted) ===
+type=INSURANCE_MEMBER_ID line=1 conf=70.00 match=W1234567801
+type=INSURANCE_MEMBER_ID line=2 conf=80.00 match=X9876543210
+type=INSURANCE_MEMBER_ID line=5 conf=70.00 match=P5551234567
+type=INSURANCE_MEMBER_ID line=6 conf=80.00 match=W1122009988
+type=MEDICARE_MBI line=3 conf=85.00 match=1EG4TE5MK73
+type=MRN line=4 conf=80.00 match=4472901
