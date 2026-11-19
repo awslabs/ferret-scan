@@ -22,7 +22,10 @@ import (
 //   - ferret-scan's own redaction output (`[API_KEY_OR_SECRET-REDACTED]`, and a `*` mask that kept
 //     the value's separators, `****-****-****-****`), so a redacted copy re-scanned as still leaking;
 //   - a provider prefix around a placeholder body (`glpat-` + 20 `x`, Slack's documented
-//     `xoxb-not-a-real-token-this-will-not-work`).
+//     `xoxb-not-a-real-token-this-will-not-work`);
+//   - prose that says where a token goes (`your-bot-token-goes-here-replace-me`,
+//     `replace-with-your-token`), an angle-bracket redaction marker (`<REDACTED>`) and an index
+//     expression (`os.environ["SECRET_KEY"]`, captured up to its quote as `os.environ[`) (#931).
 //
 // nonLiteralValue is VALUE-INTRINSIC, like isMaskedValue and typeAnnotationValue: it reads only the
 // candidate's own bytes, never the key or the line, so relabelling cannot hide a credential with it,
@@ -57,6 +60,23 @@ var (
 	// reIndexedIdent is an identifier with an optional constant index: `joinedValues[2]`.
 	reIndexedIdent = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(?:\[[0-9]+\])?$`)
 
+	// reAngleMarker is a redaction marker in angle brackets, `<REDACTED>` or `<token-removed>`: one
+	// or more words joined by `-` or `_`, the last a word of angleMarkerWords. A generated credential
+	// has no `<`, and the last word has to be a redaction verb, so a password such as `<Sup3rS3cret>`
+	// is not this.
+	reAngleMarker = regexp.MustCompile(`(?i)^<(?:[a-z][a-z0-9]*[-_])*(?:redacted|removed|masked|hidden|scrubbed|filtered)>$`)
+
+	// reIndexSuffix is the index of an index expression, captured whole: a quoted name or a constant
+	// (`["SECRET_KEY"]`, `['key']`, `[0]`).
+	reIndexSuffix = regexp.MustCompile(`^\[(?:"[A-Za-z_][A-Za-z0-9_.-]*"|'[A-Za-z_][A-Za-z0-9_.-]*'|[0-9]+)\]$`)
+
+	// proseMarkerWords are the words of a sentence that tells the reader to put a token in a value.
+	// A value of three or more lower-case words joined by `-` holding two of them is that sentence.
+	proseMarkerWords = map[string]bool{
+		"your": true, "replace": true, "insert": true, "paste": true, "here": true, "goes": true,
+		"changeme": true, "placeholder": true, "example": true, "dummy": true, "redacted": true,
+	}
+
 	// placeholderBodyWords are words that mark a provider-prefixed body as documentation.
 	placeholderBodyWords = map[string]bool{
 		"not": true, "fake": true, "example": true, "placeholder": true, "dummy": true, "sample": true,
@@ -83,7 +103,11 @@ func nonLiteralValue(v string, expressions bool) bool {
 		return true
 	case pathRootedValue(v) && !strings.ContainsAny(v, " \t") && !anyRandomSegment(v):
 		return true
-	case expressions && (isMemberChain(v) || isDottedCall(v) || isConcatenation(v)):
+	case expressions && (isMemberChain(v) || isDottedCall(v) || isConcatenation(v) || isIndexExpression(v)):
+		return true
+	case reAngleMarker.MatchString(v):
+		return true
+	case proseMarkerSentence(v):
 		return true
 	case providerPlaceholderBody(v):
 		return true
@@ -165,6 +189,39 @@ func isDottedCall(v string) bool {
 		return false
 	}
 	return reCallArgs.MatchString(strings.TrimSuffix(v[open+1:], ")"))
+}
+
+// isIndexExpression reports an index applied to a dotted chain of identifier words: the closed
+// `os.environ["SECRET_KEY"]`, and the form the candidate pass captures, which ends at the quote
+// that opens the index, `os.environ[`. The chain needs a `.`, as isMemberChain does, so `Pa55word[`
+// is not one.
+func isIndexExpression(v string) bool {
+	if head, ok := strings.CutSuffix(v, "["); ok {
+		return isMemberChain(head)
+	}
+	i := strings.IndexByte(v, '[')
+	return i > 0 && reIndexSuffix.MatchString(v[i:]) && isMemberChain(v[:i])
+}
+
+// proseMarkerSentence reports a value that is three or more words in lower case, joined by `-`, of
+// which at least two are proseMarkerWords: `your-bot-token-goes-here-replace-me`,
+// `replace-with-your-token`. Two such words, not one, because a passphrase of dictionary words may
+// hold one of them by chance and cannot be expected to hold two.
+func proseMarkerSentence(v string) bool {
+	words := strings.Split(v, "-")
+	if len(words) < 3 {
+		return false
+	}
+	marks := 0
+	for _, w := range words {
+		if w == "" || strings.Trim(w, "abcdefghijklmnopqrstuvwxyz") != "" {
+			return false
+		}
+		if proseMarkerWords[w] {
+			marks++
+		}
+	}
+	return marks >= 2
 }
 
 // isConcatenation reports an operand of a string concatenation captured with its operators:
