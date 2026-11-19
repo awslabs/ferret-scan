@@ -388,14 +388,40 @@ run's scope ([#904](https://github.com/awslabs/ferret-scan/issues/904)):
 | `json`, `yaml` | a `scan` object beside `stats`: `checks_run`, `checks_not_run`, `checks_not_applicable` (`METADATA` on `--stdin`), `confidence_levels`, `profile` when one is active, `config.source`, `suppressions.rules_enabled` and `tool` |
 | `junit` | `<properties>` first in the `security-scan` suite (`ferret-scan.checks_run`, `ferret-scan.checks_not_run`, ...) |
 | `sarif` | `ferretScan*` keys in `run.properties`, and, when checks did not run, one `warning` notification on the `ferret-scan/detection-disabled-by-config` descriptor naming them |
-| `gitlab-sast` | `scan.messages[]`: `warn` for checks that did not run and for disabled sub-types, `info` for a hidden confidence band |
-| `text` | one `Scope:` line at the end of the report, for example `Scope: ran 1 of 19 checks (SSN)` |
+| `gitlab-sast` | `scan.messages[]`: `warn` for checks that did not run and for disabled sub-types, `info` for a hidden confidence band and for the config (below) |
+| `text` | one `Scope:` line at the end of the report, for example `Scope: ran 1 of 19 checks (SSN)`, then the `Config:` line (below) |
 | `csv` | nothing: a csv report of a narrowed run reads like one of a full run |
 
-A run that ran in full writes none of this, so its output is unchanged in every format. The csv
+A run that ran in full, with no config discovered in the working directory, writes none of this, so
+its output is unchanged in every format. The csv
 residual is pinned by `TestEveryFormatButCSVRendersANarrowedScope`
 (`internal/formatters/scope_formats_test.go`): a csv that starts rendering the scope fails it until
 this page says so.
+
+### Which config governed the run (config provenance)
+
+A config committed in the scanned tree governs the scan that reviews it (TM-13), so the report names
+it. This is a fourth disclosure facet beside not-examined files, unredacted values and narrowing
+([#1007](https://github.com/awslabs/ferret-scan/issues/1007)). It is **decoupled from narrowing**: a
+config found in the working directory is named even when it narrowed nothing, and that run then gets
+the `scan` block above although nothing in it is narrowed. "Discovered" means exactly what the stderr
+note `using project config ... found in the working directory` means, the `working-directory` source.
+The built-in configuration, an explicit `--config` and the user config directory are the operator's
+own, so on a run that narrowed nothing they add nothing. On a narrowed run the source is named
+whatever it is, except `built-in`. The file's base name only, and only when it is one of the names
+discovery looks for; a path would leak the checkout layout ([#715](https://github.com/awslabs/ferret-scan/issues/715)).
+
+| format | where |
+|---|---|
+| `json`, `yaml` | `scan.config.source` and `scan.config.name` |
+| `junit` | `ferret-scan.config_source`, `ferret-scan.config_name` in the `security-scan` suite's `<properties>` |
+| `sarif` | `run.properties.ferretScanConfigSource`, `ferretScanConfigName` |
+| `gitlab-sast` | a `scan.messages[]` entry at level `info`: `ferret-scan: .ferret-scan.yaml (found in the working directory) governed this scan.` |
+| `text` | a `Config:` line at the end of the report, after any `Scope:` line: `Config: .ferret-scan.yaml (found in the working directory)` |
+| `csv` | nothing in band: stderr only, as for the other facets |
+
+Pinned by `TestEveryFormatButCSVNamesADiscoveredConfigOnANonNarrowedRun` and
+`TestProvenanceTextAndGitLabWording` (`internal/formatters/scope_formats_test.go`).
 
 ## Caps
 

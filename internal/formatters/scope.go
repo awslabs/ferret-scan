@@ -22,9 +22,10 @@ import (
 // scan of a neutral file in all seven formats, exit 0, 0 B of stderr. A CI job reading `"results": []`
 // could not tell "nothing there" from "nothing looked for".
 //
-// nil renders nothing, and NewScanScope returns nil for a run that was NOT narrowed, so a full-scope
-// report keeps every byte it had before this type existed, in every format. That is also why the
-// golden corpus does not move: its harness builds FormatterOptions without a scope.
+// nil renders nothing, and NewScanScope returns nil for a run that was NOT narrowed and was not governed
+// by a config discovered in the working directory, so such a report keeps every byte it had before this
+// type existed, in every format. That is also why the golden corpus does not move: its harness builds
+// FormatterOptions without a scope.
 //
 // Every field is sourced from what RAN, never echoed from a flag: the checks are the keys of the
 // validator set the detector was given, and the disabled sub-types are what those validators report.
@@ -132,7 +133,16 @@ type ScopeInputs struct {
 // confidenceBands is the display order of the bands, which is also the order ConfidenceLevels uses.
 var confidenceBands = []string{"high", "medium", "low"}
 
-// NewScanScope returns the scope of a NARROWED run, and nil for one that ran in full.
+// NewScanScope returns the scope of a NARROWED run or of one governed by a config discovered in the
+// working directory, and nil for any other run that ran in full (#1007).
+//
+// A config found in the working directory is disclosed whether or not it narrowed anything: a config
+// committed in a PR governs the scan reviewing that PR (TM-13), and a document that does not name it
+// leaves the reader unable to tell. "Discovered" is exactly what the CLI's stderr provenance note
+// means (cmd/main.go reportConfigProvenance): ConfigSourceWorkingDirectory. The built-in configuration
+// is not a discovery, an explicit --config is the operator's own choice, and the user config directory
+// is the operator's own too, so none of them gives a full-scope run a scope; the golden corpus (built-in,
+// no scope) and every run without a project config keep every byte.
 //
 // Narrowed means a config, a profile or a flag switched something off that a full scan reports: a
 // check did not run, a confidence band is hidden, or a detection sub-type was disabled. A check the
@@ -153,7 +163,8 @@ func NewScanScope(in ScopeInputs) *ScanScope {
 		}
 	}
 
-	if len(notRun) == 0 && len(levels) == len(confidenceBands) && !anyDisabled(in.DisabledDetectionTypes) {
+	if len(notRun) == 0 && len(levels) == len(confidenceBands) && !anyDisabled(in.DisabledDetectionTypes) &&
+		in.Config.Source != ConfigSourceWorkingDirectory {
 		return nil
 	}
 
@@ -256,6 +267,38 @@ func (s *ScanScope) HiddenConfidenceLevels() []string {
 		}
 	}
 	return hidden
+}
+
+// Narrowed reports whether the run reported less than a full scan would: a check did not run, a
+// confidence band is hidden, or a detection sub-type was disabled. A scope that exists only because a
+// config was discovered in the working directory (#1007) is not narrowed, and the formats that name
+// narrowing in prose (text, gitlab-sast) say nothing about it.
+func (s *ScanScope) Narrowed() bool {
+	return s != nil && (len(s.ChecksNotRun) > 0 || len(s.ConfidenceLevels) != len(confidenceBands) ||
+		anyDisabled(s.DisabledDetectionTypes))
+}
+
+// ConfigLine is the one-line statement of which configuration governed the run, for the formats that
+// carry prose (text, gitlab-sast), or "" for the built-in configuration, which is nothing to disclose.
+// The file's base name only (#715); the name is one of discoveredConfigNames, never operator-chosen.
+//
+// It names the source in plain words and carries no count, so the report does not scan as an address.
+func (s *ScanScope) ConfigLine() string {
+	if s == nil {
+		return ""
+	}
+	switch s.Config.Source {
+	case ConfigSourceWorkingDirectory:
+		if s.Config.Name != "" {
+			return "Config: " + s.Config.Name + " (found in the working directory)"
+		}
+		return "Config: a configuration file found in the working directory"
+	case ConfigSourceExplicit:
+		return "Config: the file named by --config"
+	case ConfigSourceUserConfigDir:
+		return "Config: a file in the user configuration directory"
+	}
+	return ""
 }
 
 // TextLine is the one-line human summary of the scope, for the text report.

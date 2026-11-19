@@ -8,6 +8,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/v2/internal/config"
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/observability"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/address"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/bankaccount"
 	"github.com/awslabs/ferret-scan/v2/internal/validators/cloudresources"
@@ -95,6 +96,13 @@ type ValidatorOverrides struct {
 	// key is handed to the validator, so whatever else config or profile set (internal_urls, the
 	// pattern overrides) is kept.
 	DisabledIPTypes []string
+
+	// Observer, when non-nil, is attached to every validator the set builds BEFORE its first Configure
+	// call, so the [DEBUG] lines Configure writes ("Cloud Resource Validator initialized: ...", the
+	// internal URL pattern counts) reach the debug log. The CLI attached its observers after the set was
+	// built, when Configure had already run, and those lines were never written (#903). The CLI's own
+	// per-validator observers replace this one afterwards; it is the same debug writer.
+	Observer observability.Observer
 }
 
 // BuildValidatorSet constructs the standard set of validators filtered by the
@@ -112,7 +120,13 @@ func BuildValidatorSetWithOverrides(enabledChecks map[string]bool, cfg *config.C
 
 	for name, newValidator := range validatorConstructors {
 		if enabledChecks[name] {
-			result[name] = newValidator()
+			v := newValidator()
+			if overrides != nil && overrides.Observer != nil {
+				if o, ok := v.(interface{ SetObserver(observability.Observer) }); ok {
+					o.SetObserver(overrides.Observer)
+				}
+			}
+			result[name] = v
 		}
 	}
 
@@ -130,7 +144,14 @@ func BuildValidatorSetWithOverrides(enabledChecks map[string]bool, cfg *config.C
 	// profile-only config overrides just the sections the profile actually sets
 	// and leaves the global settings for the others in place.
 	if profile != nil && profile.Validators != nil {
-		configureConfigurableValidators(result, &config.Config{Validators: profile.Validators})
+		// ValuePathScope labels a warning about a value read here with the profile it came from. The
+		// global pass, which reads the same keys, keeps the bare path, so a bad value set in both blocks
+		// is two warnings: each block has to be fixed.
+		scope := ""
+		if profile.Name != "" {
+			scope = "profiles." + profile.Name + "."
+		}
+		configureConfigurableValidators(result, &config.Config{Validators: profile.Validators, ValuePathScope: scope})
 	}
 
 	// Command-line overrides, last, so they outrank both passes above. Only the validator an override

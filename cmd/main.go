@@ -1600,6 +1600,8 @@ func main() {
 	var allFilesToProcess []string
 	var totalSkipped int
 	var discoverySkippedPaths []string
+	// discoveryExcluded is the paths --exclude and .gitignore left out; see writeExcludedSummary.
+	var discoveryExcluded []SkippedFile
 
 	// discoveryUnexamined holds coverage losses found while DISCOVERING files, as
 	// distinct from the ones found while scanning them. Both must reach the same report:
@@ -1730,7 +1732,9 @@ func main() {
 			// naming the other would understate, which is the partial disclosure this change
 			// exists to remove.
 			discoverySkippedPaths = append(discoverySkippedPaths, skipped.Path)
-			if !skipped.Silent {
+			if skipped.Excluded {
+				discoveryExcluded = append(discoveryExcluded, skipped)
+			} else if !skipped.Silent {
 				fmt.Fprintf(os.Stderr, "Warning: Skipping %s: %s\n", skipped.Path, skipped.Reason)
 			}
 		}
@@ -1740,6 +1744,13 @@ func main() {
 		// pattern that produced unreadable console output, and the report already
 		// groups by cause, caps its output, and feeds --fail-on-incomplete.
 		discoveryUnexamined = append(discoveryUnexamined, result.UnexaminedFiles...)
+	}
+
+	// One Note for the paths the operator's own --exclude / .gitignore left out, instead of a Warning
+	// per path (#1008). Gated on an explicit --quiet (finalConfig.quiet is the flag/config value, not
+	// the pre-commit default), like the suppression notes below.
+	if !finalConfig.quiet {
+		writeExcludedSummary(os.Stderr, discoveryExcluded, finalConfig.verbose || finalConfig.debug)
 	}
 
 	filesToProcess := allFilesToProcess
@@ -2354,7 +2365,7 @@ func main() {
 			suppressedCount)
 	}
 
-	if suppressedCount > 0 {
+	if suppressedCount > 0 && !finalConfig.quiet {
 		if flags.noColor {
 			if finalConfig.showSuppressed {
 				fmt.Fprintf(os.Stderr, "Suppressed %d findings based on suppression rules (shown below with [SUPP] label)\n", suppressedCount)
@@ -2584,7 +2595,9 @@ func main() {
 	// does not change: a rule that matched nothing hides nothing. Ungated, like the warning above, because
 	// pre-commit mode is where a finding that only moved re-blocks a commit. The stats block counts them.
 	unmatched := unmatchedRules.report()
-	suppressions.WriteUnmatchedRulesNote(os.Stderr, unmatched)
+	if !finalConfig.quiet {
+		suppressions.WriteUnmatchedRulesNote(os.Stderr, unmatched)
+	}
 	formatterOptions.Stats.SuppressionRulesUnmatched = unmatched.Count()
 
 	precommitDecision := precommit.Resolve(unsuppressedMatches, precommitConfig)
@@ -2858,6 +2871,10 @@ type SkippedFile struct {
 	Reason string
 	Silent bool // true = don't show to user, false = show as warning
 
+	// Excluded marks a path the operator's own --exclude pattern or .gitignore rule left out
+	// (recordExcluded). It is summarized in one Note rather than warned about per path (#1008).
+	Excluded bool
+
 	// Cause classifies an entry carried in ProcessingResult.UnexaminedFiles, so the
 	// report can say WHY discovery declined. It is unused for SkippedFiles, which are
 	// by definition entries nobody expected a result from.
@@ -2930,11 +2947,14 @@ type SkippedFile struct {
 // Directory exclusions record the DIRECTORY, once, rather than its contents: the whole point of
 // skipping a subtree is not walking it, so its files are not known and counting them would mean
 // paying the cost the exclusion exists to avoid.
+const excludedByGitignore = "excluded by .gitignore"
+
 func (r *ProcessingResult) recordExcluded(path, reason string) bool {
 	r.SkippedFiles = append(r.SkippedFiles, SkippedFile{
-		Path:   path,
-		Reason: reason,
-		Silent: false,
+		Path:     path,
+		Reason:   reason,
+		Silent:   false,
+		Excluded: true,
 	})
 	return true
 }
@@ -2948,7 +2968,7 @@ func (r *ProcessingResult) excludedBy(path string, excl *excludeMatcher, ignoreM
 		return r.recordExcluded(path, "excluded by --exclude pattern")
 	}
 	if ignoreMatcher != nil && ignoreMatcher.Match(path) {
-		return r.recordExcluded(path, "excluded by .gitignore")
+		return r.recordExcluded(path, excludedByGitignore)
 	}
 	return false
 }

@@ -1,0 +1,26 @@
+=== REDACTED ===
+gcgvox@example.com line 0
+cruojn@example.com line 1
+nf4dan@example.com line 2
+bkalrh@example.com line 3
+jhwe5q@example.com line 4
+c09ccp@example.com line 5
+igu3ku@example.com line 6
+8syhkb@example.com line 7
+cdyrfy@example.com line 8
+qygeo7@example.com line 9
+twdoa1@example.com line 10
+wozrqc@example.com line 11
+=== FINDINGS (sorted) ===
+type=BUSINESS line=1 conf=40.00 match=user00@example.com
+type=BUSINESS line=2 conf=40.00 match=user01@example.com
+type=BUSINESS line=3 conf=40.00 match=user02@example.com
+type=BUSINESS line=4 conf=40.00 match=user03@example.com
+type=BUSINESS line=5 conf=40.00 match=user04@example.com
+type=BUSINESS line=6 conf=40.00 match=user05@example.com
+type=BUSINESS line=7 conf=40.00 match=user06@example.com
+type=BUSINESS line=8 conf=40.00 match=user07@example.com
+type=BUSINESS line=9 conf=40.00 match=user08@example.com
+type=BUSINESS line=10 conf=40.00 match=user09@example.com
+type=BUSINESS line=11 conf=40.00 match=user10@example.com
+type=BUSINESS line=12 conf=40.00 match=user11@example.com

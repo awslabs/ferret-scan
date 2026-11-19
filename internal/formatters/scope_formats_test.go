@@ -476,3 +476,98 @@ func TestGitLabSASTScopeMessages(t *testing.T) {
 		t.Errorf("a nil scope rendered messages:\n%s", plain)
 	}
 }
+
+// Config provenance is a fourth disclosure facet (#1007): a config discovered in the working directory
+// is named in every format but csv whether or not it narrowed anything, and a run without one keeps
+// every byte. csv stays stderr-only by design (docs/COVERAGE_DISCLOSURE.md).
+func provenanceOnlyScope(t *testing.T) *formatters.ScanScope {
+	t.Helper()
+	s := formatters.NewScanScope(formatters.ScopeInputs{
+		ChecksRun:       scopeChecks,
+		AllChecks:       scopeChecks,
+		ConfidenceLevel: everyBand,
+		Config:          formatters.ScanConfigSource{Source: formatters.ConfigSourceWorkingDirectory, Name: ".ferret-scan.yaml"},
+	})
+	if s == nil {
+		t.Fatal("a discovered config that narrowed nothing got no scope")
+	}
+	return s
+}
+
+func TestEveryFormatButCSVNamesADiscoveredConfigOnANonNarrowedRun(t *testing.T) {
+	residual := map[string]bool{"csv": true}
+	for _, name := range formatters.List() {
+		for _, matches := range [][]detector.Match{scopeMatches(), nil} {
+			base, err := formatters.Export(name, matches, nil, scopeOpts(nil))
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			got, err := formatters.Export(name, matches, nil, scopeOpts(provenanceOnlyScope(t)))
+			if err != nil {
+				t.Fatalf("%s with config: %v", name, err)
+			}
+			if strings.Contains(base, ".ferret-scan.yaml") {
+				t.Fatalf("%s: the fixture already names the config, so this proves nothing:\n%s", name, base)
+			}
+			if residual[name] {
+				if got != base {
+					t.Errorf("%s now renders provenance; document it in docs/COVERAGE_DISCLOSURE.md and remove "+
+						"it from the residual list here", name)
+				}
+				continue
+			}
+			if !strings.Contains(got, ".ferret-scan.yaml") {
+				t.Errorf("%s with %d match(es): a discovered config that narrowed nothing is not named:\n%s",
+					name, len(matches), got)
+			}
+			// Nothing was narrowed, so no format may claim it was.
+			for _, claim := range []string{"Scope:", "did not run", "filter hid"} {
+				if strings.Contains(got, claim) {
+					t.Errorf("%s: a non-narrowed run reads as narrowed (%q):\n%s", name, claim, got)
+				}
+			}
+		}
+	}
+}
+
+// Exact text and gitlab-sast renderings: one Config line below the findings, one info message.
+func TestProvenanceTextAndGitLabWording(t *testing.T) {
+	text, err := formatters.Export("text", scopeMatches(), nil, scopeOpts(provenanceOnlyScope(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const line = "Config: .ferret-scan.yaml (found in the working directory)"
+	if strings.Count(text, line) != 1 || !strings.HasSuffix(strings.TrimRight(text, "\n"), line) {
+		t.Errorf("text should end with exactly one %q, below the findings:\n%s", line, text)
+	}
+
+	out, err := formatters.Export("gitlab-sast", scopeMatches(), nil, scopeOpts(provenanceOnlyScope(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Scan struct {
+			Messages []struct{ Level, Value string }
+		}
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Scan.Messages) != 1 || doc.Scan.Messages[0].Level != "info" ||
+		doc.Scan.Messages[0].Value != "ferret-scan: .ferret-scan.yaml (found in the working directory) governed this scan." {
+		t.Errorf("scan.messages = %+v", doc.Scan.Messages)
+	}
+
+	// A narrowed run under that config says both, narrowing first.
+	narrowed := formatters.NewScanScope(formatters.ScopeInputs{
+		ChecksRun: []string{"EMAIL", "METADATA", "SSN"}, AllChecks: scopeChecks, ConfidenceLevel: everyBand,
+		Config: formatters.ScanConfigSource{Source: formatters.ConfigSourceWorkingDirectory, Name: ".ferret-scan.yaml"},
+	})
+	text, err = formatters.Export("text", scopeMatches(), nil, scopeOpts(narrowed))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if si, ci := strings.Index(text, "Scope: ran"), strings.Index(text, line); si < 0 || ci < si {
+		t.Errorf("text should carry the Scope line, then the Config line:\n%s", text)
+	}
+}

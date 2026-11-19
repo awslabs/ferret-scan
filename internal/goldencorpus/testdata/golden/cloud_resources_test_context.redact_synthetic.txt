@@ -1,0 +1,6 @@
+=== REDACTED ===
+prod cNFzLvA1tf7RwioTuMuvuOGdkFqXzbmvcQaS2iNS6X6z
+example cNFzLvA1tf7RwioTuMuvuOGdkFqXzbmvcQaS2iNS6X6z
+=== FINDINGS (sorted) ===
+type=AWS_ARN line=1 conf=95.00 match=arn:aws:iam::123456789012:role/PaymentsAdmin
+type=AWS_ARN line=2 conf=75.00 match=arn:aws:iam::123456789012:role/PaymentsAdmin

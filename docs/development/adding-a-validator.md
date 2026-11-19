@@ -121,7 +121,7 @@ locks the CLI's `--checks` help string.
 
 | File | What to update |
 |---|---|
-| `README.md` | Validator count ("Nineteen") + table row |
+| `README.md` | Validator count ("Twenty") + table row |
 | `config.yaml` | Line 12 comment listing all valid check names |
 | `docs/architecture-diagram.md` | Validator count + mermaid list |
 | `docs/validators-new.md` | Full technical description (if new) |

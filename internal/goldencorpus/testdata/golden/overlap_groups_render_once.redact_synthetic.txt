@@ -1,0 +1,26 @@
+=== REDACTED ===
+Signed: Dr. Thi A. Douglas
+Dr. Leida A. Ahn signed
+Passport number: 831681109
+Track 1: %B4532258064815925^VBN/KQNO^2940526057156371960978?
+password = "ecpz0grG4oxuiAWcybXXLtMSOqgU7mtyKCn9"
+server 192.168.9.126 reached
+call +5 558-69-8008
+call 555-628-0558 or card 4532-3645-2716-7233
+=== FINDINGS (sorted) ===
+type=API_KEY_OR_SECRET line=5 conf=85.00 match=Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org
+type=BUSINESS line=5 conf=40.00 match=Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1@example.org
+type=CARD_TRACK_DATA line=4 conf=100.00 match=%B4532015112830366^DOE/JANE^2912101000000000000000?
+type=DATE_OF_BIRTH line=6 conf=5.00 match=12.19.85
+type=IP_ADDRESS line=6 conf=100.00 match=203.12.19.85
+type=PASSPORT line=3 conf=100.00 match=512010001
+type=PERSON_NAME line=1 conf=65.00 match=Dr. Jane Ann
+type=PERSON_NAME line=1 conf=93.00 match=Jane Ann Doe
+type=PERSON_NAME line=2 conf=93.00 match=Renée Müller García
+type=PERSON_NAME line=2 conf=100.00 match=Dr. Renée Müller
+type=PHONE line=7 conf=100.00 match=+1 449-87-4100
+type=PHONE line=8 conf=15.00 match=212-555-0142
+type=SSN line=3 conf=50.00 match=512010001
+type=SSN line=7 conf=60.00 match=449-87-4100
+type=VISA line=4 conf=75.00 match=4532015112830366
+type=VISA line=8 conf=100.00 match=4532-0151-1283-0366

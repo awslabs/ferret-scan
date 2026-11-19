@@ -77,18 +77,23 @@ The validator detects various cryptographic key formats:
 
 ### **Development Platform Tokens (High Confidence: 92-94%)**
 
-- **GITHUB_TOKEN** - `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` + 36 characters (fixed length)
-- **GITLAB_TOKEN** - `glpat-` + at least 20 of `[a-zA-Z0-9_-]`, to the end of the run, then optionally the routable-token suffix `.vv.lliiiiiii` (GitLab publishes no length: a routable token's payload is 27 to 300 characters)
+- **GITHUB_TOKEN** - `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` + 36 characters (fixed length); `github_pat_` fine-grained tokens, at least 40 of `[a-zA-Z0-9_]` holding a digit or an upper-case letter (GitHub publishes the prefix, not a length)
+- **GITLAB_TOKEN** - `glpat-` + at least 20 of `[a-zA-Z0-9_-]`, to the end of the run, then optionally the routable-token suffix `.vv.lliiiiiii` (GitLab publishes no length: a routable token's payload is 27 to 300 characters). The other twelve prefixes of GitLab's token table (`gloas-`, `gldt-`, `glrt-`, `glrtr-`, `glcbt-`, `glptt-`, `glft-`, `glimt-`, `glagent-`, `glwt-`, `glsoat-`, `glffct-`) + at least 20 of the same set, with a digit or an upper-case letter in the body (`glft-feed-token-goes-here` is a slug, not a token)
 - **DOCKER_TOKEN** - `dckr_pat_[a-zA-Z0-9_-]{36}` (Docker Hub Personal Access Tokens; Docker publishes no format, the window is kept as is)
-- **SLACK_TOKEN** - `xoxb-` or `xoxp-` + the digit groups, then the final `-` section taken whole, at least 24 or 32 characters (Slack: "the final section is the secret")
+- **SLACK_TOKEN** - `xoxb-` (11 to 13 digit ids), `xoxp-` (3 to 13 digit ids, so Slack's own `xoxp-111-222-333-…` example reads) or `xapp-1-…` + the digit groups, then the final `-` section taken whole, at least 24 or 32 characters (Slack: "the final section is the secret")
+- **API_KEY_OR_SECRET** (no type of their own) - Hugging Face `hf_` + at least 30 of `[a-zA-Z0-9]`, and Anthropic `sk-ant-api03-` / `sk-ant-admin01-` + at least 80 of `[a-zA-Z0-9_-]`, each with a digit or an upper-case letter in the body, base score 92
 
 ### **Payment Processing Keys (High Confidence: 95%)**
 
-- **STRIPE_API_KEY** - `sk_live_`, `pk_live_`, `sk_test_`, `pk_test_` + at least 24 of `[0-9a-zA-Z]`, to the end of the run (Stripe documents prefixes only)
+- **STRIPE_API_KEY** - `sk_live_`, `pk_live_`, `rk_live_`, `sk_test_`, `pk_test_`, `rk_test_` + at least 24 of `[0-9a-zA-Z]`, to the end of the run (Stripe documents prefixes only)
 
-These seven families are one table, `providerRules` in `provider_rules.go`, from which the
+These families are one table, `providerRules` in `provider_rules.go` (13 rows), from which the
 regexes, the type predicates, the line pre-check and the `--help` text are all derived; a test
-fails on a provider literal written anywhere else. Rows with a vendor-fixed length report the
+fails on a provider literal written anywhere else. Each row's Go comment cites the vendor page that
+publishes its prefix; no vendor publishes a body length for the rows without a fixed one, so those rows
+take a conservative minimum and say so. A token with one of these prefixes is reported bare, in prose,
+after `x-api-key:` or `Authorization: Bearer`, under a neutral JSON key or `cfg = "…"`, with no keyword on
+its line (#881). The prefixes with no published source (`npm_`, `api_org_`, `sk-proj-`, `sk-svcacct-`) have no row. Rows with a vendor-fixed length report the
 window; rows without one report the whole run, because a token reported as its first N bytes is
 redacted as its first N bytes and the rest is left in the clear (#769: 75 of a 107-byte Stripe
 key, under every strategy). Two tokens glued together are split where the second one's prefix
@@ -395,6 +400,73 @@ Python values in Handlebars-templated files that `tokenize` rejects, and all
 run (config, prose, JSX and every other type) gave identical findings. The
 #753 probe of 24 everyday code lines went from 17 reported to 0.
 
+## Password hashes and JWK private members
+
+A stored password hash can be cracked offline, so it is reported as `API_KEY_OR_SECRET` (#902 Part C).
+`password_hashes.go` reads exact, right-bounded grammars with no keyword and no quotes needed, and
+scores a candidate against a threshold of 50 (its grammar is the corroboration):
+
+| family | form |
+|---|---|
+| crypt(3) | `$1$` / `$apr1$` (md5crypt), `$5$` and `$6$` with an optional `rounds=`, `$2a$` / `$2b$` / `$2x$` / `$2y$` (bcrypt), `$y$` / `$gy$` (yescrypt), `$7$` (scrypt) |
+| PHC and wrappers | `$argon2id$` / `$argon2i$` / `$argon2d$`, passlib `$pbkdf2…$`, Django `pbkdf2_sha1$` / `pbkdf2_sha256$` / `argon2$` / `bcrypt_sha256$` |
+| directory and database | LDAP `{SSHA}` `{SSHA256}` `{SSHA512}` `{SHA}` `{SHA256}` `{SHA512}` `{SMD5}` `{MD5}`; MySQL `*` + 40 upper-case hex |
+| DES crypt (13 characters, no marker) | only as field 2 of a shadow or passwd record, or of a two-field record in a file whose name contains `htpasswd`. A lock prefix `!` or `*` is outside the span and the hash is still reported; `x`, `*`, `!`, `!!` never are |
+
+A hash is reported whatever its salt starts with: `"$6$<salt>$…"` used to read as the shell variable
+`$<salt>` and be dropped, so whether a hash was reported depended on its random salt. `"$USER$HOST$SUFFIX"`
+matches no grammar and is still dropped. A text that is exactly one hash scores as a specific pattern
+(90 to 100, `detection_method` `password_hash`, or `password_hash_record` for a DES record).
+
+A JSON Web Key's private members (`d`, `p`, `q`, `dp`, `dq`, `qi`, and `k` for an `oct` key) of at least
+22 base64url bytes are reported when the same JSON object has a `"kty"` of `RSA`, `EC`, `OKP` or `oct`,
+pretty-printed or on one line (`detection_method` `jwk_private_member`, 87 to 97). The public members
+(`n`, `e`, `x`, `y`) stay at the generic LOW 55, and a `d` in an object with no `kty` is not read. A JWK
+serialised inside a JSON string (`"{\"kty\":…}"`) is not parsed.
+
+## Values that are not credentials
+
+The keyword paths score the right-hand side of `secret=`, `password=`, `token=` and their relatives, and
+the key name supplies the corroboration. A value that carries no secret byte is therefore dropped by what
+it is, not by its key (`nonLiteralValue` in `non_literal_values.go` reads only the value's own bytes, so
+renaming the key cannot hide a credential with it):
+
+- a regular expression (a backslash class escape `\b \s \d \w`, single or doubled, beside a regex operator);
+- a rooted file path none of whose segments mixes upper case, lower case and digits;
+- an expression: a dotted chain of identifier words (`config.secret_key`, `process.env.JWT_SECRET`), a
+  dotted call (`os.getenv(DB_PASSWORD_ENV)`), a `+joinedValues[2]+` concatenation operand, or an index
+  expression (`os.environ["SECRET_KEY"]`, #931);
+- ferret-scan's own redaction output: `[API_KEY_OR_SECRET-REDACTED]`, the synthetic strategy's
+  `[PRIVATE-KEY-REDACTED-<8 hex>]`, and a `*` mask of at least 8 stars that kept its separators
+  (`****-****-****-****`);
+- a provider prefix around a placeholder body: one repeated character, or words such as `not`, `fake`,
+  `example`, `your`, `replace` (`xoxb-not-a-real-token-this-will-not-work`);
+- prose placeholder text: three or more lower-case words joined by `-`, at least two of them marker words
+  (`your-bot-token-goes-here-replace-me`, `replace-with-your-token`); one marker word in a passphrase
+  (`correct-horse-battery-staple`) is still reported;
+- an angle-bracket marker whose last word is a redaction verb (`<REDACTED>`, `<removed>`, `<masked>`); a
+  password in brackets (`<Sup3rS3cret>`) is still reported.
+
+In a Python, JavaScript, TypeScript, Go or HCL file the lexical gate (#753) decides whether an unquoted
+value is in code, and the expression shapes are not applied on top of it to a value the gate examined.
+These are drops, not demotions: nothing is reported, so nothing is redacted.
+
+### Where an unquoted value ends
+
+An unquoted value ends at a two-byte `\n`, `\r` or `\t` escape that is followed by the end of the capture,
+another escape or a `key=` / `key:` (so `"password=x\nuser=y"` is one short value, under the 8-byte floor,
+not a value that runs into the next record), and a `#` glued to the text before it opens a URL fragment
+parameter like `?` and `&` (`cb#access_token=…&refresh_token=…` reports each token apart). A `#` at the
+start of a line or after a space still comments the assignment out and its value is taken whole (#932).
+
+### `# pragma: allowlist secret`
+
+The pragma's words are not a credential label here: `secret` beside a 64-hex digest no longer corroborates
+it, so a suppression file's `hash:` lines (which ferret-scan annotates with the pragma for other
+scanners) read as the bare digest does, LOW 55. The pragma does **not** exempt its line: a real credential
+beside it is reported exactly as without it, because an inline comment anyone can type would be an
+unreviewed suppression. To accept a finding, write a suppression rule with a reason (#933).
+
 ## Confidence Scoring
 
 ### Base Confidence (85%)
@@ -441,7 +513,7 @@ Starting confidence level for detected patterns.
 
 A ceiling is an upper bound the validator publishes in
 `Match.Metadata["confidence_ceiling"]`. Unlike the penalties above it is not an
-addend competing with context — nothing downstream can out-vote it. Four apply here:
+addend competing with context — nothing downstream can out-vote it. Five apply here:
 
 | Value class | Ceiling | Reason |
 |---|---|---|
@@ -449,8 +521,9 @@ addend competing with context — nothing downstream can out-vote it. Four apply
 | An AWS credential whose own bytes contain `EXAMPLE` — `AKIAIOSFODNN7EXAMPLE`, `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` | 15 | AWS publishes these in its documentation. Measured before: 84% and 75% MEDIUM, i.e. presented as real credentials (#364). |
 | A temporary access key ID (`ASIA…`) with no secret access key or session token value on its line or an adjacent one | 55 | It authenticates nothing alone, and audit exports carry one on every row (#881). The `EXAMPLE` ceiling still wins for `ASIAIOSFODNN7EXAMPLE`. |
 | A generic value holding a `-` that no positive keyword or joined stem on its line corroborates | 55 | The value class #881 newly admits: base64url test vectors, RFC 3492 punycode samples, alphabet constants. The validator already caps these at 55; publishing it stops a CSV/TSV document's context boost lifting them to MEDIUM. A hyphen-free value is unchanged. |
+| One of the four published example secrets in `publishedExampleSecrets` (`published_example_secrets.go`, which names each value and the page that prints it): the AWS STS reference's example secret access key, Stripe's documented `sk_test_` and `pk_test_` keys, and the example TOTP secret on Google Authenticator's Key Uri Format page | 15 | The publisher's own page prints the value, so it is documentation, not a credential. The match is EXACT on the whole value. Before the list, each of the four read 100 through the generic path (the AWS-specific path already held the AWS key at 15). A real credential with the example text beside it, or a listed value with one character changed, is a different value and keeps its full score (#930). |
 
-All four are **demotions, not suppressions**: the finding is still reported, so it is
+All five are **demotions, not suppressions**: the finding is still reported, so it is
 still redacted. `--confidence low` shows it; `--explain` reports
 `not_test_data: false` and a `likely_test` verdict.
 
@@ -467,7 +540,8 @@ anyone silence a real credential by appending seven characters, nor to any provi
 row whose body runs to the end of its character run (Stripe, GitLab, Slack), for the
 same reason. Vendor **test-mode**
 credentials such as `sk_test_…` are unaffected: those authenticate, so they are
-real secrets and keep their full confidence.
+real secrets and keep their full confidence, EXCEPT the exact values Stripe prints in its
+own documentation (the published-example row above), which sit at 15 like the AWS ones.
 
 Full policy: [docs/proposals/CONFIDENCE_CONTRACT.md](../../../docs/proposals/CONFIDENCE_CONTRACT.md) §7c.
 

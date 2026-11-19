@@ -802,7 +802,9 @@ func extractTextFromXML(file *zip.File, pattern string) (string, error) {
 	if pattern == "//w:t" {
 		re = regexp.MustCompile(`<w:t[^>]*>(.*?)</w:t>`)
 	} else if pattern == "//a:t" {
-		re = regexp.MustCompile(`<a:t[^>]*>(.*?)</a:t>`)
+		// A run, or the end of a paragraph (#914). The start tag is anchored on whitespace or ">" so that
+		// <a:tbl>, <a:tc> and <a:tailEnd/> are not taken for a run and do not swallow the text after them.
+		re = regexp.MustCompile(`<a:t(?:\s[^>]*)?>(.*?)</a:t>|(</a:p>)`)
 	} else if pattern == "//text:p" {
 		re = regexp.MustCompile(`<text:p[^>]*>(.*?)</text:p>`)
 	} else if pattern == "//table:table-cell" {
@@ -819,7 +821,18 @@ func extractTextFromXML(file *zip.File, pattern string) (string, error) {
 
 	matches := re.FindAllSubmatch(content, -1)
 
+	// Runs of one DrawingML paragraph are joined with a space; a paragraph is ended with a newline, which
+	// the validators do not read across (#914). An OpenDocument match is a whole paragraph, so it is ended
+	// with the newline. Table cells (an ODS) are joined with a space: a cell is not a paragraph boundary.
+	sep := " "
+	if pattern == "//text:p" {
+		sep = "\n"
+	}
 	for _, match := range matches {
+		if len(match) > 2 && len(match[2]) > 0 {
+			result.WriteString("\n")
+			continue
+		}
 		if len(match) > 1 {
 			text := decodeXMLEntities(string(match[1]))
 
@@ -827,7 +840,7 @@ func extractTextFromXML(file *zip.File, pattern string) (string, error) {
 			text = runTagRe.ReplaceAllString(text, "")
 
 			result.WriteString(text)
-			result.WriteString(" ")
+			result.WriteString(sep)
 		}
 	}
 
@@ -855,7 +868,7 @@ func extractTextFromXML(file *zip.File, pattern string) (string, error) {
 	}
 
 	// Add paragraph breaks
-	if pattern == "//w:t" || pattern == "//text:p" {
+	if pattern == "//w:t" || pattern == "//text:p" || pattern == "//a:t" {
 		text = regexp.MustCompile(`\s*\n\s*`).ReplaceAllString(text, "\n")
 	}
 

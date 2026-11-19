@@ -60,6 +60,10 @@ publishing it more widely. Keep every port on the way equal (the host port, the 
 `--port` and a tunnel's local port), as the custom-port line does: the UI refuses a scan whose
 browser `Origin` names a port other than the one it listens on.
 
+To export a scan from a script, send the `scan_id` that `/scan` returned, with its session cookie, to
+`/export` as `{"format": …, "scan_ids": […]}`; a body that posts `results` back is refused with 400 (see
+[Exporting a scan from a script](README-WebUI.md#exporting-a-scan-from-a-script)).
+
 ### CLI Mode
 
 ```bash

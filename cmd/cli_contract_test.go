@@ -637,7 +637,7 @@ func TestJSONStatsCountTheRulesThatMatchedNothing(t *testing.T) {
 		t.Helper()
 		writeFixture(t, filepath.Join(work, "customers.txt"), content)
 		r := runCLI(t, bin, work, env, "", "--file", "customers.txt", "--config", os.DevNull, "--format", "json",
-			"--no-color", "--quiet", "--suppression-file", rules)
+			"--no-color", "--suppression-file", rules) // not --quiet: it withholds the note this test reads (#1008)
 		var doc struct {
 			Stats map[string]any `json:"stats"`
 		}

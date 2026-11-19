@@ -4,12 +4,14 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/formatters"
 	"github.com/awslabs/ferret-scan/v2/internal/parallel"
+	"github.com/awslabs/ferret-scan/v2/internal/redactors"
 )
 
 // The unredacted disclosure, carried into every output format.
@@ -71,6 +73,16 @@ func classifyRedactionError(reason string) formatters.UnredactedCause {
 	}
 }
 
+// classifyRedaction classifies a file's redaction failure. A typed error is tested first
+// (errors.Is, not its prose); only an error that carries none falls to the substring
+// classifier on the reason string.
+func classifyRedaction(err error, reason string) formatters.UnredactedCause {
+	if errors.Is(err, redactors.ErrSyntheticSpaceExhausted) {
+		return formatters.UnredactedSyntheticExhausted
+	}
+	return classifyRedactionError(reason)
+}
+
 // toFormatterUnredacted turns the per-file redaction diagnostics into the structured
 // disclosure, counting how many REPORTED values each file leaves in cleartext.
 //
@@ -112,7 +124,7 @@ func toFormatterUnredacted(diags []parallel.FileDiagnostic, matches []detector.M
 		}
 		out = append(out, formatters.UnredactedFile{
 			Path:           d.FilePath,
-			Cause:          classifyRedactionError(d.Reason),
+			Cause:          classifyRedaction(d.Err, d.Reason),
 			Detail:         scrubReportedValues(d.Reason, matches),
 			ReportedValues: perFile[d.FilePath],
 		})

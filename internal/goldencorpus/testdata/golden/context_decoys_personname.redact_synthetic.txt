@@ -1,0 +1,17 @@
+=== REDACTED ===
+Danelle K. Pettersson for approval
+the Jordan River flows north
+Please forward the report to Alejandro Brannon by Friday
+Lincoln Continental parked outside
+Floretta Daniel will present the quarterly results
+Amazon Web Services launched
+Schedule a review with Hassie Olson next week
+the Hudson Valley orchard shipped apples
+Jestine Mejia approved the budget request
+Ford Mustang sales rose sharply
+=== FINDINGS (sorted) ===
+type=PERSON_NAME line=1 conf=80.00 match=Contact Maria Delgado
+type=PERSON_NAME line=3 conf=92.00 match=James Whitfield
+type=PERSON_NAME line=5 conf=92.00 match=Sarah Okonkwo
+type=PERSON_NAME line=7 conf=92.00 match=Daniel Moreau
+type=PERSON_NAME line=9 conf=92.00 match=Priya Raghavan

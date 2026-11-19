@@ -115,19 +115,24 @@ it needs no rule. Each was measured alone in a one-line file with the binary bui
 | IP address | `192.0.2.10`, `198.51.100.7`, `203.0.113.42` (RFC 5737), `2001:db8::10` (RFC 3849) | no finding |
 | Person name | `John Doe`, `Jane Doe` | `PERSON_NAME` 66, MEDIUM |
 
-These published examples still read HIGH and are listed in #930, which fixes them; until it lands, a
-fixture that uses one needs a `detector FP: #930` rule, so prefer a value from the table above:
+#1033 holds four published secrets at LOW 15 through one list, `publishedExampleSecrets` in
+`internal/validators/secrets/published_example_secrets.go`, which names each value and the page its
+publisher owns. They are: the AWS documentation example secret access key (on any line, not only an
+`aws_secret_access_key =` assignment), Stripe's documented `sk_test_` and `pk_test_` keys, and the example TOTP
+secret on Google Authenticator's Key Uri Format page. Each read 100 on `main` 3b9780b before it; measured alone
+in a one-line file with #1033 applied, they read 15, LOW, and the same value with its last character changed
+still reads 100. Open the file for the values (this page does not quote them, so that it needs no rule of
+its own); once #1033 is in your tree they are usable as fixtures. Any other `sk_test_…` or real-looking AWS
+secret key reads HIGH and needs a rule.
 
-- the AWS documentation example secret access key on any line but an `aws_secret_access_key =`
-  assignment (on that line it reads `AWS_SECRET_ACCESS_KEY` 15, LOW; on a generic `secret = "…"` line it
-  reads `API_KEY_OR_SECRET` 100);
-- the documented example TOTP secret on a generic `secret` line (100), Stripe's documented test keys
-  (`STRIPE_API_KEY` 100), the jwt.io example token (`JWT_TOKEN` 100), the Google Maps samples key (100);
-- the published example IBANs (`IBAN` 100), the widely published example VIN (`VIN` 100), the CMS
-  check-digit example NPI (`NPI` 90);
-- Ofcom's drama telephone ranges, London and Manchester (`PHONE` 100; the French fiction range gives no
-  finding on `main` and reads 100 with the international forms of #920), and the AWS documentation
-  account ID inside an ARN (`AWS_ARN` 95; alone it gives no finding).
+These published examples still read HIGH (measured on `main` 3b9780b) and are listed in #930; until it lands,
+a fixture that uses one needs a `detector FP: #930` rule, so prefer a value from the tables above:
+
+- the jwt.io example token (`JWT_TOKEN` 100) and the Google Maps samples key (`GOOGLE_CLOUD_API_KEY` 100);
+- the widely published example VIN (`VIN` 100) and the AWS documentation account ID
+  inside an ARN (`arn:aws:iam::123456789012:role/Admin`, `AWS_ARN` 95). The DE89 example IBAN read `IBAN` 85
+  (MEDIUM) after an `iban2:` label, and the GB82 example IBAN, the CMS check-digit example NPI `1234567893` and the
+  Ofcom drama numbers (`020 7946 0123`, `0161 496 0123`) read 15, LOW, so they no longer need a rule.
 
 The values themselves are in #930, so that this page does not need a rule of its own.
 

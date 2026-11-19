@@ -41,6 +41,14 @@ func TestNewScanScopeIsNilForAFullScopeRun(t *testing.T) {
 			ChecksRun: scopeTestChecks, AllChecks: scopeTestChecks, ConfidenceLevel: allBands,
 			SuppressionRulesEnabled: 3,
 		},
+		"an explicit config narrowing nothing is the operator's own choice": {
+			ChecksRun: scopeTestChecks, AllChecks: scopeTestChecks, ConfidenceLevel: allBands,
+			Config: ScanConfigSource{Source: ConfigSourceExplicit},
+		},
+		"a user-config-dir config narrowing nothing is the operator's own": {
+			ChecksRun: scopeTestChecks, AllChecks: scopeTestChecks, ConfidenceLevel: allBands,
+			Config: ScanConfigSource{Source: ConfigSourceUserConfigDir},
+		},
 		"a profile that narrowed nothing": {
 			ChecksRun: scopeTestChecks, AllChecks: scopeTestChecks, ConfidenceLevel: allBands,
 			Profile: &ScanProfile{Name: "ci", SelectedBy: ProfileSelectedByFlag},
@@ -307,5 +315,46 @@ func TestConfigSourceNamesTrackDiscovery(t *testing.T) {
 	}
 	if len(found) != len(discoveredConfigNames) {
 		t.Errorf("discovery confirmed %d of %d names", len(found), len(discoveredConfigNames))
+	}
+}
+
+// A config discovered in the working directory is disclosed whether or not it narrowed anything
+// (#1007): the run gets a scope that says so, and the scope is not "narrowed".
+func TestNewScanScopeForADiscoveredConfigThatNarrowedNothing(t *testing.T) {
+	s := NewScanScope(ScopeInputs{
+		ChecksRun: scopeTestChecks, AllChecks: scopeTestChecks, ConfidenceLevel: allBands,
+		Config: ScanConfigSource{Source: ConfigSourceWorkingDirectory, Name: ".ferret-scan.yaml"},
+	})
+	if s == nil {
+		t.Fatal("a discovered project config that narrowed nothing got no scope, so no report names it")
+	}
+	if s.Narrowed() {
+		t.Errorf("a scope that exists only for provenance reads as narrowed: %+v", s)
+	}
+	if got, want := s.ConfigLine(), "Config: .ferret-scan.yaml (found in the working directory)"; got != want {
+		t.Errorf("ConfigLine = %q, want %q", got, want)
+	}
+	if s.Config.Source != ConfigSourceWorkingDirectory || s.Config.Name != ".ferret-scan.yaml" {
+		t.Errorf("Config = %+v", s.Config)
+	}
+}
+
+func TestConfigLine(t *testing.T) {
+	for _, tc := range []struct {
+		src  ScanConfigSource
+		want string
+	}{
+		{ScanConfigSource{Source: ConfigSourceBuiltin}, ""},
+		{ScanConfigSource{Source: ConfigSourceWorkingDirectory}, "Config: a configuration file found in the working directory"},
+		{ScanConfigSource{Source: ConfigSourceExplicit}, "Config: the file named by --config"},
+		{ScanConfigSource{Source: ConfigSourceUserConfigDir}, "Config: a file in the user configuration directory"},
+	} {
+		if got := (&ScanScope{Config: tc.src}).ConfigLine(); got != tc.want {
+			t.Errorf("%s: ConfigLine = %q, want %q", tc.src.Source, got, tc.want)
+		}
+	}
+	var nilScope *ScanScope
+	if nilScope.ConfigLine() != "" || nilScope.Narrowed() {
+		t.Error("a nil scope must say nothing")
 	}
 }

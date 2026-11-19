@@ -68,7 +68,9 @@ whose stderr is the findings document, the count is in that document and the not
 - Only rules for files the run scanned in full are counted: a rule for a file the run did not read is not
   named, and on a run narrowed by `--checks`, a rule of a type the run reported no finding of is not checked
   (the note says so).
-- A note, not a warning: a rule that matched nothing hides nothing, so the exit code does not change.
+- A note, not a warning: a rule that matched nothing hides nothing, so the exit code does not change. An explicit `--quiet` withholds the note and the
+  `Suppressed N findings …` line (the counts stay in the json and yaml `stats`); `--pre-commit-mode`
+  without `--quiet` still prints them.
 - `--generate-suppressions` re-anchors a rule whose finding only moved and names neither the rules it
   re-anchored nor the ones it migrated to formula v5:
 
@@ -177,7 +179,7 @@ When running with `--web`, the suppression manager is cached in memory and reloa
 
 ## Suppression File Format
 
-> **Note on `# pragma: allowlist secret`**: every `hash:` line is automatically annotated with this pragma when the file is written. The hash field is a SHA-256 of the finding identity (not the secret itself), but it has enough entropy to trip secret scanners — including ferret-scan running over its own suppressions file. The pragma silences those false positives. Re-saves are idempotent: existing pragma comments are preserved, never duplicated.
+> **Note on `# pragma: allowlist secret`**: every `hash:` line is automatically annotated with this pragma when the file is written. The hash field is a SHA-256 of the finding identity (not the secret itself), but it has enough entropy to trip other secret scanners (detect-secrets reads this pragma). Re-saves are idempotent: existing pragma comments are preserved, never duplicated. The pragma is **not a ferret-scan suppression**: ferret-scan does not honour it, its words (`allowlist`, `secret`) do not count as a credential label for the line, and a real credential beside the pragma is reported exactly as without it. To accept a finding, use a rule with a `reason` (see below).
 
 ```yaml
 version: "1.0"

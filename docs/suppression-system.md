@@ -148,8 +148,11 @@ ten), for example `Note: 5 enabled suppression rule(s) for files scanned in this
 (the finding moved, changed, or was removed): SUP-00000001, …. Run --generate-suppressions to re-anchor
 the ones whose finding only moved.` It is a note: a rule that matched nothing hides nothing, so no exit
 code changes. On the 39-file set above, 270 of the 473 enabled rules matched nothing, and the run said
-only `Suppressed 238 findings`. The CLI does not print the note or a count yet; wiring both is tracked
-in [#885](https://github.com/awslabs/ferret-scan/issues/885).
+only `Suppressed 238 findings`. The CLI prints the note on stderr for `--file` and `--stdin` (#918), and
+`stats.suppression_rules_unmatched` in the JSON/YAML report carries the count. An explicit `--quiet`
+(or `quiet: true`) withholds both the note and the `Suppressed N findings …` line; `--pre-commit-mode`
+alone does not, because a rule whose finding only moved is what re-blocks a commit
+([#1008](https://github.com/awslabs/ferret-scan/issues/1008), PR #1030).
 
 ### Filename Consistency
 - **Original Filename Preservation**: Web UI uploads maintain original filenames throughout processing

@@ -568,6 +568,11 @@ func uncorroboratedHyphenatedCap(secretType, match string, kw lineKeywordState, 
 	if secretType != genericSecretType || structural || kw == lineKeywordPresent || !strings.Contains(match, "-") {
 		return 0
 	}
+	// A whole provider token (an Anthropic key, whose row has no type of its own) is corroborated
+	// by its published prefix, not by a word beside it (#881).
+	if typ, _ := providerTypeOf(match); typ != "" {
+		return 0
+	}
 	return uncorroboratedHyphenatedCeiling
 }
 
@@ -2808,6 +2813,14 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 				// why it had demoted the value — the disclosure half of #363/#364. The
 				// AWS-secret path at findAWSSecretKeys already spells it this way.
 				checks["not_test_data"] = false
+			}
+			if c := publishedExampleCap(match); c > 0 {
+				if ceiling == 0 || c < ceiling {
+					ceiling = c
+				}
+				// The same disclosure as the AWS placeholder above, under the key the other
+				// validators use for a published example (#930).
+				checks["not_published_example"] = false
 			}
 			if c := cand.ceiling; c > 0 && (ceiling == 0 || c < ceiling) {
 				ceiling = c

@@ -271,6 +271,14 @@ var typeDisplays = map[string]typeDisplay{
 	"INSURANCE_MEMBER_ID": {"insurance member ID", "an"},
 	"PO_BOX":              {"PO box", "a"}, // pee-oh
 
+	// NATIONAL_ID (#884 Part B). The country belongs in the name: "a br cpf" is what the fallback
+	// wrote. The article follows the country's sound: "an Argentine", "a Brazilian".
+	"BR_CPF":  {"Brazilian CPF", "a"},
+	"CL_RUT":  {"Chilean RUT", "a"},
+	"AR_CUIL": {"Argentine CUIL", "an"},
+	"CA_SIN":  {"Canadian SIN", "a"},
+	"MX_CURP": {"Mexican CURP", "a"},
+
 	// "US" is said "you-ess", a consonant sound, so it takes "a" despite the vowel spelling.
 	"US_STREET_ADDRESS":   {"US street address", "a"},
 	"US_BANK_ACCOUNT":     {"US bank account", "a"},

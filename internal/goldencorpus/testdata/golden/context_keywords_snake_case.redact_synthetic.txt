@@ -1,0 +1,14 @@
+=== REDACTED ===
+customer_ssn: 666-60-6424
+SSN_VALUE=930-10-7201
+my_dob_field: hWWBZpPqY1
+TEST_CARD_NUMBER = 4532364527167233
+account_number_test: 4012108446812554
+sample_ssn = 955-20-7123
+=== FINDINGS (sorted) ===
+type=DATE_OF_BIRTH line=3 conf=90.00 match=1985-03-14
+type=SSN line=1 conf=100.00 match=449-87-4100
+type=SSN line=2 conf=100.00 match=449-87-4101
+type=SSN line=6 conf=65.00 match=449-87-4102
+type=VISA line=4 conf=15.00 match=4532015112830366
+type=VISA line=5 conf=15.00 match=4012888888881881
