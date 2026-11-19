@@ -1780,16 +1780,16 @@ rules:
         finding_type: BUSINESS
         line_number: "765"
     - id: SUP-00000223
-      hash: 402f1e565339631e3d4629cc7dfc06ad1d7b46f44f93a6581c529a86fb3fa259 # pragma: allowlist secret
+      hash: 4b5748f3ed02d31a98d6208778b2d6d14dd7bd93449e6e07580615e3270bd1d2 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-16T16:33:55.351668038Z
+      last_seen_at: 2026-11-19T03:50:36.548975776Z
       metadata:
         confidence: "94.00"
         filename: replacement.go
         finding_type: AWS_ACCESS_KEY
-        line_number: "1398"
+        line_number: "1417"
     - id: SUP-00000224
       hash: 88aa26cce29daa3e08e072cfae9c0bb950325948949551b2297c547bfce0d2d0 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"

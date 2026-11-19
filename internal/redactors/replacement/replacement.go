@@ -1146,7 +1146,7 @@ func cardDigits(key string, s *source) string {
 	return string(b)
 }
 
-// ssnDigits draws nine digits that are neither an SSN nor an ITIN.
+// ssnDigits draws nine digits that are neither an SSN, an ITIN nor a Canadian SIN.
 //
 // The areas used to be {000, 666, 900, 999} with any group. 000 and 666 are never issued as anything.
 // The 9xx areas are never an SSN, but they are where the IRS issues ITINs, and the SSN validator now
@@ -1162,7 +1162,26 @@ func ssnDigits(s *source) string {
 		area = fmt.Sprintf("9%02d", s.intn(100))
 		group = fmt.Sprintf("%02d", 1+s.intn(49))
 	}
-	return area + group + fmt.Sprintf("%04d", s.intn(10000))
+	serial := fmt.Sprintf("%04d", s.intn(10000))
+	// The nationalid validator accepts any nine digits that pass the Luhn mod-10 check and do not
+	// lead with 0 or 8 as a Canadian SIN (validSIN, internal/validators/nationalid/checks.go), and
+	// the 666 and 9xx areas lead with 6 and 9: about one draw in ten re-detected as CA_SIN (#1020).
+	// Changing only the last digit always changes the Luhn sum, so a passing draw is moved off it
+	// to one of the nine other last digits; the other nine draws in ten are left as drawn.
+	if luhn9(area + group + serial) {
+		last := int(serial[3] - '0')
+		serial = serial[:3] + string(rune('0'+(last+1+s.intn(9))%10))
+	}
+	return area + group + serial
+}
+
+// luhn9 reports whether digits pass the Luhn mod-10 check, the test validSIN applies to nine digits.
+func luhn9(digits string) bool {
+	d := make([]int, len(digits))
+	for i := range digits {
+		d[i] = int(digits[i] - '0')
+	}
+	return luhnCheck(d[:len(d)-1]) == d[len(d)-1]
 }
 
 // minSyntheticLocal is the shortest local part a synthetic address gets.
