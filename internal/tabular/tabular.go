@@ -61,13 +61,13 @@ const (
 	minFields = 3
 
 	// minPairFields is the field count of a two-column table (#1018). Two fields is a table only
-	// under the extra tests of pairTable: the three-field floor above is what keeps "Smith, John"
+	// under the extra tests of pairHeader and pairRows: the three-field floor above is what keeps "Smith, John"
 	// out, and a two-column export (phone,qty / passport_number,country) is still a table.
 	minPairFields = 2
 
 	// minPairRows is how many data rows a two-column table needs, every one with the header's
 	// field count. Three fields leave room for a ragged row (consistentFraction); two fields do not.
-	minPairRows = 3
+	minPairRows = 1
 
 	// maxPairHeaderWords is the most words a two-column header cell may hold ("passport number").
 	maxPairHeaderWords = 3
@@ -305,13 +305,13 @@ func pickDelimiter(header string) byte {
 	return best
 }
 
-// pairHeader reports whether the two header cells of a two-column file read as column names: short
-// (at most maxPairHeaderWords words each) and without a digit, so "In 2020, 45 people left" and
+// pairHeader reports whether the two header cells of a two-column file read as column names: not
+// empty, short (at most maxPairHeaderWords words each) and without a digit, so "In 2020, 45 people left" and
 // "Smith, John" style lines do not qualify on their header alone.
 func pairHeader(cells []string) bool {
 	for _, c := range cells {
 		c = strings.TrimSpace(strings.Trim(strings.TrimSpace(c), `"`))
-		if len(strings.Fields(c)) > maxPairHeaderWords || strings.IndexFunc(c, unicode.IsDigit) >= 0 {
+		if c == "" || len(strings.Fields(c)) > maxPairHeaderWords || strings.IndexFunc(c, unicode.IsDigit) >= 0 {
 			return false
 		}
 	}
