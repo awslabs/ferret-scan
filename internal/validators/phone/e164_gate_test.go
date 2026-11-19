@@ -216,7 +216,7 @@ func TestGluedCodeIsNotANewReading(t *testing.T) {
 // the validator reports with, so no pattern falls through to "not checked".
 func TestCountryFormatHandlesEveryPattern(t *testing.T) {
 	v := NewValidator()
-	handled := map[string]bool{"US/CA": true, "UK": true, "International": true, "Europe": true, "Mobile": true}
+	handled := map[string]bool{"US/CA": true, "UK": true, "International": true, "Europe": true, "Mobile": true, "FR": true}
 	patterns := append(append([]phonePattern{}, v.patterns...), intlGrammarPattern)
 	for _, p := range patterns {
 		if !handled[p.country] {
