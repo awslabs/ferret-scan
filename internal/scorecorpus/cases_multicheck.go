@@ -171,6 +171,23 @@ var MultiCheckCases = []Case{
 		Redactable: true,
 	},
 	{
+		Name:   "card_negative_published_test_numbers",
+		Origin: "authored 2026-11 for #883 box 10; values are on https://docs.stripe.com/testing and verified against the real CLI",
+		Rationale: "Card numbers a payment processor publishes for its sandbox (Stripe's Visa, American " +
+			"Express and Mastercard rows) are not customer data. creditcard lists them (published_test_pans.go) " +
+			"and caps them at LOW (15) with a published ceiling, so a test suite or a testing guide that holds " +
+			"only these does not block a pre-commit run. They scored 100 (HIGH) on a 'Card number:' line before " +
+			"#890. They are still REPORTED, never dropped, so redaction rewrites them: this case moves them from " +
+			"fp_high_medium to fp_low, not to nothing. An unlisted Luhn-valid card on the same line stays HIGH " +
+			"(card_visa_prose and card_spaced_groups).",
+		Checks: []string{"CREDIT_CARD"},
+		Input: "Card number: 4242424242424242\n" +
+			"Card number: 378282246310005\n" +
+			"Card number: 5555555555554444\n",
+		Negative:   true,
+		Redactable: true,
+	},
+	{
 		Name:      "dob_iso_labelled",
 		Origin:    "authored 2026-08 for scorecorpus; value verified against the real CLI",
 		Rationale: "An explicitly labelled DOB is health/HR PII.",

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="ferret-scan" tests="1" failures="1" errors="0" time="0.000">
+  <testsuite name="security-scan" tests="1" failures="1" errors="0" time="0.000">
+    <testcase name="&lt;golden:creditcard_published_test_pans&gt;" classname="security-scan" time="0.001">
+      <failure message="10 security findings detected" type="SECURITY_FINDINGS">Line 3: AMERICAN_EXPRESS detected with 15.0% confidence (LOW)&#xA;Match: 378282246310005&#xA;Validator: creditcard&#xA;Line 5: DINERS_CLUB detected with 15.0% confidence (LOW)&#xA;Match: 3056930009020004&#xA;Validator: creditcard&#xA;Line 4: DISCOVER detected with 15.0% confidence (LOW)&#xA;Match: 6011111111111117&#xA;Validator: creditcard&#xA;Line 8: JCB detected with 15.0% confidence (LOW)&#xA;Match: 3530111333300000&#xA;Validator: creditcard&#xA;Line 7: MASTERCARD detected with 15.0% confidence (LOW)&#xA;Match: 2223003122003222&#xA;Validator: creditcard&#xA;Line 9: UNIONPAY detected with 15.0% confidence (LOW)&#xA;Match: 6200000000000005&#xA;Validator: creditcard&#xA;Line 1: VISA detected with 15.0% confidence (LOW)&#xA;Match: 4242424242424242&#xA;Validator: creditcard&#xA;Line 6: VISA detected with 15.0% confidence (LOW)&#xA;Match: 4000056655665556&#xA;Validator: creditcard&#xA;Line 10: VISA detected with 15.0% confidence (LOW)&#xA;Match: 4012888888881881&#xA;Validator: creditcard&#xA;Line 2: MASTERCARD detected with 1.0% confidence (LOW)&#xA;Match: 5555 5555 5555 4444&#xA;Validator: creditcard</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

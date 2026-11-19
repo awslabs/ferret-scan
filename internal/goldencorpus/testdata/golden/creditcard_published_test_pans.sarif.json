@@ -1,0 +1,801 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/refs/heads/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_published_test_pans>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "{\"number\": \"\n{\"number\": \"378282246310005\", \"exp_month\": 12, \"exp_year\": 2030}\n\", \"exp_month\": 12, \"exp_year\""
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 28,
+                  "snippet": {
+                    "text": "{\"number\": \"378282246310005\", \"exp_month\": 12, \"exp_year\": 2030}"
+                  },
+                  "startColumn": 13,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Credit Card Number Detected in <golden:creditcard_published_test_pans> at line 3 (confidence: 15.0% - LOW). Matched text: '378282246310005'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "a5ae509e6402364969aa210de9e734cec9c44a3ddf873994f15ef97f6b2158b3"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "AMERICAN_EXPRESS",
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Financial",
+              "context_impact": 15,
+              "original_confidence": 15,
+              "original_file": "<golden:creditcard_published_test_pans>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": true,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": false,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "American Express"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 57.5,
+          "ruleId": "AMERICAN_EXPRESS"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_published_test_pans>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "card_number = \"\ncard_number = \"3056930009020004\"\n\""
+                  },
+                  "startLine": 5
+                },
+                "region": {
+                  "endColumn": 32,
+                  "snippet": {
+                    "text": "card_number = \"3056930009020004\""
+                  },
+                  "startColumn": 16,
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Credit Card Number Detected in <golden:creditcard_published_test_pans> at line 5 (confidence: 15.0% - LOW). Matched text: '3056930009020004'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "aa7af3590215c3d7f869025f2b92ee4eb6a086d6ecbb1d373066fc2ea12ae41d"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "DINERS_CLUB",
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Financial",
+              "context_impact": 15,
+              "original_confidence": 15,
+              "original_file": "<golden:creditcard_published_test_pans>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": true,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": false,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "Diners Club"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 57.5,
+          "ruleId": "DINERS_CLUB"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_published_test_pans>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "| Discover | \n| Discover | 6011111111111117 | Any 3 digits | Any future date |\n | Any 3 digits | Any future d"
+                  },
+                  "startLine": 4
+                },
+                "region": {
+                  "endColumn": 30,
+                  "snippet": {
+                    "text": "| Discover | 6011111111111117 | Any 3 digits | Any future date |"
+                  },
+                  "startColumn": 14,
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Credit Card Number Detected in <golden:creditcard_published_test_pans> at line 4 (confidence: 15.0% - LOW). Matched text: '6011111111111117'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "ba5af3a29db3d90338cc825c2eb202cdb5851dfbc9d02116eff638dc1de1b726"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "DISCOVER",
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Financial",
+              "context_impact": 15,
+              "original_confidence": 15,
+              "original_file": "<golden:creditcard_published_test_pans>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": false,
+                "length": true,
+                "luhn": true,
+                "not_repeating": false,
+                "not_test": false,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "Discover"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 57.5,
+          "ruleId": "DISCOVER"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_published_test_pans>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "JCB \nJCB 3530111333300000"
+                  },
+                  "startLine": 8
+                },
+                "region": {
+                  "endColumn": 21,
+                  "snippet": {
+                    "text": "JCB 3530111333300000"
+                  },
+                  "startColumn": 5,
+                  "startLine": 8
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Credit Card Number Detected in <golden:creditcard_published_test_pans> at line 8 (confidence: 15.0% - LOW). Matched text: '3530111333300000'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "c75521412a6a7ceaf3ebc3f767a43a0250b179be4f859651db64435e699fa25a"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "JCB",
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Financial",
+              "context_impact": 15,
+              "original_confidence": 15,
+              "original_file": "<golden:creditcard_published_test_pans>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": false,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": false,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "JCB"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 57.5,
+          "ruleId": "JCB"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_published_test_pans>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Mastercard (2-series) \nMastercard (2-series) 2223003122003222"
+                  },
+                  "startLine": 7
+                },
+                "region": {
+                  "endColumn": 39,
+                  "snippet": {
+                    "text": "Mastercard (2-series) 2223003122003222"
+                  },
+                  "startColumn": 23,
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Credit Card Number Detected in <golden:creditcard_published_test_pans> at line 7 (confidence: 15.0% - LOW). Matched text: '2223003122003222'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "646bfa2c62638a52882f3e3e261702e270a6d10d47e5a1f69cbc616e9373a6f2"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "MASTERCARD",
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Financial",
+              "context_impact": 15,
+              "original_confidence": 15,
+              "original_file": "<golden:creditcard_published_test_pans>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": false,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": false,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "MasterCard"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 57.5,
+          "ruleId": "MASTERCARD"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_published_test_pans>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "UnionPay \nUnionPay 6200000000000005"
+                  },
+                  "startLine": 9
+                },
+                "region": {
+                  "endColumn": 26,
+                  "snippet": {
+                    "text": "UnionPay 6200000000000005"
+                  },
+                  "startColumn": 10,
+                  "startLine": 9
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Credit Card Number Detected in <golden:creditcard_published_test_pans> at line 9 (confidence: 15.0% - LOW). Matched text: '6200000000000005'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "4763cab041bf7fc0aeba5ce8aeea817fbcd967f6627f0d87bbfcc84bbe55a3cd"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "UNIONPAY",
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Financial",
+              "context_impact": 0,
+              "original_confidence": 15,
+              "original_file": "<golden:creditcard_published_test_pans>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": false,
+                "length": true,
+                "luhn": true,
+                "not_repeating": false,
+                "not_test": false,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "UnionPay"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 57.5,
+          "ruleId": "UNIONPAY"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_published_test_pans>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Card number: \nCard number: 4242424242424242"
+                  },
+                  "startLine": 1
+                },
+                "region": {
+                  "endColumn": 30,
+                  "snippet": {
+                    "text": "Card number: 4242424242424242"
+                  },
+                  "startColumn": 14,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Credit Card Number Detected in <golden:creditcard_published_test_pans> at line 1 (confidence: 15.0% - LOW). Matched text: '4242424242424242'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "30ae18810a92cfae099a7a950c236f9fcd455c7bf056943c13f22047d9df41f2"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "VISA",
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Financial",
+              "context_impact": 15,
+              "original_confidence": 15,
+              "original_file": "<golden:creditcard_published_test_pans>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": false,
+                "length": true,
+                "luhn": true,
+                "not_repeating": false,
+                "not_test": false,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "Visa"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 57.5,
+          "ruleId": "VISA"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_published_test_pans>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Visa debit: \nVisa debit: 4000056655665556"
+                  },
+                  "startLine": 6
+                },
+                "region": {
+                  "endColumn": 29,
+                  "snippet": {
+                    "text": "Visa debit: 4000056655665556"
+                  },
+                  "startColumn": 13,
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Credit Card Number Detected in <golden:creditcard_published_test_pans> at line 6 (confidence: 15.0% - LOW). Matched text: '4000056655665556'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "5d53d30095c0d3aad73ecc611379248c49606ed9e79af6f59ec409943cb5491f"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "VISA",
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Financial",
+              "context_impact": 15,
+              "original_confidence": 15,
+              "original_file": "<golden:creditcard_published_test_pans>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": false,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": false,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "Visa"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 57.5,
+          "ruleId": "VISA"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_published_test_pans>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Braintree valid card \nBraintree valid card 4012888888881881"
+                  },
+                  "startLine": 10
+                },
+                "region": {
+                  "endColumn": 38,
+                  "snippet": {
+                    "text": "Braintree valid card 4012888888881881"
+                  },
+                  "startColumn": 22,
+                  "startLine": 10
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Credit Card Number Detected in <golden:creditcard_published_test_pans> at line 10 (confidence: 15.0% - LOW). Matched text: '4012888888881881'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "0a646e9788bed496c015e22f23232a82b2f1576aebb782b5db6be4ce28b3d1ee"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "VISA",
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Financial",
+              "context_impact": 15,
+              "original_confidence": 15,
+              "original_file": "<golden:creditcard_published_test_pans>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": false,
+                "length": true,
+                "luhn": true,
+                "not_repeating": true,
+                "not_test": false,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "Visa"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 57.5,
+          "ruleId": "VISA"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:creditcard_published_test_pans>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "Sandbox card \nSandbox card 5555 5555 5555 4444 for the checkout test\n for the checkout test"
+                  },
+                  "startLine": 2
+                },
+                "region": {
+                  "endColumn": 33,
+                  "snippet": {
+                    "text": "Sandbox card 5555 5555 5555 4444 for the checkout test"
+                  },
+                  "startColumn": 14,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Credit Card Number Detected in <golden:creditcard_published_test_pans> at line 2 (confidence: 1.0% - LOW). Matched text: '5555 5555 5555 4444'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "3da0e6b2a69a21b1e065ad153efa71ab6f58000ca207a22d7b9e9eec015481e2"
+          },
+          "properties": {
+            "confidence": 1,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "card_type": "MASTERCARD",
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Financial",
+              "context_impact": -100,
+              "original_confidence": 1,
+              "original_file": "<golden:creditcard_published_test_pans>",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0
+              },
+              "source": "preprocessed_content",
+              "validation_checks": {
+                "digits": true,
+                "entropy": false,
+                "length": true,
+                "luhn": true,
+                "not_repeating": false,
+                "not_test": false,
+                "vendor": true
+              },
+              "validation_path": "document",
+              "vendor": "MasterCard"
+            },
+            "validator": "creditcard"
+          },
+          "rank": 50.5,
+          "ruleId": "MASTERCARD"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/awslabs/ferret-scan",
+          "name": "Ferret Scan",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations."
+              },
+              "help": {
+                "text": "Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#american_express",
+              "id": "AMERICAN_EXPRESS",
+              "shortDescription": {
+                "text": "Credit Card Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations."
+              },
+              "help": {
+                "text": "Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#diners_club",
+              "id": "DINERS_CLUB",
+              "shortDescription": {
+                "text": "Credit Card Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations."
+              },
+              "help": {
+                "text": "Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#discover",
+              "id": "DISCOVER",
+              "shortDescription": {
+                "text": "Credit Card Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations."
+              },
+              "help": {
+                "text": "Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#jcb",
+              "id": "JCB",
+              "shortDescription": {
+                "text": "Credit Card Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations."
+              },
+              "help": {
+                "text": "Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#mastercard",
+              "id": "MASTERCARD",
+              "shortDescription": {
+                "text": "Credit Card Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations."
+              },
+              "help": {
+                "text": "Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#unionpay",
+              "id": "UNIONPAY",
+              "shortDescription": {
+                "text": "Credit Card Number Detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations."
+              },
+              "help": {
+                "text": "Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors."
+              },
+              "helpUri": "https://github.com/awslabs/ferret-scan/blob/main/docs/checks.md#visa",
+              "id": "VISA",
+              "shortDescription": {
+                "text": "Credit Card Number Detected"
+              }
+            }
+          ],
+          "semanticVersion": "0.0.0-development",
+          "version": "0.0.0-development"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

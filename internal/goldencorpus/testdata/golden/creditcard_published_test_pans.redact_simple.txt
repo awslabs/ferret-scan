@@ -1,0 +1,22 @@
+=== REDACTED ===
+Card number: [CREDIT-CARD-REDACTED]
+Sandbox card [CREDIT-CARD-REDACTED] for the checkout test
+{"number": "[CREDIT-CARD-REDACTED]", "exp_month": 12, "exp_year": 2030}
+| Discover | [CREDIT-CARD-REDACTED] | Any 3 digits | Any future date |
+card_number = "[CREDIT-CARD-REDACTED]"
+Visa debit: [CREDIT-CARD-REDACTED]
+Mastercard (2-series) [CREDIT-CARD-REDACTED]
+JCB [CREDIT-CARD-REDACTED]
+UnionPay [CREDIT-CARD-REDACTED]
+Braintree valid card [CREDIT-CARD-REDACTED]
+=== FINDINGS (sorted) ===
+type=AMERICAN_EXPRESS line=3 conf=low match=378282246310005
+type=DINERS_CLUB line=5 conf=low match=3056930009020004
+type=DISCOVER line=4 conf=low match=6011111111111117
+type=JCB line=8 conf=low match=3530111333300000
+type=MASTERCARD line=2 conf=low match=5555 5555 5555 4444
+type=MASTERCARD line=7 conf=low match=2223003122003222
+type=UNIONPAY line=9 conf=low match=6200000000000005
+type=VISA line=1 conf=low match=4242424242424242
+type=VISA line=6 conf=low match=4000056655665556
+type=VISA line=10 conf=low match=4012888888881881
