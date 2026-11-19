@@ -66,9 +66,12 @@ Ceilings apply after everything else and are published as `confidence_ceiling`, 
 document-level +20 a CSV receives cannot lift them:
 
 - 85 for a match nothing corroborates (no evidence above and not written in the `+` form);
-- 15 for a reserved fictional number: NANP's 555-0100 to 555-0199, and Ofcom's drama ranges
-  `020 7946 0000`-`0999`, `0161 496 0000`-`0999`, `01632 960000`-`960999` and `07700 900000`-`900999`,
-  written nationally or with `+44`/`0044`;
+- 15 for a reserved fictional number: NANP's 555-0100 to 555-0199, and the 20 blocks of 1,000 numbers
+  Ofcom reserves for TV and radio drama (its page "Telephone numbers for use in TV and radio drama
+  programmes"): `020 7946 0xxx`, `01632 960xxx`, `07700 900xxx`, `0113`, `0114`, `0115`, `0116`,
+  `0117`, `0118`, `0121`, `0131`, `0141`, `0151` and `0161` each `496 0xxx`, `0191 498 0xxx`,
+  `028 9649 6xxx`, `029 2018 0xxx`, `0808 157 0xxx`, `0909 879 0xxx` and `0306 999 0xxx`, written
+  nationally or with `+44`/`0044`;
 - 15 for a number in the `+`, `00` or `(+` form that the E.164 gate refuses, with
   `valid_country=false`: its country code is unassigned, it has more than 15 digits, it writes a
   `(0)` its code's plan does not use, or its national length is not one the plan allows. Phone
