@@ -69,11 +69,11 @@ func TestBankAccountValidator_IBAN_Spaced(t *testing.T) {
 	})
 
 	t.Run("test-context spaced IBAN scores below contiguous baseline", func(t *testing.T) {
-		clean, err := validator.ValidateContent("wire to IBAN DE89 3704 0044 0532 0130 00 now", "test.txt")
+		clean, err := validator.ValidateContent("wire to IBAN DE02 1203 0000 0000 2020 51 now", "test.txt")
 		if err != nil {
 			t.Fatalf("ValidateContent() error = %v", err)
 		}
-		test, err := validator.ValidateContent("test iban DE89 3704 0044 0532 0130 00 example fixture", "test.txt")
+		test, err := validator.ValidateContent("test iban DE02 1203 0000 0000 2020 51 example fixture", "test.txt")
 		if err != nil {
 			t.Fatalf("ValidateContent() error = %v", err)
 		}

@@ -1,5 +1,5 @@
 results:
-    - text: arn:aws:iam::123456789012:role/PaymentsAdmin
+    - text: arn:aws:iam::111122223333:role/PaymentsAdmin
       line_number: 1
       type: AWS_ARN
       confidence: 95
@@ -7,7 +7,7 @@ results:
       filename: <golden:cloud_resources_test_context>
       validator: cloud_resources
       metadata:
-        account_id: "123456789012"
+        account_id: "111122223333"
         confidence_adjustment: 0
         confidence_factors:
             - base_match:+85
@@ -31,7 +31,7 @@ results:
             valid_account_id: true
             valid_format: true
         validation_path: document
-    - text: arn:aws:iam::123456789012:role/PaymentsAdmin
+    - text: arn:aws:iam::111122223333:role/PaymentsAdmin
       line_number: 2
       type: AWS_ARN
       confidence: 75
@@ -39,7 +39,7 @@ results:
       filename: <golden:cloud_resources_test_context>
       validator: cloud_resources
       metadata:
-        account_id: "123456789012"
+        account_id: "111122223333"
         confidence_adjustment: 0
         confidence_factors:
             - base_match:+85
@@ -60,6 +60,39 @@ results:
         service: iam
         validation_checks:
             not_test_data: false
+            reasonable_length: true
+            valid_account_id: true
+            valid_format: true
+        validation_path: document
+    - text: arn:aws:iam::123456789012:role/PaymentsAdmin
+      line_number: 3
+      type: AWS_ARN
+      confidence: 15
+      confidence_level: LOW
+      filename: <golden:cloud_resources_test_context>
+      validator: cloud_resources
+      metadata:
+        account_id: "123456789012"
+        confidence_adjustment: 0
+        confidence_ceiling: 15
+        confidence_factors:
+            - base_match:+85
+            - valid_account_id:+10
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Financial
+        original_confidence: 15
+        provider: aws
+        resource_type: AWS_ARN
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0.125
+        service: iam
+        validation_checks:
+            not_test_data: true
             reasonable_length: true
             valid_account_id: true
             valid_format: true

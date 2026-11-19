@@ -521,8 +521,8 @@ func TestAdversarial_ContextWeakness(t *testing.T) {
 	})
 
 	t.Run("iban_with_vs_without_keyword", func(t *testing.T) {
-		withKW := "IBAN: DE89370400440532013000"
-		withoutKW := "Transfer to DE89370400440532013000"
+		withKW := "IBAN: DE02120300000000202051"
+		withoutKW := "Transfer to DE02120300000000202051"
 
 		withMatches, _ := validator.ValidateContent(withKW, "test.txt")
 		withoutMatches, _ := validator.ValidateContent(withoutKW, "test.txt")

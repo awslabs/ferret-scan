@@ -1,6 +1,8 @@
 === REDACTED ===
+prod 0ezeoEUA9zMwioLATJlqURJRHmGvbxQ6mIuiDeUBt5Oz
+example 0ezeoEUA9zMwioLATJlqURJRHmGvbxQ6mIuiDeUBt5Oz
 prod cNFzLvA1tf7RwioTuMuvuOGdkFqXzbmvcQaS2iNS6X6z
-example cNFzLvA1tf7RwioTuMuvuOGdkFqXzbmvcQaS2iNS6X6z
 === FINDINGS (sorted) ===
-type=AWS_ARN line=1 conf=95.00 match=arn:aws:iam::123456789012:role/PaymentsAdmin
-type=AWS_ARN line=2 conf=75.00 match=arn:aws:iam::123456789012:role/PaymentsAdmin
+type=AWS_ARN line=1 conf=95.00 match=arn:aws:iam::111122223333:role/PaymentsAdmin
+type=AWS_ARN line=2 conf=75.00 match=arn:aws:iam::111122223333:role/PaymentsAdmin
+type=AWS_ARN line=3 conf=15.00 match=arn:aws:iam::123456789012:role/PaymentsAdmin

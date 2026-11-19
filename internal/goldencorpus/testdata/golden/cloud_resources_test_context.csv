@@ -1,3 +1,4 @@
 Filename,Type,Confidence Level,Confidence %,Line Number,Text
-<golden:cloud_resources_test_context>,AWS_ARN,HIGH,95.0,1,arn:aws:iam::123456789012:role/PaymentsAdmin
-<golden:cloud_resources_test_context>,AWS_ARN,MEDIUM,75.0,2,arn:aws:iam::123456789012:role/PaymentsAdmin
+<golden:cloud_resources_test_context>,AWS_ARN,HIGH,95.0,1,arn:aws:iam::111122223333:role/PaymentsAdmin
+<golden:cloud_resources_test_context>,AWS_ARN,MEDIUM,75.0,2,arn:aws:iam::111122223333:role/PaymentsAdmin
+<golden:cloud_resources_test_context>,AWS_ARN,LOW,15.0,3,arn:aws:iam::123456789012:role/PaymentsAdmin

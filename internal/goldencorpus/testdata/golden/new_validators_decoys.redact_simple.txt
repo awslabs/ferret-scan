@@ -10,5 +10,5 @@ shape only [MEDICARE_MBI-REDACTED] without context
 3 items in way of progress
 === FINDINGS (sorted) ===
 type=ABA_ROUTING line=6 conf=medium match=021000021
-type=IBAN line=5 conf=medium match=DE89 3704 0044 0532 0130 00
+type=IBAN line=5 conf=low match=DE89 3704 0044 0532 0130 00
 type=MEDICARE_MBI line=7 conf=low match=1EG4-TE5-MK73
