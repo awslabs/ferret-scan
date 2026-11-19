@@ -65,7 +65,20 @@ func TestPublishedTestPANsAreWellFormed(t *testing.T) {
 // than exempting the value, or the corpus stops testing what it claims.
 var listedCorpusValues = map[string]string{
 	"4012888888881881": "goldencorpus context_keywords_snake_case, on an `account_number_test:` " +
-		"line whose negative word floors the card at 15 on main as well",
+		"line whose negative word floors the card at 15 on main as well; and goldencorpus " +
+		"creditcard_published_test_pans (below), as Braintree's valid-card example",
+	// goldencorpus creditcard_published_test_pans and scorecorpus card_negative_published_test_numbers
+	// (#883 box 10): published test numbers used ON PURPOSE as decoys, each pinned at the 15 cap (1 beside
+	// the word "test"). They are the cases that prove the cap, not positives.
+	"4242424242424242": "the #883 decoy cases: Stripe's basic Visa test number, pinned at the cap",
+	"5555555555554444": "the #883 decoy cases: Stripe's Mastercard test number, pinned at the cap",
+	"378282246310005":  "the #883 decoy cases: Stripe's American Express test number, pinned at the cap",
+	"6011111111111117": "the #883 decoy cases: Stripe's Discover test number, pinned at the cap",
+	"3056930009020004": "the #883 decoy cases: Stripe's Diners Club test number, pinned at the cap",
+	"4000056655665556": "the #883 decoy cases: Stripe's Visa debit test number, pinned at the cap",
+	"2223003122003222": "the #883 decoy cases: Stripe's Mastercard 2-series test number, pinned at the cap",
+	"3530111333300000": "the #883 decoy cases: Stripe's JCB test number, pinned at the cap",
+	"6200000000000005": "the #883 decoy cases: Stripe's UnionPay test number, pinned at the cap",
 }
 
 // corpusDigitRun finds digit runs whose groups may be separated by one space or hyphen, and
