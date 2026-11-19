@@ -68,8 +68,8 @@ func ResidualTypes(written []byte, matches []detector.Match) []string {
 	if len(written) == 0 || len(matches) == 0 {
 		return nil
 	}
-	seen := map[string]bool{}
-	asked := map[string]bool{}
+	// One pass over written for every value and spelling, not one scan per value (#1005).
+	seen, asked, res := map[string]bool{}, map[string]bool{}, scanResidual(written, matches)
 	for _, m := range matches {
 		// Scope must match the enforcer's exactly. A value the sweep is forbidden to remove must not
 		// be counted as residue, or the artifact becomes permanently unobtainable with no override:
@@ -88,7 +88,7 @@ func ResidualTypes(written []byte, matches []detector.Match) []string {
 		if seen[m.Type] {
 			continue
 		}
-		if survives(written, m.Text) {
+		if res.survives(m.Text) {
 			t := m.Type
 			if t == "" {
 				t = "UNKNOWN"
@@ -199,9 +199,9 @@ func utf16BE(s string) []byte {
 // to rescan the whole document per match and made redaction quadratic; a naive loop of
 // strings.ReplaceAll here would reintroduce exactly that.
 //
-// The candidate SCAN is the part to watch, which is why values are deduplicated before probing: on a
-// 1.8MB file with 6,924 matches over 1,285 distinct values, probing per match measured 406ms and 48.8MB
-// against 10.8ms and 1.5MB deduplicated.
+// The candidate SCAN is the part to watch, which is why values are deduplicated before probing, and
+// why every spelling of every value is then looked up in ONE pass over the text (scanKinds) rather than
+// one scan each (#1005: 0.10 / 0.20 / 0.70 / 2.76 s at 4k / 8k / 16k / 32k distinct values before).
 //
 // Replacements are non-overlapping and leftmost-first, and the scan never re-examines what it just
 // wrote, so a replacement that happens to contain a reported value cannot cascade.
@@ -216,28 +216,26 @@ func SweepRemaining(text string, matches []detector.Match, replacementFor func(m
 
 	// Distinct values still present, longest first. Longest-first matters: if both "Jane Smith" and
 	// "Jane" are reported, replacing the longer one first stops the shorter from carving it up.
-	textBytes := []byte(text)
+	//
+	// Every spelling of every candidate is looked up in ONE pass over the document (scanKinds), not one
+	// scan per spelling: the per-value scans were the whole quadratic cost (#1005). The kinds are read
+	// from the ORIGINAL text throughout, as the per-value scans read it.
+	first, texts, xml, needles := sweepCandidates(matches)
+	found := scanKinds(text, needles)
 	seen := map[string]detector.Match{}
-	for _, m := range matches {
-		if m.Text == "" || len(m.Text) < minSweepLen {
-			continue
-		}
-		if _, dup := seen[m.Text]; dup {
-			continue
-		}
+	for _, t := range texts {
 		// Gate on ANY recognised spelling, not just the literal. A value that appears only wide --
 		// which is the case in a file carrying UTF-16 sections -- would otherwise be skipped here and
 		// never reach the pair-building below, so the sweep would report success while the floor
 		// refused the file. Same predicate as ResidualTypes, deliberately.
-		// Standalone only, same rule as the predicate. textBytes is hoisted above the loop: taking
-		// []byte(text) here copies the whole document once per candidate.
-		if c, _ := occurrenceKinds(textBytes, []byte(m.Text)); c > 0 {
-			seen[m.Text] = m
+		// Standalone only, same rule as the predicate.
+		if found[t].standalone {
+			seen[t] = first[t]
 			continue
 		}
-		for _, alt := range altSpellings(m.Text, m.Text) {
-			if c, _ := occurrenceKinds(textBytes, []byte(alt.from)); c > 0 {
-				seen[m.Text] = m
+		for _, from := range fromsOf(t, xml[t]) {
+			if found[from].standalone {
+				seen[t] = first[t]
 				break
 			}
 		}
@@ -275,7 +273,7 @@ func SweepRemaining(text string, matches []detector.Match, replacementFor func(m
 			continue
 		}
 		swept = append(swept, v)
-		if _, emb := occurrenceKinds(textBytes, []byte(v)); emb > 0 {
+		if found[v].embedded {
 			// Mixed: some occurrences are the value and some are inside longer tokens.
 			mixed = append(mixed, v)
 			mixedRepl[v] = repl
@@ -301,8 +299,8 @@ func SweepRemaining(text string, matches []detector.Match, replacementFor func(m
 		//
 		// Only spellings actually PRESENT are added. The trie is built from these pairs, and a file
 		// with 6,924 matches would otherwise pay for three unused patterns per value.
-		for _, alt := range altSpellings(v, repl) {
-			if c, emb := occurrenceKinds(textBytes, []byte(alt.from)); c > 0 && emb == 0 {
+		for _, alt := range altSpellingsWith(v, repl, xml[v]) {
+			if k := found[alt.from]; k.standalone && !k.embedded {
 				pairs = append(pairs, alt.from, alt.to)
 			}
 		}
@@ -326,6 +324,8 @@ func SweepRemaining(text string, matches []detector.Match, replacementFor func(m
 	// Kept off the fast path deliberately: this is one scan per mixed value, and in a 480-file corpus
 	// the only instance was the golden fixture's own decoy. Paying O(len(text)) per mixed value is
 	// acceptable when the count is ~0 and incorrectness is not.
+	// shortcut: that is values x text for a document with thousands of values that are each embedded
+	// somewhere and standalone elsewhere; make it one pass when a corpus file shows one (#1005).
 	for _, v := range mixed {
 		out = replaceStandaloneOnly(out, v, mixedRepl[v])
 	}
