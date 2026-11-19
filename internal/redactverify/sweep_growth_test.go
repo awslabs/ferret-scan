@@ -56,6 +56,12 @@ const growthBound = 9.0
 //	                          correct, 4 pairs     regressed (control), 2 pairs   margins at bound 9.0
 //	no -race, 6 runs          4.55 - 5.35x         15.00 - 16.19x                 9.0/5.35 = 1.68x, 15.00/9.0 = 1.67x
 //	-race,    4 runs          4.49 - 5.40x         15.36 - 15.97x                 9.0/5.40 = 1.67x, 15.36/9.0 = 1.71x
+//	alone at host load 43-58  4.55 - 5.67x         15.19 - 15.64x                 9.0/5.67 = 1.59x, 15.19/9.0 = 1.69x
+//
+// Inside a whole-module `go test ./...` at host load 75 on 16 CPUs the correct code read 9.08x once
+// (pairs 4.72 8.09 10.37 9.06x) while the control read 14.97x: the CPU clock of a 40 ms fixture moves
+// with its neighbours. The test name carries "ScalesLinearly" so the load skip list the wave scripts
+// already use (BRIEF section 6) skips it there, and it is run alone afterwards.
 //
 // Correct code reads above 4x because the automaton and the result map outgrow the cache; the bound
 // is the geometric middle of the worst correct and best regressed readings, so neither side is thin.
@@ -65,7 +71,7 @@ const growthBound = 9.0
 // fails rather than the guard passing for the wrong reason. -race does not preserve a growth ratio
 // (TEST_PLAN: it compresses it), but here it moves both populations the same way and the bound holds
 // under it, so there is no race/!race split; the readings under -race are recorded in the PR.
-func TestSweepRemainingCostIsLinearInDistinctValues(t *testing.T) {
+func TestSweepRemainingScalesLinearlyInDistinctValues(t *testing.T) {
 	if testing.Short() {
 		t.Skip("complexity guard skipped in -short mode")
 	}
