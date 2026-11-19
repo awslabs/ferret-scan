@@ -162,13 +162,10 @@ func (or *OfficeRedactor) recordCoverageForRemainingParts(
 		return nil
 	}
 
-	// Stage 1: one trie pass per part. Replacing every value with nothing and comparing is a
-	// presence oracle whose cost does not grow with the number of values.
-	probeArgs := make([]string, 0, len(values)*2)
-	for _, v := range values {
-		probeArgs = append(probeArgs, v, "")
-	}
-	probe := strings.NewReplacer(probeArgs...)
+	// One valueTrie pass per part says which values it holds, so the cost does not grow with the
+	// number of values: one strings.Contains per value per part is O(values x text).
+	trie := newValueTrie(values)
+	held := make([]bool, len(values))
 
 	replacementFor := func(value string) (string, bool, error) {
 		if repl, ok := chosen[value]; ok {
@@ -224,13 +221,13 @@ func (or *OfficeRedactor) recordCoverageForRemainingParts(
 		if !attrOK {
 			continue
 		}
-		if probe.Replace(runText) == runText && probe.Replace(attrText) == attrText {
-			continue // stage 1 says this part holds nothing; no per-value work
-		}
+		clear(held)
+		trie.presence(runText, held)
+		trie.presence(attrText, held)
 
-		// Stage 2: only now, and only for this part, attribute the hit to values.
-		for _, v := range values {
-			if !strings.Contains(runText, v) && !strings.Contains(attrText, v) {
+		// Attribute the hits to values, in the order they were reported.
+		for i, v := range values {
+			if !held[i] {
 				continue
 			}
 			pr := pending[name]
