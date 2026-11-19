@@ -155,7 +155,10 @@ ledger followed (42 fragment rules out, 39 `CHANGELOG.md` rules in with the same
 #938, #939 and #940 and #930's IBAN and Ofcom rows, and removed or reworded fixtures; the 54 rules whose
 finding was gone and the 4 whose finding now reads LOW were deleted, and one `fixture:` rule was added for a
 release note the #966 fix now reads correctly (a bare name beside a titled one): 606 rules, 514 `fixture`,
-86 `detector FP` and 6 `public`.
+86 `detector FP` and 6 `public`. Waves 9 and 10 (#982–#1049) then fixed the detectors behind #930's NPI
+and secret rows, #931, #932, #933, #935's street names and #936, reworded the fixtures their rules covered,
+and held the Ofcom and ARCEP fiction numbers at LOW; the 69 rules whose finding was gone and the 15 whose
+finding now reads LOW 15 were deleted: 524 rules, 507 `fixture`, 11 `detector FP` and 6 `public`.
 Rule IDs are not contiguous after a deletion, and the generator numbers a new rule from the highest ID.
 
 A rule matches a finding by its identity hash: the type, the line, the file's basename, the line number,
