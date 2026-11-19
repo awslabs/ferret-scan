@@ -90,6 +90,16 @@ const (
 	// error). Distinct from the three above because the tool WOULD have redacted it;
 	// the environment stopped it, and the remedy is environmental.
 	UnredactedWriteFailed
+
+	// UnredactedSyntheticExhausted — the synthetic strategy ran out of distinct replacements
+	// for one value family (redactors.ErrSyntheticSpaceExhausted, #886). The redactor refused
+	// the file rather than give two values one replacement, which would merge them in the
+	// output. The operator can act: another strategy (simple, format_preserving) writes a copy,
+	// and a file with fewer distinct values of the family fits.
+	//
+	// Appended after the older causes so their order, which CapUnredacted uses as its tiebreak,
+	// does not move.
+	UnredactedSyntheticExhausted
 )
 
 // String returns the operator-facing cause label.
@@ -110,6 +120,8 @@ func (c UnredactedCause) String() string {
 		return "reported value not found in the writable bytes"
 	case UnredactedWriteFailed:
 		return "could not write the redacted copy"
+	case UnredactedSyntheticExhausted:
+		return "synthetic replacement space exhausted"
 	default:
 		return "unknown"
 	}
@@ -207,7 +219,7 @@ func CapUnredacted(files []UnredactedFile) (shown []UnredactedFile, total int) {
 //
 // When limit is smaller than the number of causes the first guarantee cannot hold; the
 // causes that fit are taken in enum order, which is deterministic. That case does not
-// arise today (five causes, a limit of 50 for machine formats and 8 for the terminal).
+// arise today (six causes, a limit of 50 for machine formats and 8 for the terminal).
 func selectFairlyByCause(files []UnredactedFile, limit int) []UnredactedFile {
 	if len(files) <= limit || limit <= 0 {
 		return files
