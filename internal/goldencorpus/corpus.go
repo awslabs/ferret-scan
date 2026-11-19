@@ -162,9 +162,10 @@ var Cases = []Case{
 		Description: "#884 Part B: the five Americas national IDs (synthetic, check-digit-valid, seed 884, " +
 			"none a published example). Lines 1-7 are positives, each beside its own label: a dotted CPF " +
 			"under 'CPF nº', a dotted RUT, a bare RUN, a dashed CUIL, a spaced SIN, a leading-9 dashed SIN " +
-			"under the long form, and a CURP. Lines 8-14 are decoys that must stay empty: the same CPF with " +
-			"no label, the CPF with a failing check digit under its label, and the #884 collision lines " +
-			"(Spanish 'sin', 'Sinónimo', English 'NAS' and lowercase 'run').",
+			"under the long form, and a CURP. Line 9, the CPF with a failing check digit under its label, " +
+			"reads LOW 40 with checksum_valid=false since #1044 (#884: a mistyped number is still a number). " +
+			"Lines 8 and 10-14 are decoys that must stay empty: the same CPF with no label and the #884 " +
+			"collision lines (Spanish 'sin', 'Sinónimo', English 'NAS', lowercase 'run', and an IETF RFC).",
 		Checks: []string{"NATIONAL_ID"},
 		Input: "CPF nº 172.984.064-77\n" +
 			"RUT: 6.001.216-4\n" +

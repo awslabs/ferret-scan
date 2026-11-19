@@ -160,3 +160,27 @@ results:
             TestData: 0
         source: preprocessed_content
         validation_path: document
+    - text: 172.984.064-78
+      line_number: 9
+      type: BR_CPF
+      confidence: 40
+      confidence_level: LOW
+      filename: <golden:nationalid_americas>
+      validator: nationalid
+      metadata:
+        checksum_valid: false
+        confidence_adjustment: 0
+        confidence_ceiling: 40
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: HR_Payroll
+        country: BR
+        original_confidence: 40
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_path: document

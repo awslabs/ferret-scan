@@ -7,3 +7,4 @@ LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH            
 [HIGH  ] nationalid   MX_CURP                95.00% line     7 GOMR850412MJCMNL00 <golden:nationalid_americas>
 [HIGH  ] nationalid   AR_CUIL                90.00% line     4 20-12173870-9      <golden:nationalid_americas>
 [HIGH  ] nationalid   CL_RUT                 90.00% line     3 6001216-4          <golden:nationalid_americas>
+[LOW   ] nationalid   BR_CPF                 40.00% line     9 172.984.064-78     <golden:nationalid_americas>
