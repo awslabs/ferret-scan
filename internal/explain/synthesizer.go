@@ -277,6 +277,9 @@ var typeDisplays = map[string]typeDisplay{
 	"US_MILITARY_ADDRESS": {"US military address", "a"},
 	"US_RURAL_ROUTE":      {"US rural route", "a"},
 
+	// MX_RFC (#884): the sixth NATIONAL_ID type, named as #1037 names the other five (country first).
+	"MX_RFC": {"Mexican RFC", "a"},
+
 	// AWS is said "ay-double-you-ess" and ARN "arn", both vowel sounds.
 	"AWS_ACCESS_KEY":        {"AWS access key", "an"},
 	"AWS_SECRET_ACCESS_KEY": {"AWS secret access key", "an"},

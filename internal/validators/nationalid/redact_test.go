@@ -28,6 +28,7 @@ func positives(t *testing.T) map[string]string {
 		nationalid.TypeARCUIL: {"CUIL: ", "20-12345678-"},
 		nationalid.TypeCASIN:  {"SIN: ", "123 456 78"},
 		nationalid.TypeMXCURP: {"CURP: ", "FAKE900101HDFXXX0"},
+		nationalid.TypeMXRFC:  {"RFC: ", "ABCD010203XY"},
 	}
 	for typ, b := range bases {
 		for _, c := range "0123456789K" {
@@ -111,7 +112,7 @@ func TestSyntheticCopyIsNotAnSSNEither(t *testing.T) {
 	nv, sv := nationalid.NewValidator(), ssn.NewValidator()
 	labels := map[string]string{
 		nationalid.TypeBRCPF: "CPF: ", nationalid.TypeCLRUT: "RUT: ", nationalid.TypeARCUIL: "CUIL: ",
-		nationalid.TypeCASIN: "Employee SIN: ", nationalid.TypeMXCURP: "CURP: ",
+		nationalid.TypeCASIN: "Employee SIN: ", nationalid.TypeMXCURP: "CURP: ", nationalid.TypeMXRFC: "RFC: ",
 	}
 	for typ, value := range positives(t) {
 		bare := strings.Map(func(r rune) rune {

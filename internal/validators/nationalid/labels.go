@@ -59,6 +59,10 @@ var labelsByType = map[string][]label{
 		{text: "curp", abbr: true},
 		{text: "clave unica de registro de poblacion"},
 	},
+	TypeMXRFC: {
+		{text: "rfc", abbr: true},
+		{text: "registro federal de contribuyentes"},
+	},
 }
 
 // anyLabelText is every label's folded text, for the per-line prefilter.
@@ -100,9 +104,28 @@ func lineMayHaveLabel(folded string) bool {
 	return false
 }
 
-// fillerWords may stand between a label and its value: the abbreviations of "number" (nº, n°, no.,
-// nro., núm., número), folded. "Número do CPF: …" needs none, since its label is last.
-var fillerWords = []string{"nº", "n°", "no", "nro", "num", "numero", "n"}
+// fillerWords may stand between a label and its value (#1021): the abbreviations of "number" (nº, n°,
+// no., nro., núm., número, number) and the copula of "Our Social Insurance Number is ..." (is, es). At
+// most maxFillerWords of them, so "SIN number is: 123" reads and a sentence does not. Folded; the
+// Portuguese "é" is matched on its accented spelling (isFillerWord), because folded it is "e", "and".
+// "Número do CPF: …" needs none, since its label is last.
+var fillerWords = []string{"nº", "n°", "no", "nro", "num", "numero", "n", "number", "is", "es"}
+
+// maxFillerWords is how many filler words may stand between the label and the value.
+const maxFillerWords = 2
+
+func isFillerWord(raw string) bool {
+	if strings.ToLower(raw) == "é" {
+		return true
+	}
+	word := fold(raw)
+	for _, f := range fillerWords {
+		if word == f {
+			return true
+		}
+	}
+	return false
+}
 
 // maxLabelWindow bounds how far before the value the label may start, in bytes.
 const maxLabelWindow = 96
@@ -138,34 +161,33 @@ func labelBefore(line string, start int, dataType string) (l label, gap string, 
 	}
 	prefix := line[from:start]
 
-	// Strip filler from the right: separator bytes, then a filler word, repeatedly.
+	// Try the label as written, then with one filler word stripped, then two: "Social Insurance
+	// Number: 123" ends in a filler word of its own, so the label is tried before each strip.
 	end := len(prefix)
-	for iter := 0; iter < 6; iter++ {
+	for words := 0; ; words++ {
 		for end > 0 && isFillerByte(prefix[end-1]) {
 			end--
+		}
+		if l, ok := labelEndingAt(prefix[:end], prefix[end:], dataType); ok {
+			return l, prefix[end:], true
 		}
 		w := end
 		for w > 0 && isWordByte(prefix[w-1]) {
 			w--
 		}
-		word := fold(prefix[w:end])
-		matched := false
-		for _, f := range fillerWords {
-			if word == f {
-				matched = true
-				break
-			}
-		}
-		if !matched || w == end {
+		if words == maxFillerWords || w == end || !isFillerWord(prefix[w:end]) {
 			break
 		}
 		end = w
 	}
-	gap = prefix[end:]
-	head := prefix[:end]
-	headFolded := fold(head)
+	return label{}, "", false
+}
 
-	for _, l = range labelsByType[dataType] {
+// labelEndingAt reports which of the type's labels ends head, the text before the value up to its
+// last non-filler byte; gap is the filler between them.
+func labelEndingAt(head, gap, dataType string) (label, bool) {
+	headFolded := fold(head)
+	for _, l := range labelsByType[dataType] {
 		if !strings.HasSuffix(headFolded, l.text) {
 			continue
 		}
@@ -187,7 +209,7 @@ func labelBefore(line string, start int, dataType string) (l label, gap string, 
 				continue
 			}
 		}
-		return l, gap, true
+		return l, true
 	}
-	return label{}, "", false
+	return label{}, false
 }

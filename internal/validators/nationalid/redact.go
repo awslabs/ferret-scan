@@ -3,6 +3,8 @@
 
 package nationalid
 
+import "strings"
+
 // Redaction helpers for internal/redactors/replacement's NATIONAL_ID arms. They live here, beside
 // Valid, so the rule "a synthetic replacement fails the check" is written once against the same
 // validity test the scan uses.
@@ -64,7 +66,20 @@ func DrawSynthetic(dataType, key string, intn func(int) int) string {
 			}
 		}
 	}
-	if dataType != TypeMXCURP {
+	switch dataType {
+	case TypeMXCURP:
+		// Month 00 never exists, so the copy's CURP fails the structure and a labelled one is not
+		// reported even at LOW (checksum_valid=false findings need a valid shape).
+		if len(b) == 18 {
+			b[6], b[7] = '0', '0'
+		}
+	case TypeMXRFC:
+		// The same, for the RFC's month: counted from the end (YYMMDD and a three-symbol homoclave),
+		// because Key drops a company RFC's '&' and so shortens the key.
+		if n := len(b); n >= 9 {
+			b[n-7], b[n-6] = '0', '0'
+		}
+	default:
 		for i := 0; i < 3 && i < len(b); i++ {
 			b[i] = '0'
 		}
@@ -78,6 +93,17 @@ func DrawSynthetic(dataType, key string, intn func(int) int) string {
 		}
 	}
 	return string(b)
+}
+
+// isSyntheticShape reports whether a value that passed the shape rules but failed its check digit
+// looks like DrawSynthetic's output, so a redacted copy never re-detects it at LOW. Only a CPF can:
+// the other types' replacements fail the shape (a leading 0 for a RUT, a SIN or a CUIL prefix, month 00
+// for a CURP or an RFC). A real CPF printed as 000.xxx.xxx-xx with a wrong check digit is therefore
+// not reported either.
+// shortcut: that one leading-000 CPF shape is skipped, since a CPF with area 000 is issued in
+// principle; widen the draw (and drop this) if a measured corpus holds such a value.
+func isSyntheticShape(dataType, value string) bool {
+	return dataType == TypeBRCPF && strings.HasPrefix(canonical(value), "000")
 }
 
 // RenderSynthetic writes a canonical replacement into value's shape: its separators kept, each letter

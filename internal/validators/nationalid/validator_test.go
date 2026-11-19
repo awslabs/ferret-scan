@@ -33,6 +33,17 @@ func sin(base8 string) string {
 	panic("unreachable")
 }
 func curp(c17 string) string { return c17 + string(curpCheck(c17)) }
+func curpValid(c string) bool { return Valid(TypeMXCURP, c) }
+
+// rfc completes the first 12 symbols of a 13-symbol RFC (a company's 12-symbol RFC is padded with a
+// space first, as the SAT's table does) with its verifier.
+func rfc(first string) string {
+	pad := first
+	if len(first) == 11 {
+		pad = " " + first
+	}
+	return first + string(rfcCheck(pad))
+}
 
 func dotCPF(d string) string { return d[0:3] + "." + d[3:6] + "." + d[6:9] + "-" + d[9:] }
 func dotRUT(d string) string {
@@ -149,9 +160,8 @@ func TestDecoysReportNothing(t *testing.T) {
 		// valid values, no label
 		dotCPF(c), "Total " + dotRUT(r), dashCUIL(cu), groupSIN(s1, " "), cp,
 		"build " + dotRUT(r), "Factura " + r[:8] + "-" + r[8:], "Codigo " + dashCUIL(cu),
-		// labelled, check digit fails
-		"CPF: " + dotCPF(bad(c)), "RUT: " + dotRUT(bad(r)), "CUIL: " + dashCUIL(bad(cu)),
-		"SIN: " + groupSIN(bad(s1), " "), "CURP: " + bad(cp),
+		// a check-failing value with no label is nothing (labelled ones are LOW: TestCheckFailingLabelledIsLow)
+		dotCPF(bad(c)), "Total " + dotRUT(bad(r)), groupSIN(bad(s1), " "), bad(cp),
 		// CPF repdigits pass the arithmetic and are never issued
 		"CPF: 111.111.111-11", "CPF: 00000000000",
 		// SIN: business series (8) and the never-assigned 0, both Luhn-valid
@@ -201,6 +211,13 @@ func TestSeededRates(t *testing.T) {
 		TypeCASIN: func() (string, string) {
 			return "Employee SIN: ", groupSIN(sin(string("12345679"[rng.Intn(8)])+digits(7)), " ")
 		},
+		TypeMXRFC: func() (string, string) {
+			letters := "BCDFGHJKLMNPQRSTVWXYZ"
+			return "RFC: ", rfc(string(letters[rng.Intn(21)]) + string(letters[rng.Intn(21)]) +
+				string(letters[rng.Intn(21)]) + string(letters[rng.Intn(21)]) +
+				fmt.Sprintf("%02d%02d%02d", rng.Intn(100), 1+rng.Intn(12), 1+rng.Intn(28)) +
+				string(letters[rng.Intn(21)]) + string(letters[rng.Intn(21)]))
+		},
 		TypeMXCURP: func() (string, string) {
 			for {
 				letters := "BCDFGHJKLMNPQRSTVWXYZ"
@@ -210,7 +227,7 @@ func TestSeededRates(t *testing.T) {
 					string("HM"[rng.Intn(2)]) + []string{"DF", "JC", "NL", "NE", "YN"}[rng.Intn(5)] +
 					string(letters[rng.Intn(21)]) + string(letters[rng.Intn(21)]) + string(letters[rng.Intn(21)]) +
 					string("0A"[rng.Intn(2)])
-				if v := curp(c17); validCURP(v) {
+				if v := curp(c17); curpValid(v) {
 					return "CURP: ", v
 				}
 			}
