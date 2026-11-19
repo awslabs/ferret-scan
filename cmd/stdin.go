@@ -328,7 +328,9 @@ func runStdinScan(in stdinScanInputs) int {
 		checksRun, checksNotApplicable, result.DisabledDetectionTypes)).report()
 
 	// The config-provenance note is a DISCLOSURE about what governed the scan, not progress output, so
-	// it is gated on neither --quiet nor pre-commit mode — the same rule #603 applied to the file path.
+	// it is gated on neither pre-commit mode nor a config file's `quiet:` — the same rule #603 applied to
+	// the file path. Only a --quiet typed on the command line withholds it, and not under --format csv
+	// (#1008, withholdsTM13Notes). The measurements below predate that: they show why --quiet WAS in the list.
 	//
 	// #603 MISSED THIS CALL SITE, and TM-13's unqualified claim that the note is "gated on neither
 	// --quiet, non-interactive, nor pre-commit" was therefore false on the stdin path. Measured at
@@ -348,8 +350,12 @@ func runStdinScan(in stdinScanInputs) int {
 	// so prose there breaks `2> findings.json`. That arm suppresses a disclosure for a mechanical
 	// reason, not because the operator asked for quiet.
 	if !stdinStderrCarriesFindings(finalCfg, in.outputFile) {
-		reportConfigProvenance(os.Stderr, cfg, in.flags.configFile,
-			configChecksNarrowingFor(cfg, effectiveProfileName, checksRun, checksNotApplicable))
+		// A --quiet typed on the command line withholds the two TM-13 Notes, as on the file path (#1008).
+		// Not explicitQuiet: that also holds `quiet:` from a config file (see quietOnTheCommandLine).
+		if !withholdsTM13Notes(finalCfg.format) {
+			reportConfigProvenance(os.Stderr, cfg, in.flags.configFile,
+				configChecksNarrowingFor(cfg, effectiveProfileName, checksRun, checksNotApplicable))
+		}
 		// Same rule for the built-in precommit profile's remaining override (#768).
 		reportBuiltinProfileChecks(os.Stderr, cfg, effectiveProfileName)
 		// Same rule for detection that config, a profile or --disable-ip-types switched off, and for a
@@ -357,7 +363,7 @@ func runStdinScan(in stdinScanInputs) int {
 		// validators ScanContent built gave. This path printed neither, so a narrowed stdin scan looked
 		// complete. With stderr carrying the findings document the narrowing has no channel yet: the
 		// document's stats.disabled_detection_types is the remaining half of #887.
-		reportDisabledDetectionTypes(os.Stderr, result.DisabledDetectionTypes, result.UnrecognisedDisabledTypes)
+		reportDisabledDetectionTypes(os.Stderr, result.DisabledDetectionTypes, result.UnrecognisedDisabledTypes, withholdsTM13Notes(finalCfg.format))
 		// Same rule for a configured value the validators ScanContent built could not use (#903): the file
 		// path's "Warning: config value …" lines. core.ScanContent has reported them since #917, and this
 		// path printed none, so a pattern RE2 rejects left a gateway passing its value through with nothing

@@ -27,20 +27,25 @@ func collectDisabledDetectionTypes(validators map[string]detector.Validator) (di
 
 // reportDisabledDetectionTypes writes the coverage disclosure for narrowed detection.
 //
-// Deliberately NOT gated on --quiet, on non-interactive output, or on pre-commit mode, for the
-// reason TM-13 gives for reportConfigProvenance: this is a statement about what governed the scan,
-// not progress output, and pre-commit is exactly where a silenced disclosure matters most —
-// IsPrecommitEnvironment() is true from environment variables alone, so it takes no flag to
-// suppress. Writes to stderr and does not change the exit code.
+// Not gated on non-interactive output or on pre-commit mode, for the reason TM-13 gives for
+// reportConfigProvenance: this is a statement about what governed the scan, not progress output, and
+// pre-commit is exactly where a silenced disclosure matters most — IsPrecommitEnvironment() is true from
+// environment variables alone, so it takes no flag to suppress. A --quiet typed on the command line is the one
+// thing that withholds the Note (quiet true, #1008): the operator asked for it, and the report carries the same fact
+// (stats.disabled_detection_types, and the scope block's disabled types). The Warning for an entry that
+// named nothing is never withheld: that config did NOT take effect, which is a failure, not a statement of
+// scope. Writes to stderr and does not change the exit code.
 //
 // Two separate messages, because they are opposite failures and want opposite remedies:
 // something the operator asked to switch off and IS off (coverage is narrower than it looks), and
 // something they asked to switch off that is STILL ON (their config did not take effect).
-func reportDisabledDetectionTypes(w io.Writer, disabled, unrecognised map[string][]string) {
-	for _, name := range sortedKeys(disabled) {
-		fmt.Fprintf(w, "Note: config disabled %d %s detection sub-type(s) for this scan: %s. "+
-			"Findings of those sub-types are not reported.\n",
-			len(disabled[name]), name, strings.Join(disabled[name], ", "))
+func reportDisabledDetectionTypes(w io.Writer, disabled, unrecognised map[string][]string, quiet bool) {
+	if !quiet {
+		for _, name := range sortedKeys(disabled) {
+			fmt.Fprintf(w, "Note: config disabled %d %s detection sub-type(s) for this scan: %s. "+
+				"Findings of those sub-types are not reported.\n",
+				len(disabled[name]), name, strings.Join(disabled[name], ", "))
+		}
 	}
 	for _, name := range sortedKeys(unrecognised) {
 		fmt.Fprintf(w, "Warning: config asked to disable %s sub-type(s) %s, which name nothing this "+
