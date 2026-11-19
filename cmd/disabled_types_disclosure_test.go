@@ -84,7 +84,7 @@ func TestCollectDisabledDetectionTypes(t *testing.T) {
 func TestReportDisabledDetectionTypes(t *testing.T) {
 	t.Run("nothing disabled writes nothing", func(t *testing.T) {
 		var buf bytes.Buffer
-		reportDisabledDetectionTypes(&buf, nil, nil)
+		reportDisabledDetectionTypes(&buf, nil, nil, false)
 		if buf.Len() != 0 {
 			t.Errorf("wrote %d bytes for an unnarrowed scan; a note on every run trains people to "+
 				"ignore it: %q", buf.Len(), buf.String())
@@ -94,7 +94,7 @@ func TestReportDisabledDetectionTypes(t *testing.T) {
 	t.Run("names the validator and every sub-type", func(t *testing.T) {
 		var buf bytes.Buffer
 		reportDisabledDetectionTypes(&buf,
-			map[string][]string{"INTELLECTUAL_PROPERTY": {"copyright", "internal_url"}}, nil)
+			map[string][]string{"INTELLECTUAL_PROPERTY": {"copyright", "internal_url"}}, nil, false)
 		out := buf.String()
 		for _, want := range []string{"INTELLECTUAL_PROPERTY", "copyright", "internal_url", "not reported"} {
 			if !strings.Contains(out, want) {
@@ -110,7 +110,7 @@ func TestReportDisabledDetectionTypes(t *testing.T) {
 
 	t.Run("an ineffective entry says detection is STILL RUNNING", func(t *testing.T) {
 		var buf bytes.Buffer
-		reportDisabledDetectionTypes(&buf, nil, map[string][]string{"INTELLECTUAL_PROPERTY": {"copyrite"}})
+		reportDisabledDetectionTypes(&buf, nil, map[string][]string{"INTELLECTUAL_PROPERTY": {"copyrite"}}, false)
 		out := buf.String()
 		if !strings.Contains(out, "copyrite") || !strings.Contains(out, "NO effect") {
 			t.Errorf("does not report the ineffective entry: %q", out)
@@ -132,12 +132,12 @@ func TestReportDisabledDetectionTypes(t *testing.T) {
 		disabled := map[string][]string{"A_VALIDATOR": {"x"}, "B_VALIDATOR": {"y"}, "C_VALIDATOR": {"z"}}
 		bad := map[string][]string{"A_VALIDATOR": {"q"}, "B_VALIDATOR": {"r"}}
 		var first bytes.Buffer
-		reportDisabledDetectionTypes(&first, disabled, bad)
+		reportDisabledDetectionTypes(&first, disabled, bad, false)
 		// Map iteration is randomized, so a single comparison can pass by luck. 40 repeats over
 		// three keys makes an unsorted implementation fail with probability ~1.
 		for i := 0; i < 40; i++ {
 			var again bytes.Buffer
-			reportDisabledDetectionTypes(&again, disabled, bad)
+			reportDisabledDetectionTypes(&again, disabled, bad, false)
 			if again.String() != first.String() {
 				t.Fatalf("disclosure order varies between runs of an unchanged scan:\n%q\nvs\n%q",
 					first.String(), again.String())
