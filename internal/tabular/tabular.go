@@ -61,8 +61,8 @@ const (
 	minFields = 3
 
 	// minPairFields is the field count of a two-column table (#1018). Two fields is a table only
-	// under the extra tests of pairHeader and pairRows: the three-field floor above is what keeps "Smith, John"
-	// out, and a two-column export (phone,qty / passport_number,country) is still a table.
+	// under the extra tests of pairHeader and pairRows: the three-field floor above is what keeps a
+	// "surname, forename" line out, and a two-column export (phone,qty / passport_number,country) is still a table.
 	minPairFields = 2
 
 	// minPairRows is how many data rows a two-column table needs, every one with the header's
@@ -307,7 +307,7 @@ func pickDelimiter(header string) byte {
 
 // pairHeader reports whether the two header cells of a two-column file read as column names: not
 // empty, short (at most maxPairHeaderWords words each) and without a digit, so "In 2020, 45 people left" and
-// "Smith, John" style lines do not qualify on their header alone.
+// "surname, forename" lines do not qualify on their header alone.
 func pairHeader(cells []string) bool {
 	for _, c := range cells {
 		c = strings.TrimSpace(strings.Trim(strings.TrimSpace(c), `"`))
@@ -320,7 +320,7 @@ func pairHeader(cells []string) bool {
 
 // pairRows reports whether the data rows after a two-column header make it a table: at least
 // minPairRows rows, every one with exactly two fields, and a digit in at least one cell. A list of
-// names ("Doe, Jane") has no digit; a phone, passport or id column does.
+// names, one "surname, forename" per line, has no digit; a phone, passport or id column does.
 //
 // shortcut: a two-column table of words only (name,city) gets no header credit, because a list of
 // "surname, forename" lines cannot be told from it. Widen when a validator needs such a header.
