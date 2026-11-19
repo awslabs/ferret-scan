@@ -93,6 +93,7 @@ registry yet; the detection itself is unaffected.
 - [MICROSOFT_365](#microsoft_365)
 - [MRN](#mrn)
 - [MX_CURP](#mx_curp)
+- [MX_RFC](#mx_rfc)
 - [NHS_NUMBER](#nhs_number)
 - [NPI](#npi)
 - [OCI_OCID](#oci_ocid)
@@ -724,6 +725,14 @@ A healthcare identifier — a medical record number, a Medicare Beneficiary Iden
 *What to do:* Treat a patient identifier as protected health information: remove it, or replace it with a synthetic value, and check whether the surrounding record must be handled under HIPAA, the UK GDPR or an equivalent regime. A DEA number additionally authorises controlled-substance prescribing, so it is a credential as well as an identifier. An NPI on its own is public information and usually needs no action — but an NPI beside a patient identifier links a named clinician to a named patient.
 
 ## MX_CURP
+
+**National Identification Number Detected**
+
+A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label.
+
+*What to do:* Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers.
+
+## MX_RFC
 
 **National Identification Number Detected**
 
