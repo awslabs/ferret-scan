@@ -16,6 +16,7 @@ import (
 
 	"github.com/awslabs/ferret-scan/v2/internal/formatters"
 	"github.com/awslabs/ferret-scan/v2/internal/parallel"
+	"github.com/awslabs/ferret-scan/v2/internal/router"
 )
 
 // One report for every file the tool could not examine, grouped by cause.
@@ -237,8 +238,8 @@ func humanizeReason(path, reason string) string {
 		"Unreadable:",
 		"could not process :",
 		"could not process:",
-		"all preprocessors failed for file:",
-		"all preprocessors failed for file",
+		router.ErrAllPreprocessorsFailed.Error() + ":",
+		router.ErrAllPreprocessorsFailed.Error(),
 	} {
 		r = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(r), prefix))
 	}

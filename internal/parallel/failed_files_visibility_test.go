@@ -4,9 +4,14 @@
 package parallel
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"testing"
+
+	"github.com/awslabs/ferret-scan/v2/internal/resilience"
+	"github.com/awslabs/ferret-scan/v2/internal/router"
 )
 
 // A file whose processing failed must be RECORDED, not just logged.
@@ -34,9 +39,9 @@ func TestFailedFilesAreRecordedNotSilentlyDropped(t *testing.T) {
 		err  error
 	}{
 		{"/x/valid.docx", nil},
-		{"/x/empty.docx", errors.New("all preprocessors failed for file: /x/empty.docx")},
-		{"/x/onebyte.docx", errors.New("all preprocessors failed for file: /x/onebyte.docx")},
-		{"/x/empty.ods", errors.New("all preprocessors failed for file: /x/empty.ods")},
+		{"/x/empty.docx", fmt.Errorf("%w: /x/empty.docx", router.ErrAllPreprocessorsFailed)},
+		{"/x/onebyte.docx", fmt.Errorf("%w: /x/onebyte.docx", router.ErrAllPreprocessorsFailed)},
+		{"/x/empty.ods", fmt.Errorf("%w: /x/empty.ods", router.ErrAllPreprocessorsFailed)},
 	}
 
 	var failed []FileDiagnostic
@@ -122,5 +127,18 @@ func TestDiagnosticListsAreSortedByPath(t *testing.T) {
 	// testing anything.
 	if len(in) < 2 {
 		t.Fatal("fixture too small to detect an ordering bug")
+	}
+}
+
+// The worker pool hands ProcessFile's error to the retry manager and keeps what comes back as
+// Result.Error. The typed refusal (#1022) must still be recognisable after that trip, or
+// errors.Is at the consumers would stop matching the failure it exists to name.
+func TestAllPreprocessorsFailedSurvivesTheRetryManager(t *testing.T) {
+	rm := resilience.NewRetryManager()
+	err := rm.Retry(context.Background(), "file_processing", func(context.Context) error {
+		return fmt.Errorf("%w: %s", router.ErrAllPreprocessorsFailed, "/x/bad.docx")
+	})
+	if !errors.Is(err, router.ErrAllPreprocessorsFailed) {
+		t.Fatalf("after the retry manager the error is %v, which is not ErrAllPreprocessorsFailed", err)
 	}
 }

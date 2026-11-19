@@ -682,7 +682,7 @@ func processPreprocessOnly(supportedFiles []string, fileRouter *router.FileRoute
 			// Provide meaningful error messages for preprocessing failures
 			if strings.Contains(err.Error(), "no preprocessor can handle") {
 				fmt.Printf("Status: Error - No suitable preprocessor found for this file type\n")
-			} else if strings.Contains(err.Error(), "all preprocessors failed") {
+			} else if errors.Is(err, router.ErrAllPreprocessorsFailed) {
 				fmt.Printf("Status: Error - All available preprocessors failed to process this file\n")
 			} else if strings.Contains(err.Error(), "permission") {
 				fmt.Printf("Status: Error - Permission denied reading file: %v\n", err)
