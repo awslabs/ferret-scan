@@ -137,6 +137,21 @@ func prepareRun(flags extractedFlags, mode runMode, debugObs *observability.Debu
 	if run.validatorOverrides != nil && debugObs != nil {
 		debugObs.LogDetail("config", fmt.Sprintf("CLI --disable-ip-types: %v", run.validatorOverrides.DisabledIPTypes))
 	}
+	// Under --debug the validators' own [DEBUG] lines from Configure (pattern counts, rejected patterns)
+	// are written while the set is built, so the observer must be attached before that, not after (#903).
+	// ValidatorOverrides is the one value both the --file and the --stdin builders already receive; with
+	// DisabledIPTypes nil it overrides nothing.
+	if run.final.debug {
+		obs := debugObs
+		if obs == nil {
+			obs = observability.NewDebugObserver(os.Stderr)
+		}
+		obs.StandardObserver.DebugObserver = obs
+		if run.validatorOverrides == nil {
+			run.validatorOverrides = &core.ValidatorOverrides{}
+		}
+		run.validatorOverrides.Observer = obs.StandardObserver
+	}
 	return run, nil
 }
 

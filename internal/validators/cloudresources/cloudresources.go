@@ -71,6 +71,8 @@ type Validator struct {
 
 	// configWarnings are the configured values Configure could not use; see ConfigWarnings.
 	configWarnings []config.ValueWarning
+	// warnScope prefixes the path of a warning recorded by the current Configure call; see Config.ValuePathScope.
+	warnScope string
 
 	// Observability (following standard pattern).
 	observer observability.Observer
@@ -781,6 +783,7 @@ var validProviderNames = map[string]bool{
 // entry had no message at all. An absent key, or one present with no value,
 // configures nothing and is not a defect.
 func (v *Validator) Configure(cfg *config.Config) {
+	v.warnScope = cfg.ValueScope() // labels a profile pass's warnings (#903)
 	if cfg == nil || cfg.Validators == nil {
 		return
 	}
@@ -859,7 +862,7 @@ func (v *Validator) ConfigWarnings() []config.ValueWarning {
 }
 
 func (v *Validator) warnValue(path, problem, effect string) {
-	v.configWarnings = append(v.configWarnings, config.NewValueWarning(path, problem, effect))
+	v.configWarnings = append(v.configWarnings, config.NewValueWarning(v.warnScope+path, problem, effect))
 }
 
 // unknownProviderProblem names what is wrong with a provider name enabled_providers does not know. A name

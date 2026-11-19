@@ -84,6 +84,8 @@ type Validator struct {
 
 	// configWarnings are the configured values Configure could not use; see ConfigWarnings.
 	configWarnings []config.ValueWarning
+	// warnScope prefixes the path of a warning recorded by the current Configure call; see Config.ValuePathScope.
+	warnScope string
 
 	// Legal notice reconstruction configuration
 	legalNoticeConfig LegalNoticeConfig
@@ -322,6 +324,7 @@ func (v *Validator) SetObserver(observer observability.Observer) {
 // Configure writes nothing to os.Stderr now; its details go to the debug observer when one is attached.
 // An absent key, or one present with no value, configures nothing and is not a defect.
 func (v *Validator) Configure(cfg *config.Config) {
+	v.warnScope = cfg.ValueScope() // labels a profile pass's warnings (#903)
 	// Check if we have validator-specific configuration
 	if cfg == nil || cfg.Validators == nil {
 		// No configuration available - log that no patterns are configured
@@ -514,7 +517,7 @@ func (v *Validator) ConfigWarnings() []config.ValueWarning {
 }
 
 func (v *Validator) warnValue(path, problem, effect string) {
-	v.configWarnings = append(v.configWarnings, config.NewValueWarning(path, problem, effect))
+	v.configWarnings = append(v.configWarnings, config.NewValueWarning(v.warnScope+path, problem, effect))
 }
 
 // rejectedValue is a configured entry Configure could not use, held until the effect of dropping it

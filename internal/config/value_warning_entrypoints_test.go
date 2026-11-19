@@ -229,22 +229,56 @@ func TestConfigWarningsOnlyFromValidatorsInTheRun(t *testing.T) {
 	}
 }
 
-// TestConfigWarningsFromTheProfilePass: a profile's own bad value is reported, and the same bad value in
-// both the global block and the profile is reported once. The path names the validators block the value
-// was read from, not the profile it came from: core.BuildValidatorSet does not tell Configure which pass it
-// is running (a follow-up on #903, in internal/core/factory.go).
+// TestConfigWarningsFromTheProfilePass: a profile's own bad value is reported with the profile in its
+// path, and the same bad value in both the global block and the profile is two lines, one naming each
+// block. They are two config sources, and fixing one leaves the other warning; before the profile
+// carried a label both read "validators.cloud_resources..." and collapsed to one line that named the
+// global block for a value the profile also set (#903).
 func TestConfigWarningsFromTheProfilePass(t *testing.T) {
 	cfg := loadValueWarningConfig(t, `profiles: {zz: {checks: CLOUD_RESOURCES, validators: {cloud_resources: {custom_patterns: ['(?<=Ticket ref: )CUSTOMID-\d{6}']}}}}`+"\n")
 	got := core.ConfigWarnings(core.BuildValidatorSet(everyCheck(), cfg, cfg.GetProfile("zz")))
-	if len(got) != 1 || !strings.Contains(got[0], "cloud_resources.custom_patterns[0]: ") {
+	if len(got) != 1 || !strings.HasPrefix(got[0], "config value profiles.zz.validators.cloud_resources.custom_patterns[0]: ") {
 		t.Errorf("profile-only bad value: got %v", got)
 	}
 
 	both := loadValueWarningConfig(t, `validators: {cloud_resources: {custom_patterns: ['(?<=a)b']}}
 profiles: {zz: {validators: {cloud_resources: {custom_patterns: ['(?<=a)b']}}}}
 `)
-	if got := core.ConfigWarnings(core.BuildValidatorSet(everyCheck(), both, both.GetProfile("zz"))); len(got) != 1 {
-		t.Errorf("the same bad value in both passes: want 1 line, got %v", got)
+	got = core.ConfigWarnings(core.BuildValidatorSet(everyCheck(), both, both.GetProfile("zz")))
+	if len(got) != 2 ||
+		!strings.HasPrefix(got[0], "config value validators.cloud_resources.custom_patterns[0]: ") ||
+		!strings.HasPrefix(got[1], "config value profiles.zz.validators.cloud_resources.custom_patterns[0]: ") {
+		t.Errorf("the same bad value in both passes: want the global line then the profile's, got %v", got)
+	}
+
+	// Without a profile, or with the global block alone, the path is the bare one.
+	if got := core.ConfigWarnings(core.BuildValidatorSet(everyCheck(), both, nil)); len(got) != 1 ||
+		!strings.HasPrefix(got[0], "config value validators.") {
+		t.Errorf("no profile: want the one bare-path line, got %v", got)
+	}
+}
+
+// TestEveryValidatorLabelsAProfilePassWarning: the label comes from the shared Config, not from one
+// validator, so the intellectual-property and social-media validators carry it too.
+func TestEveryValidatorLabelsAProfilePassWarning(t *testing.T) {
+	cfg := loadValueWarningConfig(t, `profiles:
+  zz:
+    validators:
+      intellectual_property: {internal_urls: [7]}
+      social_media: {platform_patterns: {github: [7]}}
+`)
+	got := core.ConfigWarnings(core.BuildValidatorSet(everyCheck(), cfg, cfg.GetProfile("zz")))
+	want := []string{
+		"config value profiles.zz.validators.intellectual_property.internal_urls[0]: ",
+		"config value profiles.zz.validators.social_media.platform_patterns.github[0]: ",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("want %d warnings, got %q", len(want), got)
+	}
+	for i := range want {
+		if !strings.HasPrefix(got[i], want[i]) {
+			t.Errorf("warning %d = %q, want prefix %q", i, got[i], want[i])
+		}
 	}
 }
 

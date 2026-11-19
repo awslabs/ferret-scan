@@ -105,6 +105,12 @@ type Config struct {
 	// Not itself a config key.
 	UnknownKeys []string `yaml:"-"`
 
+	// ValuePathScope is the prefix a validator puts on the path of a config-value warning when this
+	// Config is a pass over one profile's `validators:` block rather than the global one: "profiles.zz.".
+	// Empty for the global block. Set by the validator factory for its profile pass, never read from a
+	// file (#903). Read it through ValueScope, which is nil-safe.
+	ValuePathScope string `yaml:"-"`
+
 	// builtinPrecommit is set when Profiles["precommit"] is the built-in profile
 	// rather than one the file defined, and records what the reconciliation saw.
 	// Unexported, so no config file can set it or claim the profile is built-in.
@@ -174,6 +180,10 @@ type ProfileRedaction struct {
 
 // Profile represents a scanning profile with specific settings
 type Profile struct {
+	// Name is the key the profile has under `profiles:`, set by GetProfile so a warning about one of its
+	// values can say which profile it came from. Not a config key.
+	Name string `yaml:"-"`
+
 	Format               string                            `yaml:"format"`
 	ConfidenceLevels     string                            `yaml:"confidence_levels"`
 	Checks               string                            `yaml:"checks"`
@@ -571,9 +581,18 @@ func (c *Config) ListProfiles() []string {
 	return profiles
 }
 
+// ValueScope returns ValuePathScope, and "" for a nil Config.
+func (c *Config) ValueScope() string {
+	if c == nil {
+		return ""
+	}
+	return c.ValuePathScope
+}
+
 // GetProfile returns a profile by name, or nil if not found
 func (c *Config) GetProfile(name string) *Profile {
 	if profile, exists := c.Profiles[name]; exists {
+		profile.Name = name
 		return &profile
 	}
 	return nil
