@@ -316,6 +316,7 @@ func (v *Validator) ValidateContentCtx(ctx stdctx.Context, content string, origi
 			// context this validator itself used to judge it.
 			Context: detector.LineContext(cachedLine, start-lineStart, start-lineStart+len(text)),
 		})
+		capPublishedExampleAccount(&matches[len(matches)-1]) // #1027
 		if provider != "" {
 			providerCounts[provider]++
 		}

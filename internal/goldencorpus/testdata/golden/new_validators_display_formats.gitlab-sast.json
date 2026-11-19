@@ -210,32 +210,6 @@
     },
     {
       "category": "sast",
-      "confidence": "High",
-      "description": "Ferret Scan detected bank account identifier in this file.\n\n**Location:** <golden:new_validators_display_formats> (line 2)\n**Confidence:** MEDIUM (80.0%)\n**Detected by:** bank_account validator\n\n**Context:**\n```\npay to IBAN DE89 3704 0044 0532 0130 00 per invoice\n```\n\n**Additional Information:**\n- context_impact: -5\n\n**Remediation:**\nRemove bank account, routing, IBAN or SWIFT/BIC values. Use a documented test value in fixtures, and store real payment details in a payments vault.",
-      "id": "ferret-<HASH>",
-      "identifiers": [
-        {
-          "name": "Ferret Scan Check Type",
-          "type": "ferret_scan_check_type",
-          "value": "IBAN"
-        },
-        {
-          "name": "Ferret Scan Validator",
-          "type": "ferret_scan_validator",
-          "value": "bank_account"
-        }
-      ],
-      "location": {
-        "end_line": 2,
-        "file": "<golden:new_validators_display_formats>",
-        "start_line": 2
-      },
-      "message": "Bank account identifier detected: [HIDDEN] (confidence: MEDIUM)",
-      "name": "Bank Account Identifier Detected",
-      "severity": "High"
-    },
-    {
-      "category": "sast",
       "confidence": "Medium",
       "description": "Ferret Scan detected driver's license number in this file.\n\n**Location:** <golden:new_validators_display_formats> (line 3)\n**Confidence:** MEDIUM (70.0%)\n**Detected by:** driverslicense validator\n\n**Context:**\n```\ndriver's license D123-4567-8901 verified\n```\n\n**Additional Information:**\n- context_impact: 65\n- source: preprocessed_content\n\n**Remediation:**\nRemove the driver's license number or replace it with a synthetic value. In several jurisdictions the number encodes the holder's name and date of birth.",
       "id": "ferret-<HASH>",
@@ -259,6 +233,32 @@
       "message": "Driver's license number detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Driver's License Detected",
       "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected bank account identifier in this file.\n\n**Location:** <golden:new_validators_display_formats> (line 2)\n**Confidence:** LOW (15.0%)\n**Detected by:** bank_account validator\n\n**Context:**\n```\npay to IBAN DE89 3704 0044 0532 0130 00 per invoice\n```\n\n**Additional Information:**\n- context_impact: -5\n\n**Remediation:**\nRemove bank account, routing, IBAN or SWIFT/BIC values. Use a documented test value in fixtures, and store real payment details in a payments vault.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "IBAN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "bank_account"
+        }
+      ],
+      "location": {
+        "end_line": 2,
+        "file": "<golden:new_validators_display_formats>",
+        "start_line": 2
+      },
+      "message": "Bank account identifier detected: [HIDDEN] (confidence: LOW)",
+      "name": "Bank Account Identifier Detected",
+      "severity": "Medium"
     }
   ]
 }

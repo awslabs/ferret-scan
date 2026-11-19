@@ -1084,10 +1084,11 @@ var Cases = []Case{
 	},
 	{
 		Name:        "cloud_resources_test_context",
-		Description: "Same AWS IAM-role ARN on two lines: one clean, one carrying a same-line test-context keyword (\"example\"). Locks the CLOUD_RESOURCES negative-keyword penalty (-20, per-line/local), the behavior the per-line hasKeywordToken hoist must preserve.",
+		Description: "Same AWS IAM-role ARN on two lines: one clean, one carrying a same-line test-context keyword (\"example\"). Locks the CLOUD_RESOURCES negative-keyword penalty (-20, per-line/local), the behavior the per-line hasKeywordToken hoist must preserve. The account is 111122223333, not AWS's documentation account: that account is held at 15 whatever its line says (#1027), which would leave both lines at the ceiling and the penalty unobserved. The third line is the documentation account 123456789012 as the AWS IAM User Guide prints it, so the ceiling and its published confidence_ceiling are locked here too.",
 		Checks:      []string{"CLOUD_RESOURCES"},
-		Input: "prod arn:aws:iam::123456789012:role/PaymentsAdmin\n" +
-			"example arn:aws:iam::123456789012:role/PaymentsAdmin\n",
+		Input: "prod arn:aws:iam::111122223333:role/PaymentsAdmin\n" +
+			"example arn:aws:iam::111122223333:role/PaymentsAdmin\n" +
+			"prod arn:aws:iam::123456789012:role/PaymentsAdmin\n",
 	},
 	{
 		Name: "new_validators_display_formats",
