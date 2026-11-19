@@ -43,7 +43,7 @@ var ofcomDramaPrefixes = []string{
 // mayBeReservedFictional is the cheap pre-filter in front of isReservedFictionalNumber: true when
 // cleanNew (cleanPhoneNumber of the match) can hold a reserved number at all. The digits that
 // function tests are a substring of cleanNew (it strips only a trailing extension and a prefix), so
-// a number it accepts always has "55501" or one of ofcomDramaPrefixes in cleanNew.
+// a number it accepts always has "55501", one of ofcomDramaPrefixes or one of arcepFictionRoots in cleanNew.
 func mayBeReservedFictional(cleanNew string) bool {
 	if strings.Contains(cleanNew, "55501") {
 		return true
@@ -53,14 +53,19 @@ func mayBeReservedFictional(cleanNew string) bool {
 			return true
 		}
 	}
+	for _, r := range arcepFictionRoots {
+		if strings.Contains(cleanNew, r) {
+			return true
+		}
+	}
 	return false
 }
 
 // isReservedFictionalDigits reports whether a cleaned number (cleanPhoneNumber, its extension
-// removed) is in a reserved fictional range: NANP's 555-0100..0199 (reFictional555), or one of
-// Ofcom's drama ranges.
+// removed) is in a reserved fictional range: NANP's 555-0100..0199 (reFictional555), one of Ofcom's
+// drama ranges or one of ARCEP's fiction ranges.
 func isReservedFictionalDigits(clean string) bool {
-	return reFictional555.MatchString(strings.TrimPrefix(clean, "00")) || isOfcomDramaNumber(clean)
+	return reFictional555.MatchString(strings.TrimPrefix(clean, "00")) || isOfcomDramaNumber(clean) || isArcepFictionNumber(clean)
 }
 
 // isOfcomDramaNumber reports whether a cleaned number is in one of ofcomDramaPrefixes' ranges,

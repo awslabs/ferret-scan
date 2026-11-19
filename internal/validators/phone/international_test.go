@@ -267,10 +267,11 @@ func TestGateDecoys(t *testing.T) {
 
 // TestBoundaryMatrix: an international number reads the same behind every character a phone is
 // written after, and its span is the number, never the context. The UK shapes are Manchester
-// numbers outside Ofcom's drama blocks (0161 498, not 0161 496), which this validator caps (#930).
+// numbers outside Ofcom's drama blocks (0161 498, not 0161 496), which this validator caps (#930), and a
+// French number outside ARCEP's fiction blocks (01 42, not 01 99 00), which keeps its score (#1026).
 func TestBoundaryMatrix(t *testing.T) {
 	shapes := []string{
-		"+44 161 498 0958", "+33 1 99 00 47 18", "+49 30 23125417", "+1 297 201 0016",
+		"+44 161 498 0958", "+33 1 42 34 56 78", "+49 30 23125417", "+1 297 201 0016",
 		"+55 11 91010-1050", "+44 (0)161 498 0372", "+441614980627",
 	}
 	carriers := []string{

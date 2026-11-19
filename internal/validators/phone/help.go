@@ -25,6 +25,7 @@ Confidence comes from phone evidence on the match's line: each phone word (phone
 			"International: +1 555 123 4567, +44 20 1234 5678",
 			"UK: 0207 123 4567, +44 207 123 4567",
 			"European: +33 1 42 34 56 78, +49 30 12345678",
+			"French fiction (ARCEP's reserved ranges, held at 15): +33 1 99 00 47 18, 0199004718",
 			"Toll-free: 1-800-555-1234, (800) 555-1234, +1-800-555-1234",
 			"With extensions: 555-123-4567 ext 123, +1-555-123-4567 x456",
 			"Various separators: spaces, dashes, dots, parentheses",

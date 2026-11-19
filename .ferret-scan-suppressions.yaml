@@ -4200,49 +4200,49 @@ rules:
         finding_type: PERSON_NAME
         line_number: "624"
     - id: SUP-00000472
-      hash: 1f59156f25f798e9f3cf922b663f33804bac37b33929f64581dfb23a33d862ed # pragma: allowlist secret
+      hash: b7fe8227cd44b695afc24897403a784130a6a954932a0b1b864722d4013cedc8 # pragma: allowlist secret
       reason: "fixture: --help example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-19T03:35:52.835302822Z
       metadata:
         confidence: "100.00"
         filename: help.go
         finding_type: PHONE
-        line_number: "28"
+        line_number: "29"
     - id: SUP-00000473
-      hash: 7a8b06f23954436acbf49c51dc2252bbac5fce6db842691b248bc7c6a51b7e26 # pragma: allowlist secret
+      hash: 5ce9e30b2f78291df22cc34c94ab1a709eb721c0f2a69bbc08f44ccab2cd16c5 # pragma: allowlist secret
       reason: "fixture: --help example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-19T03:35:52.835302822Z
       metadata:
         confidence: "100.00"
         filename: help.go
         finding_type: PHONE
-        line_number: "28"
+        line_number: "29"
     - id: SUP-00000474
-      hash: 679e69e93a5fbac2ed717c1f618abef405ba8a487e3c29bd74ec24a1ded13f6e # pragma: allowlist secret
+      hash: 6e36bbde4a480a54696f35e1c00cdd2bf133c223e63fac55530d7c441de9d69c # pragma: allowlist secret
       reason: "fixture: --help example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-19T03:35:52.835302822Z
       metadata:
         confidence: "100.00"
         filename: help.go
         finding_type: PHONE
-        line_number: "29"
+        line_number: "30"
     - id: SUP-00000475
-      hash: 9f10255e6454d7e4e76f45828a61fda24026dd0c8cc239e732076cabd2f62122 # pragma: allowlist secret
+      hash: 00ae8634772c606a6eb88aedfd602e7887b7541fb5acaae1577666b604b6d175 # pragma: allowlist secret
       reason: "fixture: --help example of what this check reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-19T03:35:52.835302822Z
       metadata:
         confidence: "100.00"
         filename: help.go
         finding_type: PHONE
-        line_number: "29"
+        line_number: "30"
     - id: SUP-00000476
       hash: e7bccfac51f136990941de64ec2c94012c87378b66fde7a3c98385e00ff128a0 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
