@@ -248,7 +248,7 @@ func (or *OfficeRedactor) closeBoundarySpans(
 		return targets[i] < targets[j]
 	})
 
-	rewritten := rewriteAcrossBoundaries(contents, docType, targets, repl, strategy != redactors.RedactionSimple)
+	rewritten := rewriteAcrossBoundaries(contents, name, docType, targets, repl, strategy != redactors.RedactionSimple)
 
 	var mappings []redactors.RedactionMapping
 	for _, u := range unlocated {
