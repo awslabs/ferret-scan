@@ -18,7 +18,7 @@ AWS_ARN	keys=13	band=1	account_id,confidence_adjustment,confidence_factors,conte
 
 AWS_SECRET_ACCESS_KEY	keys=13	band=1	confidence_adjustment,confidence_ceiling,context_confidence,context_doctype,context_domain,detection_method,example_embedded,original_confidence,secret_type,semantic_context,source,validation_checks,validation_path
 
-BR_CPF	keys=10	band=1	check_digit_valid,confidence_adjustment,context_confidence,context_doctype,context_domain,country,original_confidence,semantic_context,source,validation_path
+BR_CPF	keys=11	band=1	checksum_valid,confidence_adjustment,confidence_ceiling,context_confidence,context_doctype,context_domain,country,original_confidence,semantic_context,source,validation_path
 
 BUSINESS	keys=15	band=2	confidence_adjustment,context_confidence,context_doctype,context_domain,context_impact,domain,email_provider,original_confidence,original_file,semantic_context,source,tld,username,validation_checks,validation_path
 
