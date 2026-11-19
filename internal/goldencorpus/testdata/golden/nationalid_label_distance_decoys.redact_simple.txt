@@ -1,0 +1,16 @@
+=== REDACTED ===
+Our Social Insurance Number is on file
+Employee SIN number is confidential
+O CPF é obrigatório para o cadastro
+Mi RUT es el documento que pide el banco
+El RFC es el registro federal de cada empresa
+Número do CPF: informado no formulário
+The reference number is 613891563
+Número do pedido é 17298406477
+El número de factura es 600121640 hoy
+Nuestro número de pedido es 6001216-4
+La factura CSP990101AB6 fue emitida en enero
+Constancia ISO900101XY4 de la oficina
+Our Social Insurance Number is the one in the file 613 891 563
+O CPF do cliente é o que consta no cadastro 172.984.064-77
+=== FINDINGS (sorted) ===
