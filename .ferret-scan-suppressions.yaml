@@ -1164,27 +1164,27 @@ rules:
         finding_type: SSN
         line_number: "172"
     - id: SUP-00000163
-      hash: 7c5f4750ebca53330d1fdbfd12642e6f940a8bc0ce153c9dfc26160b5aec26bf # pragma: allowlist secret
+      hash: 9440fd2901ba9ede60fc0570158bd8610bfa27766d00772f6a8d790cc72295c4 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:02:39.325106773Z
+      last_seen_at: 2026-11-19T01:16:49.594853462Z
       metadata:
         confidence: "100.00"
         filename: office-text-extractor.go
         finding_type: PHONE
-        line_number: "1356"
+        line_number: "1369"
     - id: SUP-00000164
-      hash: ccd85c7a328ba733fc03643ca17236f9d97b2563dd29e09b4ea185fa8d1822b6 # pragma: allowlist secret
+      hash: c57c977f1fade818a554afd9c9d4449cc7ce511826828845e11e38251b589ccb # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:02:39.325106773Z
+      last_seen_at: 2026-11-19T01:16:49.594853462Z
       metadata:
         confidence: "100.00"
         filename: office-text-extractor.go
         finding_type: PHONE
-        line_number: "1356"
+        line_number: "1369"
     - id: SUP-00000165
       hash: 2b6e52c157d2d492fd111786b7f906c4af46d11cddc59f32d251c590de6b3450 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
