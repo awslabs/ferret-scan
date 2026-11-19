@@ -1,0 +1,11 @@
+Filename,Type,Confidence Level,Confidence %,Line Number,Text
+<golden:creditcard_published_test_pans>,AMERICAN_EXPRESS,LOW,15.0,3,378282246310005
+<golden:creditcard_published_test_pans>,DINERS_CLUB,LOW,15.0,5,3056930009020004
+<golden:creditcard_published_test_pans>,DISCOVER,LOW,15.0,4,6011111111111117
+<golden:creditcard_published_test_pans>,JCB,LOW,15.0,8,3530111333300000
+<golden:creditcard_published_test_pans>,MASTERCARD,LOW,15.0,7,2223003122003222
+<golden:creditcard_published_test_pans>,UNIONPAY,LOW,15.0,9,6200000000000005
+<golden:creditcard_published_test_pans>,VISA,LOW,15.0,1,4242424242424242
+<golden:creditcard_published_test_pans>,VISA,LOW,15.0,6,4000056655665556
+<golden:creditcard_published_test_pans>,VISA,LOW,15.0,10,4012888888881881
+<golden:creditcard_published_test_pans>,MASTERCARD,LOW,1.0,2,5555 5555 5555 4444

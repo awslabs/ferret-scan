@@ -1,0 +1,341 @@
+results:
+    - text: "378282246310005"
+      line_number: 3
+      type: AMERICAN_EXPRESS
+      confidence: 15
+      confidence_level: LOW
+      filename: <golden:creditcard_published_test_pans>
+      validator: creditcard
+      metadata:
+        card_type: AMERICAN_EXPRESS
+        confidence_adjustment: 0
+        confidence_ceiling: 15
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Financial
+        context_impact: 15
+        original_confidence: 15
+        original_file: <golden:creditcard_published_test_pans>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            entropy: true
+            length: true
+            luhn: true
+            not_repeating: true
+            not_test: false
+            vendor: true
+        validation_path: document
+        vendor: American Express
+    - text: "3056930009020004"
+      line_number: 5
+      type: DINERS_CLUB
+      confidence: 15
+      confidence_level: LOW
+      filename: <golden:creditcard_published_test_pans>
+      validator: creditcard
+      metadata:
+        card_type: DINERS_CLUB
+        confidence_adjustment: 0
+        confidence_ceiling: 15
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Financial
+        context_impact: 15
+        original_confidence: 15
+        original_file: <golden:creditcard_published_test_pans>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            entropy: true
+            length: true
+            luhn: true
+            not_repeating: true
+            not_test: false
+            vendor: true
+        validation_path: document
+        vendor: Diners Club
+    - text: "6011111111111117"
+      line_number: 4
+      type: DISCOVER
+      confidence: 15
+      confidence_level: LOW
+      filename: <golden:creditcard_published_test_pans>
+      validator: creditcard
+      metadata:
+        card_type: DISCOVER
+        confidence_adjustment: 0
+        confidence_ceiling: 15
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Financial
+        context_impact: 15
+        original_confidence: 15
+        original_file: <golden:creditcard_published_test_pans>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            entropy: false
+            length: true
+            luhn: true
+            not_repeating: false
+            not_test: false
+            vendor: true
+        validation_path: document
+        vendor: Discover
+    - text: "3530111333300000"
+      line_number: 8
+      type: JCB
+      confidence: 15
+      confidence_level: LOW
+      filename: <golden:creditcard_published_test_pans>
+      validator: creditcard
+      metadata:
+        card_type: JCB
+        confidence_adjustment: 0
+        confidence_ceiling: 15
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Financial
+        context_impact: 15
+        original_confidence: 15
+        original_file: <golden:creditcard_published_test_pans>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            entropy: false
+            length: true
+            luhn: true
+            not_repeating: true
+            not_test: false
+            vendor: true
+        validation_path: document
+        vendor: JCB
+    - text: "2223003122003222"
+      line_number: 7
+      type: MASTERCARD
+      confidence: 15
+      confidence_level: LOW
+      filename: <golden:creditcard_published_test_pans>
+      validator: creditcard
+      metadata:
+        card_type: MASTERCARD
+        confidence_adjustment: 0
+        confidence_ceiling: 15
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Financial
+        context_impact: 15
+        original_confidence: 15
+        original_file: <golden:creditcard_published_test_pans>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            entropy: false
+            length: true
+            luhn: true
+            not_repeating: true
+            not_test: false
+            vendor: true
+        validation_path: document
+        vendor: MasterCard
+    - text: "6200000000000005"
+      line_number: 9
+      type: UNIONPAY
+      confidence: 15
+      confidence_level: LOW
+      filename: <golden:creditcard_published_test_pans>
+      validator: creditcard
+      metadata:
+        card_type: UNIONPAY
+        confidence_adjustment: 0
+        confidence_ceiling: 15
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Financial
+        context_impact: 0
+        original_confidence: 15
+        original_file: <golden:creditcard_published_test_pans>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            entropy: false
+            length: true
+            luhn: true
+            not_repeating: false
+            not_test: false
+            vendor: true
+        validation_path: document
+        vendor: UnionPay
+    - text: "4242424242424242"
+      line_number: 1
+      type: VISA
+      confidence: 15
+      confidence_level: LOW
+      filename: <golden:creditcard_published_test_pans>
+      validator: creditcard
+      metadata:
+        card_type: VISA
+        confidence_adjustment: 0
+        confidence_ceiling: 15
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Financial
+        context_impact: 15
+        original_confidence: 15
+        original_file: <golden:creditcard_published_test_pans>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            entropy: false
+            length: true
+            luhn: true
+            not_repeating: false
+            not_test: false
+            vendor: true
+        validation_path: document
+        vendor: Visa
+    - text: "4000056655665556"
+      line_number: 6
+      type: VISA
+      confidence: 15
+      confidence_level: LOW
+      filename: <golden:creditcard_published_test_pans>
+      validator: creditcard
+      metadata:
+        card_type: VISA
+        confidence_adjustment: 0
+        confidence_ceiling: 15
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Financial
+        context_impact: 15
+        original_confidence: 15
+        original_file: <golden:creditcard_published_test_pans>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            entropy: false
+            length: true
+            luhn: true
+            not_repeating: true
+            not_test: false
+            vendor: true
+        validation_path: document
+        vendor: Visa
+    - text: "4012888888881881"
+      line_number: 10
+      type: VISA
+      confidence: 15
+      confidence_level: LOW
+      filename: <golden:creditcard_published_test_pans>
+      validator: creditcard
+      metadata:
+        card_type: VISA
+        confidence_adjustment: 0
+        confidence_ceiling: 15
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Financial
+        context_impact: 15
+        original_confidence: 15
+        original_file: <golden:creditcard_published_test_pans>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            entropy: false
+            length: true
+            luhn: true
+            not_repeating: true
+            not_test: false
+            vendor: true
+        validation_path: document
+        vendor: Visa
+    - text: 5555 5555 5555 4444
+      line_number: 2
+      type: MASTERCARD
+      confidence: 1
+      confidence_level: LOW
+      filename: <golden:creditcard_published_test_pans>
+      validator: creditcard
+      metadata:
+        card_type: MASTERCARD
+        confidence_adjustment: 0
+        confidence_ceiling: 15
+        context_confidence: 1
+        context_doctype: Unknown
+        context_domain: Financial
+        context_impact: -100
+        original_confidence: 1
+        original_file: <golden:creditcard_published_test_pans>
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        source: preprocessed_content
+        validation_checks:
+            digits: true
+            entropy: false
+            length: true
+            luhn: true
+            not_repeating: false
+            not_test: false
+            vendor: true
+        validation_path: document
+        vendor: MasterCard

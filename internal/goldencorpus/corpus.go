@@ -239,6 +239,30 @@ var Cases = []Case{
 			"call 212-555-0142 today\n",
 	},
 	{
+		Name: "creditcard_published_test_pans",
+		Description: "#883 box 10: card numbers that payment processors publish as test cards, in the " +
+			"shapes a test suite or a testing guide holds them. Every value is on a vendor page the " +
+			"creditcard package lists (published_test_pans.go): Stripe's \"Cards by brand\" table " +
+			"(https://docs.stripe.com/testing) for Visa, Mastercard, American Express, Discover, JCB, " +
+			"Diners Club and UnionPay, and Braintree's valid-card table for 4012888888881881. They are " +
+			"REPORTED, never dropped, so redaction still rewrites them, but at no more than 15 (LOW) " +
+			"with not_test=false and confidence_ceiling=15, where an unlisted Luhn-valid card on the " +
+			"same line scores 100. Lines: a labelled number, a space-grouped one beside the word " +
+			"'test', a JSON fixture, a markdown table row, a code assignment, then four bare lines. " +
+			"A case WITH findings, so its type rows are in the metadata-key census (#841).",
+		Checks: []string{"CREDIT_CARD"},
+		Input: "Card number: 4242424242424242\n" +
+			"Sandbox card 5555 5555 5555 4444 for the checkout test\n" +
+			"{\"number\": \"378282246310005\", \"exp_month\": 12, \"exp_year\": 2030}\n" +
+			"| Discover | 6011111111111117 | Any 3 digits | Any future date |\n" +
+			"card_number = \"3056930009020004\"\n" +
+			"Visa debit: 4000056655665556\n" +
+			"Mastercard (2-series) 2223003122003222\n" +
+			"JCB 3530111333300000\n" +
+			"UnionPay 6200000000000005\n" +
+			"Braintree valid card 4012888888881881\n",
+	},
+	{
 		Name: "phone_international_gate_decoys",
 		Description: "#889's decoys: lines a naive widening of PHONE's boundaries and group widths " +
 			"reports (measured at 80-95 each) and the E.164 gate and the boundary rule keep at NOTHING. " +
