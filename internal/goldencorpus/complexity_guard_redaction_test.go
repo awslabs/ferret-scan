@@ -184,6 +184,13 @@ func TestRedactionComplexity_RepeatedValues(t *testing.T) {
 
 func timeRedact(t *testing.T, text string, matches []detector.Match) (time.Duration, int) {
 	t.Helper()
+	return timeRedactWith(t, text, matches, redactors.RedactionSimple)
+}
+
+// timeRedactWith is timeRedact under a chosen strategy. synthetic draws through a scope of the
+// redactor's own, seeded so a sample is reproducible; every other strategy reads none.
+func timeRedactWith(t *testing.T, text string, matches []detector.Match, strategy redactors.RedactionStrategy) (time.Duration, int) {
+	t.Helper()
 
 	dir := t.TempDir()
 	in := filepath.Join(dir, "in.txt")
@@ -193,8 +200,11 @@ func timeRedact(t *testing.T, text string, matches []detector.Match) (time.Durat
 	outPath := filepath.Join(dir, "out.txt")
 
 	r := plaintext.NewPlainTextRedactor(nil, nil)
+	if strategy == redactors.RedactionSynthetic {
+		r.SetSyntheticScope(redactors.NewSeededSyntheticScope([]byte("complexity-guard")))
+	}
 	start := time.Now()
-	res, err := r.RedactDocument(in, outPath, matches, redactors.RedactionSimple)
+	res, err := r.RedactDocument(in, outPath, matches, strategy)
 	elapsed := time.Since(start)
 	if err != nil {
 		t.Fatalf("RedactDocument: %v", err)
@@ -325,5 +335,45 @@ func TestRedactionComplexity_FixedMatchesGrowingContent(t *testing.T) {
 			"the match count pinned, a blowup of this size means each match is being "+
 			"located by scanning the whole document again",
 			contentRise, matchCount, tBig, ceiling, raceNote())
+	}
+}
+
+// TestRedactionComplexity_SyntheticGrowingMatchesAndContent is the growing family under the
+// synthetic strategy (#886). Synthetic adds work per DISTINCT value that the masking strategies do
+// not: a scope lookup keyed on an HMAC, a draw, and the one-to-one check against every replacement
+// the family already holds. Each of those is meant to cost O(1) per value; a family check that
+// scanned the held replacements would make the run quadratic in distinct values, which the simple
+// rows above cannot see.
+func TestRedactionComplexity_SyntheticGrowingMatchesAndContent(t *testing.T) {
+	const (
+		baseN = 500
+		bigN  = 2000 // 4x
+	)
+
+	baseText, baseMatches := buildRedactionFixture(baseN, 0)
+	bigText, bigMatches := buildRedactionFixture(bigN, 0)
+
+	tBase, nBase := timeRedactWith(t, baseText, baseMatches, redactors.RedactionSynthetic)
+	tBig, nBig := timeRedactWith(t, bigText, bigMatches, redactors.RedactionSynthetic)
+
+	// NON-VACUITY, as in the simple family: every distinct value was given a replacement.
+	if nBase < baseN || nBig < bigN {
+		t.Fatalf("synthetic mappings base=%d (want %d) big=%d (want %d) — the timing would be "+
+			"measuring a path that skips values", nBase, baseN, nBig, bigN)
+	}
+
+	if tBase > 2*time.Millisecond {
+		t.Logf("4x input synthetic redaction ratio: %.1fx (base=%v big=%v) — informational",
+			float64(tBig)/float64(tBase), tBase, tBig)
+	}
+
+	ceiling := redactionAbsoluteCeiling
+	if raceDetectorEnabled {
+		ceiling *= raceCeilingMultiplier
+	}
+	if tBig > ceiling {
+		t.Errorf("synthetic redaction of %d distinct values took %v (> %v ceiling%s) — a "+
+			"regression of this size means a per-value step is scaling with the values already held",
+			bigN, tBig, ceiling, raceNote())
 	}
 }
