@@ -173,7 +173,12 @@ func rescanFixtures() []rescanFixture {
 	slide := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
 		`<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ` +
 		`xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:sp><p:txBody>` +
-		para("Contact:") + para("Mary Johnson") + para("English Language Arts &amp; Assessment") +
+		para("Contact:") +
+		// The name spans two RUNS of one paragraph (two <a:t> nodes), the shape a slide editor produces
+		// when a word is restyled. Before #914 box 3 this fixture spanned two PARAGRAPHS ("Mary Johnson" and
+		// the next heading joined by a space), which is the false positive the reader now stops producing.
+		`<a:p><a:r><a:rPr lang="en-US"/><a:t>Mary</a:t></a:r><a:r><a:rPr lang="en-US"/><a:t>Johnson</a:t></a:r></a:p>` +
+		para("English Language Arts &amp; Assessment") +
 		para("Employee SSN: 234-56-0001") + `</p:txBody></p:sp></p:spTree></p:cSld></p:sld>`
 
 	const sheetNS = `xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"`
