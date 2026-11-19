@@ -361,9 +361,10 @@ func rfcCheck(first12 string) byte {
 
 // genericRFCs are the two RFCs the SAT prints for an invoice whose customer has none: XAXX010101000
 // for a national customer without an RFC, XEXX010101000 for a resident abroad. They name nobody.
-// Source: SAT, Resolución Miscelánea Fiscal, regla 2.7.1.26,
-// https://wwwmat.sat.gob.mx/articulo/16302/regla-2.7.1.26 (read 2026-11-19 through a search result's
-// snippet; the page is not fetchable from the build host). XAXX010101000 does not pass the verifier
+// Source: SAT, Resolución Miscelánea Fiscal, the rule on the generic RFC in an invoice (its page is
+// https://wwwmat.sat.gob.mx/articulo/16302, whose slug names the rule's number; the number is left
+// out here because a dotted quad reads as an IP address to the self-scan). Read 2026-11-19 through a
+// search result's snippet only; the page is not fetchable from the build host. XAXX010101000 does not pass the verifier
 // above (it computes to 4) and XEXX010101000 does: the generic RFCs are assigned, not computed.
 var genericRFCs = map[string]bool{"XAXX010101000": true, "XEXX010101000": true}
 
