@@ -24,7 +24,7 @@ func main() {
 
 	if *action == "" {
 		fmt.Println("Error: --action is required")
-		fmt.Println("Usage: ferret-suppress --action <list|remove|cleanup|enable> [options]")
+		fmt.Println("Usage: go run ./cmd/suppress --action <list|remove|cleanup|enable> [options]")
 		os.Exit(1)
 	}
 
