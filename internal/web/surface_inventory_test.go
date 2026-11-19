@@ -35,7 +35,7 @@ var webEquivalent = map[string]string{
 	"suppression-file":      "`--web --suppression-file <path>` names the file the /suppressions endpoints read and write (NewWebServerWithOptions)",
 	"config":                "`--web --config <path>`: Start() loads it with LoadConfigStrict and refuses to start on an error; its defaults are /scan's fallbacks",
 	"exclude":               "`--web --exclude <patterns>` is served by /config-info as exclude_patterns, which the browser applies to a dropped folder",
-	"explain":               "implicit: runFullCLIScan runs explain.Annotate on every finding (the Add Suppression reason prefill); /export drops it, see exportLosses",
+	"explain":               "implicit: runFullCLIScan runs explain.Annotate on every finding (the Add Suppression reason prefill); /export formats those stored findings with the CLI's formatters, byte for byte (#923, TestWebExportMatchesCLIFormatter)",
 	"enable-preprocessors":  "implicit: on by default; the config's defaults.enable_preprocessors is honored by runFullCLIScan",
 	"show-suppressed":       "implicit: /scan always returns the suppressed findings in `suppressed`; validateWebModeFlags refuses --show-suppressed with --web",
 	"generate-suppressions": "/suppressions/create per finding and /suppressions/bulk-create with `findings`; validateWebModeFlags refuses --generate-suppressions with --web",

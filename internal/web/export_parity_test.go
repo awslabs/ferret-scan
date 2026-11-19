@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -132,6 +133,25 @@ func cliScope(fc goldencorpus.FileCase) *formatters.ScanScope {
 	})
 }
 
+// cliStats is the stats block the CLI's --file run of one scannable file carries for want, its findings:
+// one file considered and processed, the findings banded as cmd/main.go bands them, nothing skipped,
+// suppressed or unexamined, no config warnings. Its duration is wall clock, which normalizeExportBody
+// replaces.
+func cliStats(want []detector.Match) *formatters.ScanStats {
+	st := &formatters.ScanStats{TotalFiles: 1, FilesProcessed: 1, TotalFindings: len(want)}
+	for _, m := range want {
+		switch {
+		case m.Confidence >= 90:
+			st.High++
+		case m.Confidence >= 60:
+			st.Medium++
+		default:
+			st.Low++
+		}
+	}
+	return st
+}
+
 // sessionScan posts one file to /scan the way the front-end does, carrying cookie (nil for none), and
 // returns the response and the session cookie the server set or accepted.
 func sessionScan(t *testing.T, h http.Handler, cookie *http.Cookie, relPath string, content []byte, checks []string) (ScanResponse, *http.Cookie) {
@@ -211,12 +231,17 @@ func exportIDs(t *testing.T, h http.Handler, cookie *http.Cookie, format string,
 // reJUnitTime matches the JUnit duration attributes, which measure the formatting call itself.
 var reJUnitTime = regexp.MustCompile(`\btime="[0-9.]+"`)
 
+// reStatsDuration matches the stats block's wall-clock duration wherever a format renders it: the
+// json/yaml `duration_seconds` value, and the text/junit/sarif forms below it.
+var reStatsDuration = regexp.MustCompile(`(duration_seconds"?:\s*)[0-9.eE+-]+`)
+
 // normalizeExportBody strips what differs between two renders of the same matches: the wall-clock
 // timestamps goldencorpus.NormalizeOutput already replaces (gitlab-sast scan.start_time and
 // scan.end_time, the INTELLECTUAL_PROPERTY reconstruction_timestamp metadata value), JUnit time="..."
 // durations, and JSON key order (NormalizeOutput canonicalises json, sarif and gitlab-sast).
 func normalizeExportBody(format, s string) string {
-	return reJUnitTime.ReplaceAllString(goldencorpus.NormalizeOutput(format, s), `time="<DURATION>"`)
+	s = reJUnitTime.ReplaceAllString(goldencorpus.NormalizeOutput(format, s), `time="<DURATION>"`)
+	return reStatsDuration.ReplaceAllString(s, `${1}<DURATION>`)
 }
 
 // exportOptions are the four combinations of the two switches /export takes.
@@ -259,6 +284,8 @@ func TestWebExportMatchesCLIFormatter(t *testing.T) {
 					Verbose:         opt.verbose,
 					NoColor:         true,
 					ShowMatch:       opt.showMatch,
+					Scan:            cliScope(fc),
+					Stats:           cliStats(want),
 				})
 				if err != nil {
 					t.Fatalf("formatters.Export(%s): %v", format, err)
@@ -438,4 +465,36 @@ func firstDifference(cli, web string) string {
 		}
 	}
 	return "  (no line differs; the bodies differ in length only)"
+}
+
+// TestWebExportCarriesScopeAndStats is #904's last box: the json export of a narrowed scan names the
+// scope (`scan`) and the stats block, as the CLI's --file report does, and an export of several scans
+// adds their stats. Without them a narrowed run's `"results": []` read as a clean scan.
+func TestWebExportCarriesScopeAndStats(t *testing.T) {
+	h := parityServer(t)
+	a, cookie := sessionScan(t, h, nil, "a.txt", manyFindings(3), []string{"EMAIL"})
+	b, _ := sessionScan(t, h, cookie, "b.txt", manyFindings(4), []string{"EMAIL"})
+	code, body := exportIDs(t, h, cookie, "json", []string{a.ScanID, b.ScanID}, true, false)
+	if code != http.StatusOK {
+		t.Fatalf("/export: HTTP %d: %s", code, truncate(body, 300))
+	}
+	var d struct {
+		Scan  *formatters.ScanScope `json:"scan"`
+		Stats *formatters.ScanStats `json:"stats"`
+	}
+	if err := json.Unmarshal([]byte(body), &d); err != nil {
+		t.Fatalf("export is not JSON: %v", err)
+	}
+	if d.Scan == nil || !reflect.DeepEqual(d.Scan, cliScope(goldencorpus.FileCase{Checks: []string{"EMAIL"}})) {
+		t.Errorf("export scan block = %+v, want the CLI's scope for --checks EMAIL", d.Scan)
+	}
+	if d.Stats == nil {
+		t.Fatal("export carries no stats block")
+	}
+	if d.Stats.TotalFiles != 2 || d.Stats.FilesProcessed != 2 || d.Stats.TotalFindings != 7 {
+		t.Errorf("export stats = %+v, want 2 files, 2 processed, 7 findings (3 + 4)", *d.Stats)
+	}
+	if d.Stats.High+d.Stats.Medium+d.Stats.Low != 7 {
+		t.Errorf("export stats bands %d/%d/%d do not add to 7", d.Stats.High, d.Stats.Medium, d.Stats.Low)
+	}
 }

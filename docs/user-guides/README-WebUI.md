@@ -130,8 +130,11 @@ curl -s -b jar -H 'Content-Type: application/json' \
   metadata, and a few hundred findings overran the 1 MiB request cap. An id sent without its session cookie, after
   it expired or after the store evicted it, answers 404: scan again.
 - The report is the CLI's formatter over the findings the scan produced, so the finding rows match what the CLI
-  prints for the same file. It does not yet carry every CLI block (the `scan` scope block and `stats` are
-  absent from `/export` bodies; [#904](https://github.com/awslabs/ferret-scan/issues/904)).
+  prints for the same file. It also carries the CLI's `scan` scope block (present when the run was narrowed by
+  `checks`, the confidence filter or disabled detection types) and the `stats` block the `/scan` run kept: files
+  considered, processed, skipped and not examined, findings by band, suppressed count and the scan's duration.
+  Exporting several ids adds their stats. The web counts a file with an empty text extraction as processed, where
+  the CLI reports it as not examined.
 
 ## Customization
 
