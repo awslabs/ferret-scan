@@ -144,8 +144,15 @@ func TestGoldenRedact(t *testing.T) {
 				checkGolden(t, c.Name+".redact_"+st.name+".txt", got)
 			}
 
-			got := redactSyntheticSeeded(t, c, redactors.NewSeededSyntheticScope(goldenSyntheticSeed))
-			if _, withheld := syntheticSnapshotWithheld[c.Name]; !withheld {
+			got, copied, found := redactSyntheticSeeded(t, c, redactors.NewSeededSyntheticScope(goldenSyntheticSeed))
+			switch _, withheld := syntheticSnapshotWithheld[c.Name]; {
+			case found == 0:
+				// Nothing to replace: the copy is the input, asserted here rather than
+				// by a snapshot, so a decoy-only case needs no synthetic file.
+				if copied != c.Input {
+					t.Errorf("case %q: no findings, but the synthetic copy differs from the input", c.Name)
+				}
+			case !withheld:
 				checkGolden(t, c.Name+".redact_synthetic.txt", got)
 			}
 		})
@@ -174,9 +181,12 @@ func scanCase(t *testing.T, c Case) ([]detector.Match, *core.ScanResult) {
 // *.redact_synthetic.txt file.
 var goldenSyntheticSeed = []byte("ferret-scan golden corpus #886")
 
-// syntheticSnapshotWithheld names the cases whose synthetic copy is redacted and
-// checked (TestGoldenRedact still runs them, and the repeatability test compares
-// them) but not committed as a snapshot, with the reason.
+// A case gets a *.redact_synthetic.txt snapshot when it has findings. A case with
+// none is checked to copy its input unchanged, so a decoy-only case adds no file.
+//
+// syntheticSnapshotWithheld names the cases with findings whose synthetic copy is
+// redacted and checked (TestGoldenRedact still runs them, and the repeatability
+// test compares them) but not committed as a snapshot, with the reason.
 var syntheticSnapshotWithheld = map[string]string{
 	// The synthetic GITLAB_TOKEN replacement (glpat- plus 20 characters) is read as a
 	// live GitLab token by GitHub push protection, which refuses the push.
@@ -185,8 +195,9 @@ var syntheticSnapshotWithheld = map[string]string{
 
 // redactSyntheticSeeded writes the case to a file, redacts it with the synthetic
 // strategy drawing from scope, and renders the copy and the findings the way
-// renderRedactSnapshot does. The file path is temporary, so it is left out.
-func redactSyntheticSeeded(t *testing.T, c Case, scope redactors.SyntheticScope) string {
+// renderRedactSnapshot does. The file path is temporary, so it is left out. It
+// returns the snapshot, the copy and the number of findings.
+func redactSyntheticSeeded(t *testing.T, c Case, scope redactors.SyntheticScope) (snapshot, copied string, found int) {
 	t.Helper()
 	dir := t.TempDir()
 	in := filepath.Join(dir, "in", c.Name+".txt")
@@ -236,7 +247,7 @@ func redactSyntheticSeeded(t *testing.T, c Case, scope redactors.SyntheticScope)
 		b.WriteString("type=" + m.Type + " line=" + itoa(m.LineNumber) +
 			" conf=" + formatConf(m.Confidence) + " match=" + m.Text + "\n")
 	}
-	return b.String()
+	return b.String(), string(raw), len(ms)
 }
 
 // A seeded synthetic run over every case, sharing one scope the way a multi-file
@@ -247,7 +258,7 @@ func TestGoldenRedactSyntheticSeededRunIsRepeatable(t *testing.T) {
 		scope := redactors.NewSeededSyntheticScope([]byte(seed))
 		out := make(map[string]string, len(Cases))
 		for _, c := range Cases {
-			out[c.Name] = redactSyntheticSeeded(t, c, scope)
+			out[c.Name], _, _ = redactSyntheticSeeded(t, c, scope)
 		}
 		return out
 	}
