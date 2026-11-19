@@ -94,6 +94,9 @@ func TestOptionalCheckDigit_LabelPlacements(t *testing.T) {
 			[]string{vinWVG + "@85"}},
 		{"CSV camelCase header", "fleetNo,vinNumber,plate\nF001," + vinWVG + ",XX-000-01",
 			[]string{vinWVG + "@85"}},
+		// Flipped from the known limits by #1018: a two-column file whose header cells are short,
+		// digit-free names and whose data holds a digit is a table too, so its header vouches.
+		{"two-column CSV", "vin,plate\n" + vinWVG + ",XX-000-01", []string{vinWVG + "@85"}},
 		{"lowercase VIN", "vin: " + strings.ToLower(vinWVG), []string{strings.ToLower(vinWVG) + "@100"}},
 		// The label word is itself 17 VIN-legal letters; only the value is reported.
 		{"label word before the label", "FAHRGESTELLNUMMER (VIN): " + vinWVG, []string{vinWVG + "@100"}},
@@ -120,7 +123,6 @@ func TestOptionalCheckDigit_StaysUnreported(t *testing.T) {
 		{"bare in a sentence", vinTMB + " logged at the depot", nil},
 		{"label in trailing prose", vinWVG + " is the vehicle identification number", nil},
 		{"later list values", "VINs: " + vinWVG + ", " + vinTMB, []string{vinWVG + "@85"}},
-		{"two-column CSV", "vin,plate\n" + vinWVG + ",XX-000-01", nil},
 		{"XML element", "<VIN>" + vinWVG + "</VIN>", nil},
 		{"HTML table cell", "<td>VIN</td><td>" + vinWVG + "</td>", nil},
 
