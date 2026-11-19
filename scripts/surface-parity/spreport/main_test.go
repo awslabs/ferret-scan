@@ -206,3 +206,29 @@ func TestRedactionCountsRefusedFilesPastTheListCap(t *testing.T) {
 		})
 	}
 }
+
+// A JSON export is held to the number of findings its /scan responses held: an empty or short 200
+// body, and the 400 an old results-posting client got after #988, must fail rather than pass.
+func TestExportCountHoldsTheJSONBodyToTheScans(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "0000.expect"), []byte("3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, format, body string
+		wantFail           bool
+	}{
+		{"all three", "json", `{"results":[1,2,3]}`, false},
+		{"short", "json", `{"results":[1,2]}`, true},
+		{"refusal body", "json", `{"error":"scan_ids is required"}`, true},
+		{"other formats are not counted", "csv", `a,b`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &report{out: bufio.NewWriter(&bytes.Buffer{})}
+			r.exportCount(set{name: "t"}, dir, "0000.false."+tc.format, tc.format, []byte(tc.body), "web")
+			if got := len(r.failures) > 0; got != tc.wantFail {
+				t.Fatalf("failures=%v, want fail=%v", r.failures, tc.wantFail)
+			}
+		})
+	}
+}
