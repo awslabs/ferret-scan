@@ -32,7 +32,7 @@ func sin(base8 string) string {
 	}
 	panic("unreachable")
 }
-func curp(c17 string) string { return c17 + string(curpCheck(c17)) }
+func curp(c17 string) string  { return c17 + string(curpCheck(c17)) }
 func curpValid(c string) bool { return Valid(TypeMXCURP, c) }
 
 // rfc completes the first 12 symbols of a 13-symbol RFC (a company's 12-symbol RFC is padded with a
