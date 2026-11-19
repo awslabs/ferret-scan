@@ -76,5 +76,14 @@ func addScopeMessages(report *GitLabSecurityReport, options formatters.Formatter
 		})
 	}
 
+	// Which configuration governed the run, beside the narrowing it may have caused, and alone when it
+	// narrowed nothing (#1007): a config committed in the scanned tree is TM-13's substitution.
+	if c := s.ConfigLine(); c != "" {
+		msgs = append(msgs, GitLabScanMessage{
+			Level: scanMessageLevelInfo,
+			Value: "ferret-scan: " + strings.TrimPrefix(c, "Config: ") + " governed this scan.",
+		})
+	}
+
 	report.Scan.Messages = append(report.Scan.Messages, msgs...)
 }
