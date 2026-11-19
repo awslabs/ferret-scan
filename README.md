@@ -86,16 +86,18 @@ Docker one-liner (mount the current directory and scan it):
 docker run --rm -v "$PWD:/data" public.ecr.aws/awslabs/ferret-scan:latest --file /data --recursive
 ```
 
+A release publishes the tags `X.Y.Z`, `X.Y` and `latest`; a push to `main` publishes `main` (a development build). The release workflow pushes to `public.ecr.aws/g4m5x5s3/ferret-scan`, the registry's alias form of the same repository: both paths returned the same digest for `latest`, `2.6.0` and `2.6` when read on 2026-11-19. The `ghcr.io/awslabs/ferret-scan` copy the workflow also pushes is private, so use the ECR Public path ([`docs/DOCKER_MULTIARCH.md`](docs/DOCKER_MULTIARCH.md)).
+
 ---
 
 ## What it detects
 
-Nineteen validators, each purpose-built. Enable a subset with `--checks CREDIT_CARD,SECRETS,SSN` or run them all (the default).
+Twenty validators, each purpose-built. Enable a subset with `--checks CREDIT_CARD,SECRETS,SSN` or run them all (the default).
 
 | Validator | What it catches | Notes |
 |---|---|---|
 | `CREDIT_CARD` | Card numbers from 8 brands: Visa, Mastercard, American Express, Discover, JCB, Diners Club, UnionPay, Maestro | Luhn-validated; emits `VISA`, `MASTERCARD`, `AMERICAN_EXPRESS`, `DISCOVER`, `JCB`, `DINERS_CLUB`, `UNIONPAY`, `MAESTRO`; a known test number (the card numbers payment processors publish for their sandboxes, a short test-pattern list, repeating shapes) is still reported, so still redacted, but capped at LOW 15 |
-| `SECRETS` | API keys, tokens, credentials | Provider tokens (AWS long-term `AKIA` and temporary `ASIA` access keys, GitHub, Google Cloud, Stripe, GitLab, Docker Hub, Slack), PEM/PGP private keys, JWTs, AWS secret keys, credentials in URLs (`scheme://user:pass@host`), keyword-labelled values, and entropy analysis. Temporary `ASIA` keys are HIGH beside their secret key or session token and LOW 55 alone; a joined key name (`apikey`, `accesstoken`) counts like `api_key`; an exact-length `sha1-` to `sha512-` integrity digest (lockfile `integrity`, `<script integrity>`, CSP) is skipped |
+| `SECRETS` | API keys, tokens, credentials | Provider tokens with a published prefix, found bare, in prose or under any key (AWS long-term `AKIA` and temporary `ASIA` access keys, GitHub including `github_pat_`, Google Cloud, Stripe, GitLab's thirteen prefixes, Docker Hub, Slack, Hugging Face, Anthropic), PEM/PGP private keys, JWTs, JWK private members, crypt(3)/PHC password hashes, AWS secret keys, credentials in URLs (`scheme://user:pass@host`), keyword-labelled values, and entropy analysis. Temporary `ASIA` keys are HIGH beside their secret key or session token and LOW 55 alone; a joined key name (`apikey`, `accesstoken`) counts like `api_key`; an exact-length `sha1-` to `sha512-` integrity digest (lockfile `integrity`, `<script integrity>`, CSP) is skipped; regexes, paths, expressions, redaction markers and placeholder text are not credentials; values the vendors print in their own documentation (AWS's example secret key, Stripe's documented test keys, Google Authenticator's example TOTP secret) are held at LOW 15 |
 | `SSN` | US Social Security Numbers and IRS ITINs | Domain-aware (HR / Tax / Healthcare context); emits `SSN` and `ITIN` (9XX area, 4th–5th digits 50–65, 70–88, 90–92 or 94–99) |
 | `BANK_ACCOUNT` | Routing numbers, IBANs, SWIFT/BIC | ABA checksum; IBAN registry length + BBAN structure + mod-97 (all 89 SWIFT IBAN Registry countries, compact or grouped in fours); SWIFT format; emits `ABA_ROUTING`, `IBAN`, `SWIFT_BIC`, `US_BANK_ACCOUNT` |
 | `OTP` | 2FA secrets and recovery codes | `otpauth://` URIs, TOTP/HOTP secrets (base32), recovery code blocks; emits `OTPAUTH_URI`, `OTP_SECRET`, `RECOVERY_CODES` |
@@ -106,7 +108,8 @@ Nineteen validators, each purpose-built. Enable a subset with `--checks CREDIT_C
 | `EMAIL` | Email addresses | Emits `BUSINESS` for known SaaS/corporate domains |
 | `PHONE` | Phone numbers | US/Canada (incl. toll-free), UK and European national forms; `+CC` and `00`-prefixed international forms, gated on E.164 country codes; trunk `(0)` forms; `tel:` links and vCard `TEL` values; extensions |
 | `IP_ADDRESS` | IPv4 / IPv6 addresses | Skips RFC1918 / reserved / test ranges; context-keyword gated |
-| `PASSPORT` | Passport numbers | US / UK / CA / EU (letters in either case; a value with a lowercase letter needs an adjacent passport label) + MRZ |
+| `NATIONAL_ID` | Americas national ID numbers | Brazil CPF, Chile RUT, Argentina CUIL, Canada SIN, Mexico CURP; reported only behind the number's own label on the same line and only when its check digit passes; emits `BR_CPF`, `CL_RUT`, `AR_CUIL`, `CA_SIN`, `MX_CURP` |
+| `PASSPORT` | Passport numbers | US / UK / CA / EU (letters in either case; a value with a lowercase letter needs an adjacent passport label); the German, current-Canadian and French shapes, only behind a passport label; MRZ (German `D<<` included) |
 | `VIN` | Vehicle Identification Numbers | ISO 3779; the position-9 check digit is required in North America (`1`–`5`, `7`) and China (`H`, `L`), and elsewhere a VIN without one needs a known manufacturer prefix (WMI) or a VIN label |
 | `PERSON_NAME` | Personal names | Embedded name databases, titles, nobiliary particles, cultural variations |
 | `CLOUD_RESOURCES` | Cloud resource identifiers | AWS ARNs, Azure IDs, GCP, OCI, IBM CRN, Alibaba |

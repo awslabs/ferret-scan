@@ -109,6 +109,30 @@ The web UI supports the same file types as the CLI version:
 - **No Data Retention**: Scan results are displayed in browser only, not stored permanently
 - **Audit Trail**: Comprehensive logging for compliance requirements
 
+## Exporting a scan from a script
+
+`/scan` returns a `scan_id` (32 hex characters) beside `results`, and keeps the scan's findings on the server
+for one hour, under the `ferret_scan_session` cookie it set. `/export` formats those stored findings, so it takes
+the id, not the findings:
+
+```bash
+curl -s -c jar --form "files=@report.txt" --form "confidence=all" http://127.0.0.1:8080/scan -o scan.json
+ID=$(python3 -c "import json; print(json.load(open('scan.json'))['scan_id'])")
+curl -s -b jar -H 'Content-Type: application/json' \
+  -d "{\"format\":\"sarif\",\"scan_ids\":[\"$ID\"]}" http://127.0.0.1:8080/export -o report.sarif
+```
+
+- The body is `{"format": …, "scan_ids": […], "show_match": false, "verbose": false}`; `format` is any of the
+  CLI's seven. Several ids are merged into one report when the scans ran with the same confidence and checks,
+  and refused (400) when they did not.
+- A body that still carries `results` and no `scan_ids` is refused with 400: the server no longer formats
+  findings a client posts back, because that copy lost the explanation, the context keywords and the typed
+  metadata, and a few hundred findings overran the 1 MiB request cap. An id sent without its session cookie, after
+  it expired or after the store evicted it, answers 404: scan again.
+- The report is the CLI's formatter over the findings the scan produced, so the finding rows match what the CLI
+  prints for the same file. It does not yet carry every CLI block (the `scan` scope block and `stats` are
+  absent from `/export` bodies; [#904](https://github.com/awslabs/ferret-scan/issues/904)).
+
 ## Customization
 
 To modify the web UI:

@@ -457,7 +457,7 @@ the order the documents finished. Abridged from a real run (`--file sample.txt
           "strategy": "format_preserving",
           "confidence": 1,
           "line": 4,
-          "placement": { "method": "position_correlation", "score": 0.95 },
+          "placement": { "method": "position_correlation", "correlation": "exact", "score": 0.95 },
           "timestamp": "2026-11-04T15:17:20.288603674Z"
         }
       ],
@@ -479,7 +479,7 @@ the order the documents finished. Abridged from a real run (`--file sample.txt
 | `content_redactions[].requested_strategy` | present only beside `mask`: the strategy the run asked for |
 | `content_redactions[].confidence` | the finding's detection confidence on 0–1: the report's `confidence` / 100 |
 | `content_redactions[].line` | the finding's `line_number`; absent when the finding has none |
-| `content_redactions[].placement` | text files only (and SVG and RTF): how the value was located — `method` `position_correlation` or `simple_text_search`, and `score`, the 0–1 placement score, lower for a fuzzy or corrected position |
+| `content_redactions[].placement` | text files only (and SVG and RTF): how the value was located — `method` `position_correlation` or `simple_text_search`, and `score`, the 0–1 placement score, lower for a fuzzy or corrected position. Beside `position_correlation`, `correlation` names the correlator step that placed it (`exact`, `fuzzy` or `heuristic`), and `corrected` is `true` when the placed position held other text, so the value was found again by searching and the score lowered (x0.7); `corrected` is absent otherwise, and `simple_text_search` has neither |
 | `content_redactions[].target_type`, `target_path` | `parent_document`, or `embedded_media` with the part's name inside the container (`word/media/image1.jpeg`) |
 | `content_redactions[].member_types` | for one write covering an overlapping group of findings, every member's type |
 | `metadata_redactions[]` | metadata **removed** rather than rewritten: one entry per EXIF field an image redaction dropped (`field` is the EXIF name; a PNG's ancillary chunks are one entry, `png_ancillary_chunks`), `action` `removed`, `redacted_value` `null` |

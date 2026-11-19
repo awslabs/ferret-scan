@@ -10,7 +10,7 @@ func (v *Validator) GetCheckInfo() help.CheckInfo {
 	return help.CheckInfo{
 		Name:             "PASSPORT",
 		ShortDescription: "Detects passport numbers from various countries",
-		DetailedDescription: `The Passport check detects passport numbers from various countries including US, UK, Canada, EU, and Machine Readable Zone (MRZ) formats.
+		DetailedDescription: `The Passport check detects passport numbers from various countries including US, UK, Canada, Germany, France, EU, and Machine Readable Zone (MRZ) formats.
 
 It uses pattern matching to identify potential passport numbers and then performs validation checks to determine the confidence level. The validator also analyzes surrounding context to improve accuracy and reduce false positives.
 
@@ -21,14 +21,19 @@ The check looks for country-specific patterns and validates them against known p
 			"UK passport: 9 digits (e.g., 512345678)",
 			"Canadian passport: 2 letters followed by 6 digits (e.g., GK123456)",
 			"EU passport: 2 letters followed by 7 alphanumeric characters (e.g., DE1234567)",
+			"Canadian passport, current shape: 1 letter, 6 digits, 2 letters, behind a passport label",
+			"German passport: a letter from CFGHJKLMNPRTVWXYZ, a digit, then 7 digits or those letters, behind a passport label",
+			"French passport: 2 digits, 2 letters, 5 digits, behind a passport label",
 			"Letters in either case; a value with a lowercase letter (gk123456) needs a passport label right before it, its column header or the line above",
-			"Machine Readable Zone (MRZ) formats, uppercase only",
+			"Machine Readable Zone (MRZ) formats, uppercase only; Germany's issuing-state code D<< is read as well as three-letter codes",
 		},
 
 		SupportedFormats: []string{
 			"US passport format",
 			"UK passport format",
-			"Canadian passport format",
+			"Canadian passport format (older and current shapes)",
+			"German passport format",
+			"French passport format",
 			"EU passport format",
 			"Machine Readable Zone (MRZ) format",
 			"MRZ TD3 format",

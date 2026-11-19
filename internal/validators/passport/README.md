@@ -6,8 +6,8 @@ The Passport Validator detects passport numbers from various countries and forma
 
 - US passport
 - UK passport
-- Canadian passport
-- EU passport (various countries)
+- Canadian passport (older and current shapes)
+- EU passport (various countries); German and French shapes behind a label
 - Machine Readable Zone (MRZ) formats
 
 ## Detection Features
@@ -63,8 +63,8 @@ The validator works by:
 ### Country-Specific Formats
 
 The `country` value in a finding's metadata is the name of the shape that
-matched (`US`, `UK`, `Canada`, `EU`, `MRZ`, `MRZ_TD3`, `MRZ_TD3_L2`), not the
-issuing state.
+matched (`US`, `UK`, `Canada`, `CanadaCurrent`, `Germany`, `France`, `EU`, `MRZ`,
+`MRZ_TD3`, `MRZ_TD3_L2`), not the issuing state.
 
 #### US Passport
 - 1 letter followed by 8 digits (e.g., C12345678)
@@ -81,7 +81,7 @@ issuing state.
 - 2 letters followed by 7 letters or digits (e.g., DE1234567)
 
 #### MRZ Format
-- ICAO 9303 TD3: line 1 (`P<` + 3-letter issuing state + name; `MRZ_TD3` is
+- ICAO 9303 TD3: line 1 (`P<` + 3-letter issuing state, or Germany's `D<<`, + name; `MRZ_TD3` is
   exactly 44 characters, `MRZ` 43 to 45) and line 2 (`MRZ_TD3_L2`: document
   number, dates and personal number, 44 characters, accepted only when all five
   check digits verify)
@@ -113,6 +113,28 @@ s) is never a letter of a passport number.
   (`REDACTED1`) are reported as before.
 - Not covered: a lowercase value whose label comes after it (`gk123456
   (passport number)`), while `GK123456 (passport number)` is reported.
+
+### National shapes behind a label
+
+Three more shapes are as short as an order number, so each is reported only with passport evidence, in
+upper case as well as lower: a passport label right before the value, a passport column header, or a passport
+label on the line above (the rules under [Letter case](#letter-case) apply unchanged).
+
+| `country` | Shape |
+|---|---|
+| `CanadaCurrent` | 1 letter, 6 digits, 2 letters |
+| `Germany` | first character one of `CFGHJKLMNPRTVWXYZ`, second a digit, then 7 characters from the digits and those letters, at least one of them a letter. A `0` in the body, as in numbers issued before 2021, is accepted; a value with a letter second is the EU shape |
+| `France` | 2 digits, 2 letters, 5 digits |
+
+Measured on this build: a value of each shape directly after `Passport Number:` reads 100; a label on the
+line above reads 90; the same values with no label are not reported. A value that fits both the German and
+the current Canadian shape is scored as `CanadaCurrent`, once. The French shape is from France Titres'
+description of the number; the German and current-Canadian shapes are from Wikipedia's articles on the two
+passports, a secondary source. `Germany` names the shape, not the holder's citizenship.
+
+Germany's ICAO issuing-state code is `D<<` (Doc 9303 Part 3), so a German MRZ line 1 (one beginning
+`P<D<<`) is read as `MRZ_TD3` (80) like any other, and a German line 2 is scored like the others (85 with all
+check digits verified).
 
 ## Testing
 
