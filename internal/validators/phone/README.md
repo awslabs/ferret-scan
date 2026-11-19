@@ -75,6 +75,10 @@ document-level +20 a CSV receives cannot lift them:
   evidence on the line outweighs the last of these alone, never the others. The gate adds no
   finding: a number it refuses is reported, at 15, only when one of the validator's patterns
   reports it anyway;
+- 15 for a number in one of the six blocks of 10,000 that ARCEP reserves for audiovisual works
+  ("Numéros pour œuvres audiovisuelles" in its numbering plan): `01 99 00`, `02 61 91`, `03 53 01`,
+  `04 65 71`, `05 36 49` and `06 39 98` followed by any four digits, written nationally without
+  spaces (`0199004718`) or with `+33`/`0033`, `(0)` included;
 - 15 for a number after `:` or `=` that follows a word that is not a phone label, with
   `validation_checks.phone_label_recognized=false`.
 
