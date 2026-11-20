@@ -140,39 +140,6 @@ rules:
         filename: stdin.go
         finding_type: PERSON_NAME
         line_number: "131"
-    - id: SUP-00000057
-      hash: a01c4cb971dc074a91aed310a082f5bf0abadc83663f2ca1031b11866ddb9383 # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: config.yaml
-        finding_type: API_KEY_OR_SECRET
-        line_number: "306"
-    - id: SUP-00000058
-      hash: 5328ffeff9539eb92025a30ab2e345accd32b331d8649f575d9bd5dbc109ee46 # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: config.yaml
-        finding_type: API_KEY_OR_SECRET
-        line_number: "814"
-    - id: SUP-00000059
-      hash: 3290bf979e694bb7c408a2d3df88568b6b80a4f43a74ac6f60cc3bd59af5eb18 # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T13:24:18.343365782Z
-      metadata:
-        confidence: "100.00"
-        filename: PRE_COMMIT_INTEGRATION.md
-        finding_type: API_KEY_OR_SECRET
-        line_number: "431"
     - id: SUP-00000060
       hash: 164ed125ab0e943baa44450aef45dc414be735da4542c11c3e5fe6a8c6f58ec2 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
@@ -250,61 +217,6 @@ rules:
         filename: configuration.md
         finding_type: PERSON_NAME
         line_number: "1074"
-    - id: SUP-00000069
-      hash: e01e926045fee7d8f3ff56f57cb9e8ae070d141591389f005f5c6f17530672df # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
-      metadata:
-        confidence: "100.00"
-        filename: configuration.md
-        finding_type: API_KEY_OR_SECRET
-        line_number: "640"
-    - id: SUP-00000070
-      hash: 7e5705e2af5551d32526a603c2e476519377e7200c8daa26b9ac94abf2a1e9e1 # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
-      metadata:
-        confidence: "100.00"
-        filename: configuration.md
-        finding_type: API_KEY_OR_SECRET
-        line_number: "649"
-    - id: SUP-00000071
-      hash: 2290c7c3509a0865331c3fd7efac330a9fb325dde6dc1940b7c59ba132213ad3 # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
-      metadata:
-        confidence: "100.00"
-        filename: configuration.md
-        finding_type: API_KEY_OR_SECRET
-        line_number: "650"
-    - id: SUP-00000072
-      hash: e070d4ef839e33a88282095ad479b3f04d55eeb73d76b01a690d6a1d48f47053 # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
-      metadata:
-        confidence: "100.00"
-        filename: configuration.md
-        finding_type: API_KEY_OR_SECRET
-        line_number: "651"
-    - id: SUP-00000073
-      hash: c0ad4d8ca071fe2463509c502be48d05c211677d5923308b8742d7e5eee45eab # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-12T00:49:05.328335413Z
-      metadata:
-        confidence: "100.00"
-        filename: configuration.md
-        finding_type: API_KEY_OR_SECRET
-        line_number: "965"
     - id: SUP-00000074
       hash: 31598d2e47a6a0af3580c6cd299851a48365dcb39ebcc7158c8ca16a062c373a # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
@@ -503,17 +415,6 @@ rules:
         filename: SCORE_CORPUS.md
         finding_type: IP_ADDRESS
         line_number: "306"
-    - id: SUP-00000092
-      hash: 89e6cbadf805ca56e1e1f3b246034c466d542f374fc45dbc553b8727a624f492 # pragma: allowlist secret
-      reason: "detector FP: #930"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "90.00"
-        filename: SCORE_CORPUS.md
-        finding_type: NPI
-        line_number: "221"
     - id: SUP-00000093
       hash: dc2737db9a795d33d9b06efe9b70e1e812804a38f12871f7d7360575e130afb9 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
@@ -635,28 +536,6 @@ rules:
         filename: README-Enhanced-Metadata.md
         finding_type: SSN
         line_number: "112"
-    - id: SUP-00000105
-      hash: 3d1d40966d5dad4b7ce49770ab76f9ce82f3affcb9e532d6fe206bdff7278b6d # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-12T00:49:05.328335413Z
-      metadata:
-        confidence: "95.00"
-        filename: README-Suppressions.md
-        finding_type: API_KEY_OR_SECRET
-        line_number: "186"
-    - id: SUP-00000106
-      hash: d793e98bb3c0a0fc2b9d4468e91773598fcb5425f2c9c995a60d522cd23c17c6 # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-12T00:49:05.328335413Z
-      metadata:
-        confidence: "95.00"
-        filename: README-Suppressions.md
-        finding_type: API_KEY_OR_SECRET
-        line_number: "203"
     - id: SUP-00000107
       hash: d95aa66f1dcd740766570d0b87123452b071b400e8f0a9162a8ba0915b027a68 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
@@ -789,17 +668,6 @@ rules:
         filename: README-Redaction.md
         finding_type: PERSON_NAME
         line_number: "94"
-    - id: SUP-00000119
-      hash: 241b88e43e19aa9faad01e983159542718cc029cf45110c7560cd3ae50649a31 # pragma: allowlist secret
-      reason: "detector FP: #935"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-12T00:49:05.328335413Z
-      metadata:
-        confidence: "92.00"
-        filename: README-Redaction.md
-        finding_type: PERSON_NAME
-        line_number: "319"
     - id: SUP-00000120
       hash: 1829140fd84704e17c12d5f6e31f3e2b8a1d5c695745976aadcee3ba5ecb52f0 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
@@ -844,28 +712,6 @@ rules:
         filename: README-Redaction.md
         finding_type: SSN
         line_number: "92"
-    - id: SUP-00000125
-      hash: c89054983e3965b34ef2fbd6ab8de68268548dbf3fd48c3e8be0c7aa3631d64e # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "90.00"
-        filename: ferret-windows.yaml
-        finding_type: API_KEY_OR_SECRET
-        line_number: "163"
-    - id: SUP-00000127
-      hash: a0b3994b716bdf26284a1e5e2ea63e20879a413f84a82962c095c60144bf5483 # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-12T00:49:05.328335413Z
-      metadata:
-        confidence: "90.00"
-        filename: ferret.yaml
-        finding_type: API_KEY_OR_SECRET
-        line_number: "171"
     - id: SUP-00000128
       hash: fcd89f959f1a08e79d80ed809f7e8ec69cc9f91fe9ff24c59c6e612748c24eb8 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
@@ -1273,17 +1119,6 @@ rules:
         filename: consolidated.go
         finding_type: INTELLECTUAL_PROPERTY
         line_number: "25"
-    - id: SUP-00000173
-      hash: 4dc14be2cfb1175df38a784f3f27ee6dca8cbe8dda81b103339c95c4f6a20576 # pragma: allowlist secret
-      reason: "fixture: example value in a source comment"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: redactor.go
-        finding_type: PERSON_NAME
-        line_number: "197"
     - id: SUP-00000174
       hash: 0e607c1bf3aa40c618244e499663d0b1b89fbbf4ca4a02eb40738ae827451bee # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
@@ -1460,28 +1295,6 @@ rules:
         filename: overlap.go
         finding_type: PASSPORT
         line_number: "168"
-    - id: SUP-00000193
-      hash: 47050039cad3e0a288093b633c702e71c1818d75bb59e5fca27ea4c8e15deda1 # pragma: allowlist secret
-      reason: "detector FP: #935"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "92.00"
-        filename: overlap.go
-        finding_type: PERSON_NAME
-        line_number: "134"
-    - id: SUP-00000194
-      hash: 909144bb76df98fe1ddef051e7f9e3eddf458df17a80dbd85a7d66aba25be077 # pragma: allowlist secret
-      reason: "detector FP: #935"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "91.00"
-        filename: overlap.go
-        finding_type: PERSON_NAME
-        line_number: "135"
     - id: SUP-00000195
       hash: c686823370658c49d6f2eed6f7491634d600a71b9f433ad6bc0edc06ccd24141 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
@@ -1493,28 +1306,6 @@ rules:
         filename: overlap.go
         finding_type: US_STREET_ADDRESS
         line_number: "134"
-    - id: SUP-00000196
-      hash: 00f15b6306b36687882efa5be3c688eac740bfb7cfb4d36a70fa45ef74a6f11d # pragma: allowlist secret
-      reason: "detector FP: #935"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "92.00"
-        filename: redactor.go
-        finding_type: PERSON_NAME
-        line_number: "238"
-    - id: SUP-00000197
-      hash: 79d9355d934079411806e66566f9ad4a3cf51b32610097bb2300aa6e82574b2b # pragma: allowlist secret
-      reason: "detector FP: #935"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "91.00"
-        filename: redactor.go
-        finding_type: PERSON_NAME
-        line_number: "239"
     - id: SUP-00000198
       hash: 81c9d275f8d24fc6e00f68e9e19367edf4e92fff01fe9a599ce14b71ffadeb90 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
@@ -1526,17 +1317,6 @@ rules:
         filename: redactor.go
         finding_type: PASSPORT
         line_number: "1073"
-    - id: SUP-00000199
-      hash: 8311b44cce0cad7d7425cb68c04c64432743c7c30977e81b07186f31d982b1ff # pragma: allowlist secret
-      reason: "detector FP: #935"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:02:39.325106773Z
-      metadata:
-        confidence: "100.00"
-        filename: redactor.go
-        finding_type: PERSON_NAME
-        line_number: "955"
     - id: SUP-00000200
       hash: b21bcc7f42f5f0bb10ef1980820678d477f57547a8e2ad0bdc551a6ecd8451b7 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
@@ -2131,17 +1911,6 @@ rules:
         filename: README.md
         finding_type: PERSON_NAME
         line_number: "176"
-    - id: SUP-00000255
-      hash: 2d9b96655880dbd8774e992abe84269bbe0fda0c6be4e4382ac6a6284b839f31 # pragma: allowlist secret
-      reason: "detector FP: #930"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "90.00"
-        filename: detector.go
-        finding_type: NPI
-        line_number: "81"
     - id: SUP-00000256
       hash: 41a4d436a6ebfdd476a215dc8ea4e7dfdfc49f1a38ad604dc7efa55dd9397be2 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
@@ -2945,17 +2714,6 @@ rules:
         filename: CHANGELOG.md
         finding_type: PERSON_NAME
         line_number: "1622"
-    - id: SUP-00000338
-      hash: 00bfee9b165dee428191ed5ebec40d136f95edfd49e8b502f249138b86466535 # pragma: allowlist secret
-      reason: "detector FP: #935"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:12:56.967261125Z
-      metadata:
-        confidence: "91.00"
-        filename: CHANGELOG.md
-        finding_type: PERSON_NAME
-        line_number: "1877"
     - id: SUP-00000342
       hash: 0e4ef97a83db9cf5ebfaa6c4e3a2ad99d69fb5ed2eb1d815d103fa2614e1f8ad # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
@@ -3055,39 +2813,6 @@ rules:
         filename: epoch.go
         finding_type: NPI
         line_number: "10"
-    - id: SUP-00000353
-      hash: 410a32b6fcda57ccadf8f199b897d6871aefd2376a2a27e8f9c700ba19e4e953 # pragma: allowlist secret
-      reason: "detector FP: #930"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: epoch.go
-        finding_type: NPI
-        line_number: "17"
-    - id: SUP-00000354
-      hash: 7c84a57bac5a587396f8bf3c5310361884ba5d72d24291df6661bccdc372e4ad # pragma: allowlist secret
-      reason: "detector FP: #930"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "90.00"
-        filename: epoch.go
-        finding_type: NPI
-        line_number: "52"
-    - id: SUP-00000355
-      hash: 473864528b133fcecca01e5fa2b87853e61668dee3c44f7f950ec3cb7a69b828 # pragma: allowlist secret
-      reason: "detector FP: #930"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "90.00"
-        filename: epoch.go
-        finding_type: NPI
-        line_number: "53"
     - id: SUP-00000356
       hash: 3389f19fd5038b120e764723f2469718539c275600a4945d1dd2641982bd109d # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
@@ -3110,39 +2835,6 @@ rules:
         filename: epoch.go
         finding_type: NPI
         line_number: "80"
-    - id: SUP-00000358
-      hash: ffed26991e1299ba242327c16ad0e6ca24960fa12d3a2b0300f62bf732f5bca4 # pragma: allowlist secret
-      reason: "detector FP: #930"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "90.00"
-        filename: epoch.go
-        finding_type: NPI
-        line_number: "81"
-    - id: SUP-00000359
-      hash: a2d314c20f44af8b5dfa882ef50f7e82f522a0a52b6b9d24074fc8baff690b83 # pragma: allowlist secret
-      reason: "detector FP: #930"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "90.00"
-        filename: epoch.go
-        finding_type: NPI
-        line_number: "88"
-    - id: SUP-00000360
-      hash: 6bfc55afa312f8811efbd24a0d5a3c7000f44819c2441bad1402bfcd0c9a289f # pragma: allowlist secret
-      reason: "detector FP: #930"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "90.00"
-        filename: epoch.go
-        finding_type: NPI
-        line_number: "109"
     - id: SUP-00000361
       hash: 1aca818c49af727638712b3d3f1c808cbd4f78b300ff6a68b026fde6da6ce0ce # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
@@ -3253,28 +2945,6 @@ rules:
         filename: validator.go
         finding_type: MEDICARE_MBI
         line_number: "643"
-    - id: SUP-00000373
-      hash: 64debf25a8a9fc43b6d7e283e2b3fa399617f1143e76889af48842b13bd6895e # pragma: allowlist secret
-      reason: "detector FP: #930"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "90.00"
-        filename: validator.go
-        finding_type: NPI
-        line_number: "686"
-    - id: SUP-00000374
-      hash: d54b2455dc5b99a01d61dfb9d1f89993b6158106d3da80bf34909f9d9d3b955f # pragma: allowlist secret
-      reason: "detector FP: #930"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "90.00"
-        filename: validator.go
-        finding_type: NPI
-        line_number: "722"
     - id: SUP-00000375
       hash: a677f387bc21315411a05a897e074100c5583cfd4cc7d3892dcf61a1c9a48325 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
@@ -4012,50 +3682,6 @@ rules:
         filename: technical_terms.go
         finding_type: PERSON_NAME
         line_number: "321"
-    - id: SUP-00000454
-      hash: ece0b34620620cfde84e44665716845255475b5e1545b308c4aaeeb14dbe32f0 # pragma: allowlist secret
-      reason: "detector FP: #936"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: technical_terms.go
-        finding_type: PERSON_NAME
-        line_number: "340"
-    - id: SUP-00000455
-      hash: a46ea0443ef887bfccee7397d0079fe4e51098bfbc34aa336fe4be45c2f33f24 # pragma: allowlist secret
-      reason: "detector FP: #936"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "91.00"
-        filename: technical_terms.go
-        finding_type: PERSON_NAME
-        line_number: "340"
-    - id: SUP-00000456
-      hash: 67ebe8ac0714f6619e5d4d87360c71db56bd722fc75a5ac3d0dfd163f9a954fe # pragma: allowlist secret
-      reason: "detector FP: #936"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: technical_terms.go
-        finding_type: PERSON_NAME
-        line_number: "340"
-    - id: SUP-00000457
-      hash: 2f2dfcc999f33b8e625f5716c78ed6b89534a0fa18c2206b9c4b6165b30d4f45 # pragma: allowlist secret
-      reason: "detector FP: #936"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "93.00"
-        filename: technical_terms.go
-        finding_type: PERSON_NAME
-        line_number: "340"
     - id: SUP-00000458
       hash: c8487b9bc20dc6969c955e17532e669bccd03e4f07b0a6c504cf918692d65616 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
@@ -4078,94 +3704,6 @@ rules:
         filename: technical_terms.go
         finding_type: PERSON_NAME
         line_number: "356"
-    - id: SUP-00000460
-      hash: 3fd2e36f4c71a129b5aa98bbca3a7f64c2a9a829d6b077ab1c13078340c38c18 # pragma: allowlist secret
-      reason: "detector FP: #936"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "97.00"
-        filename: technical_terms.go
-        finding_type: PERSON_NAME
-        line_number: "357"
-    - id: SUP-00000461
-      hash: 2adc39f63acbbf6ce73dbe61f85f3207bdb97a8ffee5fc5ce075c20bb350141c # pragma: allowlist secret
-      reason: "detector FP: #936"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "97.00"
-        filename: technical_terms.go
-        finding_type: PERSON_NAME
-        line_number: "357"
-    - id: SUP-00000462
-      hash: a4c84e3ed1ab20fa678e92ccd6be3def0fea354eacd015bbb0e60bff0427308b # pragma: allowlist secret
-      reason: "detector FP: #936"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "92.00"
-        filename: technical_terms.go
-        finding_type: PERSON_NAME
-        line_number: "379"
-    - id: SUP-00000463
-      hash: d853917917b3d9ee2e89e74cc08f2f1dc51a683911cd2c7e50a790b5a007bcf2 # pragma: allowlist secret
-      reason: "detector FP: #936"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "92.00"
-        filename: technical_terms.go
-        finding_type: PERSON_NAME
-        line_number: "379"
-    - id: SUP-00000464
-      hash: 24f41ee8311e431a82c6d18f8257cf4b21d62238f89d75471e7c8e9546c951e9 # pragma: allowlist secret
-      reason: "detector FP: #936"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "92.00"
-        filename: technical_terms.go
-        finding_type: PERSON_NAME
-        line_number: "379"
-    - id: SUP-00000465
-      hash: 569d73e73166511794f9d5152cac4ac945582c5f067428b026cfac58ec73f005 # pragma: allowlist secret
-      reason: "detector FP: #936"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "99.00"
-        filename: technical_terms.go
-        finding_type: PERSON_NAME
-        line_number: "379"
-    - id: SUP-00000466
-      hash: 5b563456b7096636909b5200d9b47985dc17796e6709d7bb7ee45fe9460be4b2 # pragma: allowlist secret
-      reason: "detector FP: #936"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "99.00"
-        filename: technical_terms.go
-        finding_type: PERSON_NAME
-        line_number: "379"
-    - id: SUP-00000467
-      hash: ae2d58fedaaf5d13fd31df44573977fafa33e42f07bcf5d0f2a3798bda50c208 # pragma: allowlist secret
-      reason: "fixture: example value in a pattern comment or keyword table of the validator"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "92.00"
-        filename: technical_terms.go
-        finding_type: PERSON_NAME
-        line_number: "380"
     - id: SUP-00000469
       hash: 1f29819969026b4b911bcbf2916d0085087b55603b4a2d3e9666201fd982dbf4 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
@@ -4243,28 +3781,6 @@ rules:
         filename: help.go
         finding_type: PHONE
         line_number: "30"
-    - id: SUP-00000476
-      hash: e7bccfac51f136990941de64ec2c94012c87378b66fde7a3c98385e00ff128a0 # pragma: allowlist secret
-      reason: "fixture: example value in a pattern comment or keyword table of the validator"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: e164_codes.go
-        finding_type: PHONE
-        line_number: "32"
-    - id: SUP-00000477
-      hash: ef4d93771b12cc7622eb49a690c8d127e4b6b10b83edd23ba2bbe2b28a64c9c5 # pragma: allowlist secret
-      reason: "fixture: example value in a pattern comment or keyword table of the validator"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: e164_codes.go
-        finding_type: PHONE
-        line_number: "33"
     - id: SUP-00000478
       hash: c32eb1c24ec1b942960020f1a422ef92af7c1325324d429ffbddafdabd89c264 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
@@ -4408,28 +3924,6 @@ rules:
         filename: international.go
         finding_type: PHONE
         line_number: "27"
-    - id: SUP-00000491
-      hash: ef837aac805fa272b886976c242ac4f6a99209994466e934eac33fcf513e6b5b # pragma: allowlist secret
-      reason: "fixture: example value in a pattern comment or keyword table of the validator"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: international.go
-        finding_type: PHONE
-        line_number: "28"
-    - id: SUP-00000492
-      hash: 57603c2f7af7a85cf44423da098637c827e6dcaede84ee308fc5b3b6fd0c4018 # pragma: allowlist secret
-      reason: "fixture: example value in a pattern comment or keyword table of the validator"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "95.00"
-        filename: international.go
-        finding_type: PHONE
-        line_number: "122"
     - id: SUP-00000496
       hash: 7b8be50018b35ce641284bd8985c7c7cbd7f8116924626501ad4543697b2894f # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
@@ -4496,39 +3990,6 @@ rules:
         filename: README.md
         finding_type: API_KEY_OR_SECRET
         line_number: "35"
-    - id: SUP-00000502
-      hash: cd89c7a8099a40aeb31668ca713fae09afe2bfb601b9cd4bd2d1481454d8fae3 # pragma: allowlist secret
-      reason: "fixture: validator README example of what this check reports"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "97.00"
-        filename: README.md
-        finding_type: API_KEY_OR_SECRET
-        line_number: "217"
-    - id: SUP-00000503
-      hash: 932ffd8b546b32e0be388ad0bdc1135193f653525f98cc123def9fd201498547 # pragma: allowlist secret
-      reason: "fixture: validator README example of what this check reports"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "97.00"
-        filename: README.md
-        finding_type: API_KEY_OR_SECRET
-        line_number: "218"
-    - id: SUP-00000504
-      hash: 3a9a3d14afb12209f6a46d923651865291f4bc690f8d786b9a4636a06525511a # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "97.00"
-        filename: README.md
-        finding_type: API_KEY_OR_SECRET
-        line_number: "242"
     - id: SUP-00000505
       hash: 276aa81d69bccf2b47447416dba9dd1ba08da5fb2f9d3a89b960b4ac5f226300 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
@@ -4584,17 +4045,6 @@ rules:
         filename: README.md
         finding_type: API_KEY_OR_SECRET
         line_number: "612"
-    - id: SUP-00000510
-      hash: db6da9b70fd0d47f59a14e18d6417373638c8e68e65c94da52039c2f64c5c12a # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "100.00"
-        filename: README.md
-        finding_type: GITLAB_TOKEN
-        line_number: "539"
     - id: SUP-00000511
       hash: 1612b0bee8edf171e1156f005fca3b68397dc6141353171a01b4beddb3393ce4 # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
@@ -4672,50 +4122,6 @@ rules:
         filename: validator.go
         finding_type: PERSON_NAME
         line_number: "383"
-    - id: SUP-00000518
-      hash: 4af0a76ac76c7236326495dbdfc6bc2caa666e569cb577583c702198950c25d5 # pragma: allowlist secret
-      reason: "detector FP: #936"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "92.00"
-        filename: validator.go
-        finding_type: PERSON_NAME
-        line_number: "856"
-    - id: SUP-00000519
-      hash: 8e8b9c51b64cc660afee1bf84d4eb1c7801c487b54696e275221c3956cecca3f # pragma: allowlist secret
-      reason: "detector FP: #936"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "99.00"
-        filename: validator.go
-        finding_type: PERSON_NAME
-        line_number: "856"
-    - id: SUP-00000520
-      hash: 94b55660b530d7cf51824e665bf1b3953d3607b4b728d0b1c558af702f9e66a9 # pragma: allowlist secret
-      reason: "detector FP: #936"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "92.00"
-        filename: validator.go
-        finding_type: PERSON_NAME
-        line_number: "878"
-    - id: SUP-00000521
-      hash: c5fb3f45f443a9caa7e0dafc51fb48626213a6c9ad916df3b7189c275e1bd6a2 # pragma: allowlist secret
-      reason: "detector FP: #936"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "99.00"
-        filename: validator.go
-        finding_type: PERSON_NAME
-        line_number: "878"
     - id: SUP-00000522
       hash: 87b58ed234f06211358e96d68322ae02a63b16939514dff78012ea9a00034e72 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
@@ -5343,39 +4749,6 @@ rules:
         filename: validator.go
         finding_type: BUSINESS
         line_number: "5187"
-    - id: SUP-00000582
-      hash: e470053d069595210f8bae06bc138ba258d4aec69ce93bed5c26c12d0fdaa3eb # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "100.00"
-        filename: config_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "124"
-    - id: SUP-00000583
-      hash: 33af8807bb48e72be39821ef1dd9e4e60c6cfcb9c147c49dd17c3abf4edff2c4 # pragma: allowlist secret
-      reason: "detector FP: #932"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: structure_ratio_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "53"
-    - id: SUP-00000584
-      hash: 3721c0abfbf72eba8ad6ea9b98b0aea557706121d82f63857b09c028374d794b # pragma: allowlist secret
-      reason: "detector FP: #932"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: structure_ratio_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "54"
     - id: SUP-00000585
       hash: 6c2245b3fc63b297e38498129c3c876237b7f315e06ec9e7779d9e18d1c37ac0 # pragma: allowlist secret
       reason: "fixture: test input the test asserts is detected or redacted"
@@ -5519,17 +4892,6 @@ rules:
         filename: reading_order_test.go
         finding_type: API_KEY_OR_SECRET
         line_number: "121"
-    - id: SUP-00000601
-      hash: 7518bfe8e1077fa5b74b007136c9212eccd5e19cf5899e151562e6eae61b7579 # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: overlap_group_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "106"
     - id: SUP-00000602
       hash: f7ba995e3bcf5a736e5b3609eb9e85b7403ebcc886ac8285593a9a8c654d727b # pragma: allowlist secret
       reason: "fixture: test input the test asserts is detected or redacted"
@@ -5552,17 +4914,6 @@ rules:
         filename: text_fallback_test.go
         finding_type: API_KEY_OR_SECRET
         line_number: "25"
-    - id: SUP-00000604
-      hash: 56fe537b8bb5a6abefc4ea0b35d1c330d29a6bf691022a2655f5911f6d36b1fb # pragma: allowlist secret
-      reason: "detector FP: #930"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "95.00"
-        filename: text_fallback_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "25"
     - id: SUP-00000605
       hash: 3f79291fbdb689deaf36a9cf37c0540439e591d7f2ea50e8436fb33eed746851 # pragma: allowlist secret
       reason: "fixture: test input the test asserts is detected or redacted"
@@ -5574,182 +4925,6 @@ rules:
         filename: scope_test.go
         finding_type: GITHUB_TOKEN
         line_number: "280"
-    - id: SUP-00000606
-      hash: d385a7a5969129a6ed7e21fb031c0a2cc2aaa02647a538ac3698b67a2d10c824 # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: edge_whitespace_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "46"
-    - id: SUP-00000607
-      hash: 1ecbcbb1784f80f4c5c484cf718cb95fd47b652912aba5c88f27ba365f794019 # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: edge_whitespace_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "47"
-    - id: SUP-00000608
-      hash: 3c2a044c96718fe4acfebb98305d9595744054df6f0b75c34016ef0ba5b9de61 # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: edge_whitespace_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "48"
-    - id: SUP-00000609
-      hash: 0fcc5261369f695206f5dd15d7fe78d046609f6345031ea818a1eeecaa7743aa # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: edge_whitespace_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "49"
-    - id: SUP-00000610
-      hash: cac06801fb3ae94fbb51ccfcf35b436b2c350b340f6fd121034cb7d6928cffd9 # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: edge_whitespace_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "50"
-    - id: SUP-00000611
-      hash: a2b880e2a4bd34430dd424345f6e6b2ddaec37dcec6a9d69477e93763365898f # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: edge_whitespace_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "53"
-    - id: SUP-00000612
-      hash: 88d2136daf780c076e61554b68f41ba4e6fdc29e8f03b4937aec456ca2b15fc2 # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: edge_whitespace_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "54"
-    - id: SUP-00000613
-      hash: 974641685b2f532eb942aabb293e1735fe2ef154fc716e367dc5b5020a71da58 # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: edge_whitespace_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "55"
-    - id: SUP-00000614
-      hash: a8bca20b7c6413ebe63fc547a04548b1f2a7cdb1a279368e9be13bd779cfad10 # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: edge_whitespace_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "56"
-    - id: SUP-00000615
-      hash: 33dcef483c2fa9fb3aa25c633073dfc661b86735d93f25d6a098fa4f529972ed # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: edge_whitespace_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "57"
-    - id: SUP-00000616
-      hash: 1b05b12edfb6117205b686ad819bfa95c7685125e4094ecb549aea81aa5e511d # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: edge_whitespace_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "61"
-    - id: SUP-00000617
-      hash: ce1d1345757225072d40a083bf4da6d2cb929df33ee718f089add3d607f995ad # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: edge_whitespace_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "62"
-    - id: SUP-00000618
-      hash: 0963c48e311680ddc98f5fd24a282c4b62b8bf43bd73e1356a33467b528b5bb9 # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: edge_whitespace_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "63"
-    - id: SUP-00000619
-      hash: 99f77f053cc49b1cb0c4028f6fa32996b3b224eb01009461a05ff044fa358863 # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: edge_whitespace_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "64"
-    - id: SUP-00000620
-      hash: 76a8af9b33c317bb91bf8a14bbc095c76fe1adb12d86039d8a547d36beeacba7 # pragma: allowlist secret
-      reason: "detector FP: #933"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: edge_whitespace_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "65"
-    - id: SUP-00000621
-      hash: 598f36283bf77b28377142b6c903872109577fc69491896bcf34fb69221cd23b # pragma: allowlist secret
-      reason: "fixture: test input the test asserts is detected or redacted"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: explain_rationale_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "73"
     - id: SUP-00000622
       hash: 0550aaa67e35e87af6508c9c704bf225ec7bc54518412a2c6f7c8281a297001a # pragma: allowlist secret
       reason: "fixture: test input the test asserts is detected or redacted"
@@ -5948,61 +5123,6 @@ rules:
         filename: duplicate_emit_test.go
         finding_type: API_KEY_OR_SECRET
         line_number: "127"
-    - id: SUP-00000640
-      hash: 50c1f651717f83234a28e3dfe49c74791a058d406f0d0f98b5e9f5996fb5dc53 # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "100.00"
-        filename: joined_stem_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "122"
-    - id: SUP-00000641
-      hash: 8462ea6e1ab0cf794d17d606a70e98f3bc2fcb9e1d6143d9d43371dae5ed9adc # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "100.00"
-        filename: joined_stem_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "122"
-    - id: SUP-00000642
-      hash: bccc80c0af10433e6ecc7cfe555d39391293f19a67fcc4e3ebce53bdb281cda3 # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "100.00"
-        filename: joined_stem_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "122"
-    - id: SUP-00000643
-      hash: a3baed45dab7475f11e6470cd2879ddf4272c3640496d3ccaf9c98ee0c0e64a4 # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "100.00"
-        filename: joined_stem_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "128"
-    - id: SUP-00000644
-      hash: 886cfa037a3d2a82a6f9aa150bd20e0cf0c3e33ffb526455ce400fc981f03e33 # pragma: allowlist secret
-      reason: "detector FP: #932"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "95.00"
-        filename: file_wide_context_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "40"
     - id: SUP-00000707
       hash: f4967a2da71abeb5107d54f08955bfc09c414925f0aaf338e5debb82f1f2a7c9 # pragma: allowlist secret
       reason: "fixture: the #785 six-line file's callback tokens, which TestTrailingNewlineDoesNotDecideWhetherAFileReports asserts are detected"
@@ -6080,17 +5200,6 @@ rules:
         filename: mask_run_test.go
         finding_type: API_KEY_OR_SECRET
         line_number: "115"
-    - id: SUP-00000650
-      hash: 830716c9f2be426f1d1892d3ac6464354f80f30ef517e34965a0a5f60a4a85c1 # pragma: allowlist secret
-      reason: "detector FP: #931"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "95.00"
-        filename: source_syntax_complexity_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "82"
     - id: SUP-00000651
       hash: 25173cb1e1d30f990e1bd2f089303f5f937f10f5187ee003f17486124ac90eaf # pragma: allowlist secret
       reason: "fixture: test input the test asserts is detected or redacted"
@@ -6201,28 +5310,6 @@ rules:
         filename: checknames_detection_test.go
         finding_type: API_KEY_OR_SECRET
         line_number: "32"
-    - id: SUP-00000661
-      hash: 68306cd19dc26fd3159d629ad9b9ff765b67b83d32d854f20d71460ea83e7f97 # pragma: allowlist secret
-      reason: "detector FP: #930"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "100.00"
-        filename: hostile_runes_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "194"
-    - id: SUP-00000662
-      hash: eeec50967a4b11571fb56a5f65bea0f25661739762ac04c37cad3027dfdf5eec # pragma: allowlist secret
-      reason: "detector FP: #930"
-      enabled: true
-      created_at: 2026-11-09T19:55:18.450560174Z
-      last_seen_at: 2026-11-09T19:55:28.035423036Z
-      metadata:
-        confidence: "97.00"
-        filename: golden_test.go
-        finding_type: API_KEY_OR_SECRET
-        line_number: "51"
     - id: SUP-00000663
       hash: 5ca8103a0301616a68c95a020782042cedc8c73c7b90b28166fdb34e1b1b1673 # pragma: allowlist secret
       reason: "fixture: test input the test asserts is detected or redacted"
@@ -6476,17 +5563,6 @@ rules:
         filename: CHANGELOG.md
         finding_type: PASSPORT
         line_number: "903"
-    - id: SUP-00000686
-      hash: 81f892524bd6953d9df6e03e4276acb054120099e5a892fb31f8ada6b713d1f6 # pragma: allowlist secret
-      reason: "detector FP: #935"
-      enabled: true
-      created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-11T14:12:56.967261125Z
-      metadata:
-        confidence: "92.00"
-        filename: CHANGELOG.md
-        finding_type: PERSON_NAME
-        line_number: "309"
     - id: SUP-00000687
       hash: ee354947c1b45a41c10dea1d85ef0466a815fbcaeecbcc5b70cb6e4e041a37a5 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
