@@ -621,6 +621,8 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 	var suppressedMatches []detector.SuppressedMatch
 	suppressedCount := 0
 	var incompleteFiles []parallel.FileDiagnostic
+	var skippedPaths []string // benign refusals: a type nothing could have read, counted as skipped
+	scanStart := time.Now()
 
 	for i, fileHeader := range files {
 		displayName := fileHeader.Filename
@@ -650,6 +652,8 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 						Reason:   refusal.reason,
 						Cause:    refusal.cause,
 					})
+				} else {
+					skippedPaths = append(skippedPaths, refusal.name)
 				}
 				continue
 			}
@@ -741,7 +745,11 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 	// complete scan's JSON byte-identical to before.
 	incompleteReason := summarizeIncompleteFiles(incompleteFiles, len(files))
 
-	scope := ws.webScanScope(cfg, checks, confidenceFilter)
+	scope, disabledTypes, configWarnings := ws.webScanScope(cfg, checks, confidenceFilter)
+	stats := webScanStats(len(files), allMatches, suppressedCount, incompleteFiles, skippedPaths, confidenceFilter)
+	stats.DisabledDetectionTypes = disabledTypes
+	stats.ConfigWarnings = configWarnings
+	stats.Duration = time.Since(scanStart).Seconds()
 
 	// Keep this scan's result for /export (#923), as detector values: the export formats exactly these.
 	session, err := scanSession(responseWriter, request)
@@ -753,6 +761,8 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 		matches:    allMatches,
 		settings:   confidence + "|" + checks,
 		confidence: confidenceFilter,
+		scope:      scope,
+		stats:      stats,
 	})
 	if err != nil {
 		ws.sendErrorWithStatus(responseWriter, "Failed to keep the scan result", http.StatusInternalServerError)
@@ -1066,9 +1076,9 @@ func (ws *WebServer) runFullCLIScan(ctx context.Context, filePath, originalFilen
 // report of the same findings; and the whole result set had to fit the 1 MiB JSON cap, so 782
 // findings answered HTTP 400. Now the request carries ids, the cap holds, and the formatter receives
 // exactly the matches and confidence filter the scan produced: the body is
-// formatters.Export of that scan, as the CLI renders it. It carries no scope block or stats yet:
-// internal/formatters/scope_sites_test.go allowlists this function as having no scan of its own, and
-// moving it off that list (with Scan and Stats set) is a follow-up outside this package.
+// formatters.Export of that scan, as the CLI renders it. It also carries the scan's own scope block
+// and stats, which /scan kept beside the matches (#904): the scope of the first scan (the scans share
+// settings, checked below) and the stats of all of them added.
 //
 // A request still carrying "results" is refused with a message saying what to send: formatting
 // caller-supplied findings is the lossy path this replaced. Nothing here logs a matched value.
@@ -1132,12 +1142,16 @@ func (ws *WebServer) handleExport(responseWriter http.ResponseWriter, request *h
 	// One report has one confidence filter and one scope, so scans run with different settings are
 	// not merged into one.
 	var matches []detector.Match
-	for _, s := range scans {
+	stats := scans[0].stats
+	for i, s := range scans {
 		if s.settings != scans[0].settings {
 			ws.sendError(responseWriter, "scan_ids name scans run with different confidence or checks; export them separately")
 			return
 		}
 		matches = append(matches, s.matches...)
+		if i > 0 {
+			stats = addScanStats(stats, s.stats)
+		}
 	}
 
 	// No SourceRoot, as in handleScan: every Filename is already the uploaded name. See
@@ -1147,6 +1161,8 @@ func (ws *WebServer) handleExport(responseWriter http.ResponseWriter, request *h
 		Verbose:         exportRequest.Verbose,
 		NoColor:         true, // Always disable color for exports
 		ShowMatch:       exportRequest.ShowMatch,
+		Scan:            scans[0].scope,
+		Stats:           &stats,
 	}
 
 	// No suppressed findings, as before and as the CLI without --show-suppressed: the UI lists them

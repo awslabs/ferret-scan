@@ -28,10 +28,9 @@ import (
 // with the reason. Adding one needs a reason a reviewer can check.
 var formatterOptionsSitesAllowed = map[string]string{
 	"internal/web/server.go:handleScan": "the /scan response is a ScanResponse built field by field from the " +
-		"formatted JSON, and it has no slot for scan or stats yet; filling them here would reach no client " +
-		"(follow-up: ScanResponse.Scan)",
-	"internal/web/server.go:handleExport": "/export re-renders findings the browser posts back; it runs no scan " +
-		"of its own, so it has no scope to report",
+		"formatted JSON (only results and suppressed are read back), so scan and stats set on these options " +
+		"would reach no client; the scope goes out as ScanResponse.Scan (#988) and the scope and stats are " +
+		"kept for /export, which sets both (#904)",
 }
 
 func TestEveryCLIFormatterOptionsSetsScanAndStats(t *testing.T) {

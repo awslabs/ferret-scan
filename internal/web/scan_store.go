@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/formatters"
 )
 
 // scanStore keeps the result of each /scan the server ran, so /export can format THAT result rather
@@ -52,6 +53,11 @@ type storedScan struct {
 	// because one report has one confidence filter and one scope.
 	settings   string
 	confidence map[string]bool
+	// scope and stats are what the scan reported about itself (#904): /export puts them in the report
+	// as the CLI's --file run does. Scans exported together share settings, so they share scope; their
+	// stats are added.
+	scope *formatters.ScanScope
+	stats formatters.ScanStats
 }
 
 const (
