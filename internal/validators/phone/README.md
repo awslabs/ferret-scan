@@ -9,6 +9,9 @@ international formats, with various separators (spaces, dashes, dots, parenthese
 - US/Canada toll-free (800, 833, 844, 855, 866, 877, 888)
 - UK domestic and international (`0207 123 4567`, `+44 207 123 4567`)
 - European and global mobile formats (`+33 1 42 34 56 78`, `+49 30 12345678`)
+- French national numbers written as a `0`, a digit 1-9 and four pairs with one separator, a space, a
+  dot or a dash (`01 42 34 56 78`, `01.42.34.56.78`, `01-42-34-56-78`), scored as the compact
+  `0142345678` is; a mixed separator (`01 42.34 56-78`) or a sixth pair is not reported
 - International display forms in the `+CC`, `00CC` and `(+CC)` forms, with a `(0)` trunk slot, a
   bracketed area code or `/` (`+44 (0)20 7946 0958`, `0044 20 7946 0958`, `(+44) 20 7946 0958`,
   `+44 20/7946 0958`), held to the E.164 gate described below
@@ -81,7 +84,8 @@ document-level +20 a CSV receives cannot lift them:
 - 15 for a number in one of the six blocks of 10,000 that ARCEP reserves for audiovisual works
   ("Numéros pour œuvres audiovisuelles" in its numbering plan): `01 99 00`, `02 61 91`, `03 53 01`,
   `04 65 71`, `05 36 49` and `06 39 98` followed by any four digits, written nationally without
-  spaces (`0199004718`) or with `+33`/`0033`, `(0)` included;
+  spaces (`0199004718`), in pairs with one separator (`01 99 00 47 18`) or with `+33`/`0033`, `(0)`
+  included;
 - 15 for a number after `:` or `=` that follows a word that is not a phone label, with
   `validation_checks.phone_label_recognized=false`.
 
