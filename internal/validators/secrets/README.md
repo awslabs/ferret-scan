@@ -685,3 +685,58 @@ The Secrets Validator integrates seamlessly with:
 - **Web UI**: Accessible through the web interface
 - **Configuration**: Supports profile-based configuration
 - **Suppressions**: Compatible with the suppression system
+
+## HTTP-auth credentials, key containers and password hashes (#902 Part C)
+
+Three kinds of credential carry no `password=` stem next to the value, so the keyword paths never saw
+them. Each has its own source in this package. Each is additive: it is dropped when a finding another
+path reported already covers its span, so the existing finding keeps its type, text and line. Each
+scores its candidates as structural, where the grammar is the corroboration: threshold 50, exempt from
+the 55 cap on an unlabelled value, and a test or dev marker lowers the score without dropping the
+finding.
+
+**HTTP-auth credentials** (`http_auth.go`, `detection_method` `http_basic_auth`, `npmrc_auth`,
+`http_bearer_auth`, `http_auth_scheme`, `netrc_password`, `curl_userinfo`). The reported text is the
+credential as written, never the decoded `user:pass`.
+
+| carrier | what is reported |
+|---|---|
+| `Basic <base64>` and the `.npmrc` `_auth=` line | the base64 blob, when it decodes to printable ASCII `user:pass` whose password (or user, when the password is empty) is a plausible secret |
+| `Bearer <token>`, and `Token <token>` on a `Authorization` or `Proxy-Authorization` line | a token of at least 16 characters and at least 3.5 bits of Shannon entropy per byte |
+| `.netrc` `password <value>` | the value, on a line with `machine`, `login`, `default`, `account` or `macdef`, or in a file named `.netrc`, `_netrc` or `netrc` |
+| `curl -u`, `--user`, `-U`, `--proxy-user` | the password half of `user:password` |
+
+Kept quiet: `WWW-Authenticate: Basic realm=…` and `AuthType Basic` (no blob); `${VAR}`, `$VAR`,
+`{{VAR}}` and `<placeholder>` in place of the value (the token charset excludes them); a Basic blob that
+decodes to a placeholder, to a pair with no colon, or to a pair with a negative keyword in it, which is
+why the worked example in RFC 7617 is not reported; a Bearer value shorter than 16 characters or with the
+entropy of a word ("bearer bonds"); and a `password <word>` in prose with no `.netrc` keyword on the line.
+
+**Private-key containers outside 5-dash PEM** (`private_key_containers.go`, `detection_method`
+`putty_private_key`, `armoured_private_key`, `openvpn_static_key`, `age_secret_key`). The whole container
+is the finding, scored like the PEM arm (95), typed `SSH_PRIVATE_KEY` except for the OpenVPN and age
+keys, which are `API_KEY_OR_SECRET`.
+
+| container | what is reported |
+|---|---|
+| PuTTY `.ppk` (any `PuTTY-User-Key-File-<N>` version) | the header through the `Private-Lines` record's base64 lines and the `Private-MAC` trailer, with real line breaks, CRLF, indentation, or a literal `\n` escape between lines (a `.ppk` inside a JSON string) |
+| 4-dash armour (ssh.com `SSH2 ENCRYPTED PRIVATE KEY`), or 5-dash armour whose `… PRIVATE KEY` label the PEM pass does not know | BEGIN line through the END line that carries the same label |
+| OpenVPN static key and `tls-crypt-v2` client or server key | the armoured block |
+| age identity | `AGE-SECRET-KEY-1` and its 58 bech32 characters, bounded by non-alphanumerics; the checksum is not verified |
+
+Kept quiet: a PEM `PUBLIC KEY` block, an `ssh-ed25519 …` public line, an `age1…` recipient; a PuTTY header
+quoted in prose, or a header and public lines with no `Private-Lines` record after it; `openvpn
+--genkey` in a README; a BEGIN line with no matching END; an age identity one character short or glued to
+a word. A PEM the existing pass reports is not reported twice, and a `.ppk` held whole in a JSON string
+under `"private_key"` keeps that finding.
+
+**Password hashes** (`password_hashes.go`, `detection_method` `password_hash`, `password_hash_record`):
+the grammar table is in "Password hashes and JWK private members" above. Kept quiet: the shell shapes that share a hash's `$` framing
+(`"$1$2"`, `$USER$HOST$SUFFIX`, a Makefile `$$a$$a`), `$6$` named in a sentence, shadow and passwd
+records whose password field is `x`, `*`, `!` or `!!`, a hash one character short of its scheme's tail
+length or with the tail running on, a hash behind a Make `$$` escape, and a value that is a variable
+reference or `<redacted>`.
+
+These sources run once per line (or once per file, for the containers) and are anchored by
+`TestValidatorComplexityIsSubQuadratic` in `internal/goldencorpus/` (#1023), one row each for Basic and
+Bearer headers, PuTTY `Private-Lines`, a long `$6$` line, and a JWK with many members.
