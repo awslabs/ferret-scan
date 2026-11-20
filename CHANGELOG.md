@@ -18,6 +18,624 @@ Entries for the next release live as one file per pull request in [`changelog.d/
 and become a dated section below this heading when the release tag is pushed;
 `make changelog-preview` shows that section now. Nothing else goes under this heading.
 
+## [v2.6.1] - 2026-11-20
+
+### ⚠️ Breaking Changes
+
+- **creditcard (types):** a whole card track (Track 1, Track 2, EMV tag 57) is now reported as
+  `CARD_TRACK_DATA` and a labelled card security code as `CARD_SECURITY_CODE`, instead of the PAN's
+  brand type (`VISA`, ...) and `CREDIT_CARD` with `metadata.card_frame`
+  ([#905](https://github.com/awslabs/ferret-scan/issues/905)). `--checks CREDIT_CARD` still reports
+  both, `card_frame` is unchanged and `card_type` still names the brand; a frame finding no longer
+  carries `vendor`. The `simple` strategy writes `[CARD_TRACK_DATA-REDACTED]` and
+  `[CARD_SECURITY_CODE-REDACTED]` for them instead of `[CREDIT-CARD-REDACTED]`. A suppression rule
+  written in v2.6.0 for a frame or code finding hashes the old type and stops matching (38 of the
+  issue's 118 findings): regenerate it. Brand findings for the PAN itself are unchanged.
+
+### 🔒 Security
+
+- **build (go 1.27.4):** move every Go pin to **1.27.4**, which carries the fix for the one open Go
+  1.27.3 standard-library advisory, GO-2026-6859 / CVE-2026-97054 in `net/http`: for HTTP/1 servers,
+  when `MaxBytesReader`'s limit is exceeded, `Connection: close` was set without synchronization and
+  could race with a header the handler sets, crashing the server with a runtime panic
+  ([#1013](https://github.com/awslabs/ferret-scan/issues/1013)). The web server reads `/export` and
+  suppression bodies through `MaxBytesReader`, so it is in the advisory's class. The two open
+  code-scanning alerts on `main`, #3844 (Trivy) and #3846 (Grype), are readings of the
+  `ghcr.io/awslabs/ferret-scan:main` image whose embedded `stdlib` is go1.27.3; the fixed versions
+  both name are 1.26.11 and 1.27.4. `.go-version` is the single source: `release.yml`,
+  `pypi-publish.yml` and `go-test.yml` install it, and `scripts/go-version.sh all` propagated it to
+  `go.mod` (unchanged at `go 1.27`), `.gitlab-ci.yml` and the Dockerfile builder, whose
+  `golang:1.27.4-alpine` digest `sha256:70bd7dde…` was resolved from and checked against
+  `public.ecr.aws`. `make check-go-version` is green on the branch. The `:main` image and its two
+  alerts refresh on the merge to `main`; the published release artifacts stay on 1.27.3 until the
+  next tag is cut from this pin.
+- **web (session cookie):** the `ferret_scan_session` cookie, which scopes stored scans to one
+  browser session for `/export`, now carries the `Secure` attribute when the request arrived over
+  HTTPS: a TLS connection to the server, or a reverse proxy that terminated TLS and sends
+  `X-Forwarded-Proto: https` ([#1014](https://github.com/awslabs/ferret-scan/issues/1014), CodeQL
+  `go/cookie-secure-not-set`). Over plain HTTP the cookie is unchanged, so the documented
+  `http://localhost` path (the loopback bind reached directly or through an SSH port-forward) keeps
+  working in every browser; Safari refuses to store a `Secure` cookie from `http://localhost`, and on
+  a loopback connection nothing is in transit for the flag to protect. `HttpOnly` and
+  `SameSite=Strict` are as before.
+
+### 🚀 Features
+
+- **pkg/scan**: `RedactFile` on a format that refuses the requested strategy (synthetic on legacy
+  `.doc`/`.xls`/`.ppt`, audio or video) now returns an error for which
+  `errors.Is(err, scan.ErrStrategyNotSupported)` is true, so a library caller can pick another
+  strategy without matching the message. Every other failure leaves it false (a cancelled scan is
+  `ErrIncomplete` only), and the message text is byte-identical to v2.6.0's.
+  ([#863](https://github.com/awslabs/ferret-scan/issues/863))
+- **nationalid:** a new `NATIONAL_ID` check reports five Americas national identification numbers
+  under types of their own: Brazil's CPF (`BR_CPF`), Chile's RUT/RUN (`CL_RUT`), Argentina's CUIL
+  and personal CUIT (`AR_CUIL`), Canada's Social Insurance Number (`CA_SIN`) and Mexico's CURP
+  (`MX_CURP`). A value is reported only beside its own label on the same line and only when its
+  check digit and structure pass; a valid value with no label is not reported. Before this, the
+  #884 new-hire file kept all five numbers byte for byte in its redacted copy. Redaction masks every
+  letter and digit and keeps the separators (`format_preserving`), or writes a replacement in the
+  same shape that fails the check digit, so the copy never re-detects (`synthetic`).
+  ⚠ `--checks all` (the default) now runs `NATIONAL_ID`, so labelled CPF, RUT, CUIL, SIN and CURP
+  values in a scanned tree are new HIGH findings, and a `--checks` list or config naming checks
+  explicitly does not get them until it adds `NATIONAL_ID`.
+  ([#884](https://github.com/awslabs/ferret-scan/issues/884))
+- **nationalid:** the `NATIONAL_ID` check gains a sixth type, Mexico's RFC (`MX_RFC`, a company's 12
+  characters or a person's 13), verified by the SAT's check-digit table; the SAT's two generic RFCs
+  (`XAXX010101000`, `XEXX010101000`) are reported at LOW (15). A labelled value of the right shape
+  whose check digit fails is now reported at LOW (40) with `checksum_valid=false`, instead of not at
+  all, so it is still redacted. A Chilean RUT is read with no separators, under its label.
+  ⚠ New findings: labelled check-failing CPF, RUT, CUIL, SIN, CURP and RFC values, and every RFC under
+  an `RFC` label, appear in a scan (LOW, so a `--confidence high,medium` gate does not see them), and
+  `--checks NATIONAL_ID` output gains the `MX_RFC` type and the `checksum_valid` metadata key.
+  ([#884](https://github.com/awslabs/ferret-scan/issues/884))
+- **passport (national shapes):** `PASSPORT` reports a German passport number with a digit second
+  (`C1234567K`, and older numbers with a `0` such as `C01X00T47`), the current Canadian series of
+  1 letter, 6 digits and 2 letters (`R123456KX`) and the French 2 digits, 2 letters and 5 digits
+  (`12CF34567`, the layout France Titres (ANTS) states), at 100 under `Passport Number:`, in prose
+  (`my passport no is ...`) and in a passport CSV column, and at 90 under a label on the line above
+  ([#888](https://github.com/awslabs/ferret-scan/issues/888)). All three need the passport label
+  right before the value, in any letter case: with only the existing context rules 12 of the
+  issue's 12 national decoys (`passport scanner model L1024N160`, `Passport renewal invoice
+  24FR00317`, ...) reported at 77.5-100; behind the label, none. A value that fits both the German
+  and the Canadian shape (`R123456KX`) is the Canadian bucket's. A German number with a letter
+  second stays `EU`. ⚠ `metadata.country` gains three values, `Germany`, `CanadaCurrent` and
+  `France`; it names the shape bucket, not the issuing state. Clean files can report new findings.
+- **secrets (HTTP auth carriers):** detect credentials in HTTP authentication carriers that were
+  previously unreported, so `--enable-redaction` rewrites them instead of exiting 0 with the value
+  in cleartext ([#902](https://github.com/awslabs/ferret-scan/issues/902), Part A): `Authorization`
+  and `Proxy-Authorization` `Basic` (base64 `user:pass`, decoded only to validate and never
+  disclosed) and `Bearer`/`Token` headers, the `.npmrc` `_auth=` line, the `.netrc` `password` field
+  and `curl -u user:pass`. On the issue's 23-file reproduction these reported nothing on v2.5.3 and
+  now report each planted credential at 85-100 (`http_basic_auth`/`http_bearer_auth`/`npmrc_auth`/
+  `netrc_password`/`curl_userinfo`); a base `simple` and `format_preserving` redaction run left 4 of
+  4 planted values in cleartext before and 0 after. The detectors are structural: a span already
+  reported by a provider literal or the keyword path (a `Bearer ghp_<...>` run, a quoted
+  `auth_token = "Bearer <jwt>"`) keeps that path's type and single finding. A high-entropy value on
+  an `Authorization:` line is now corroborated by the `authorization` keyword, so for example
+  `{"Authorization": "<token>"}` reports HIGH where it was LOW (55); the added findings can change
+  `--pre-commit-mode` exit codes.
+- **sarif (finding identity fingerprint):** every SARIF result, suppressed results included, now
+  carries the finding's identity under `partialFingerprints`, as `ferretFindingIdentity/v1`: a SHA-256
+  over the current suppression-hash formula's identity composite with the line number left out, so the
+  value survives edits that only move the finding to another line. An external suppression store or
+  report differ keyed on it keeps matching a moved finding instead of resurrecting it. Everything else
+  that is identity participates (type, trimmed line text, file basename, context windows, matched
+  value); confidence stays out, as for rule hashes. Identical repeated lines share one fingerprint
+  (combine it with the result's location to tell copies apart). The value is an unsalted digest
+  emitted for every finding, so a report carrying it can be tested offline against candidate values
+  for low-entropy types: treat a SARIF report with the sensitivity of its findings. There is no
+  opt-out. A formula change adds `ferretFindingIdentity/v2` beside the `/v1` key rather than changing
+  its meaning. Designed and first implemented by @nikmeiser
+  ([#983](https://github.com/awslabs/ferret-scan/issues/983)).
+
+### 🐛 Bug Fixes
+
+- **Redaction audit log: `placement` names how a text value was located.** For text files (and SVG
+  and RTF) each `content_redactions[].placement` gains `correlation` (`exact`, `fuzzy` or
+  `heuristic`, present when `method` is `position_correlation`) and `corrected: true` when the placed
+  position held other text and was found again by searching. The issue's `dup.txt` (one card twice
+  on a line) logged `score` 0.8 and 0.56 and nothing else; it now says `fuzzy` and `fuzzy`,
+  `corrected`. Additive: `method` and `score` are unchanged. A registry oracle and a declared-field
+  guard now check every registered redactor's audit log against the run
+  ([#865](https://github.com/awslabs/ferret-scan/issues/865)).
+- **cli (`--generate-suppressions`):** a regenerate that wrote no rule file now exits 1 and says so
+  with an `Error:` line, on `--file` and on `--stdin` (gateway included)
+  ([#880](https://github.com/awslabs/ferret-scan/issues/880)). Since #893 a rule file that does not
+  parse is never rewritten, but the run printed `Warning: Failed to generate suppression rules: …
+  could not be parsed …` and exited 0, so a CI job regenerating its baseline read the refusal as
+  success. Measured on main with the issue's reproduction: rc 0 on `--file` and `--stdin`, text and
+  json, and on the `--stdin --enable-redaction` gateway; now rc 1 on all five, the rule file still
+  byte-identical, and the findings report rendered as before. A save that fails for another reason
+  exits 1 the same way. A non-zero exit the run already had (pre-commit findings, a tool error,
+  `--fail-on-incomplete`) is kept, and a rule file that does not exist yet is still created at rc 0.
+  ⚠ A script that ran `--generate-suppressions` over a malformed rule file and relied on exit 0 now
+  fails; fix the file or move it aside.
+- **secrets:** provider tokens with a published prefix are reported by their own bytes, bare, in prose, under `cfg = "…"`, in JSON under a neutral key and after `x-api-key:` (#881). New provider rows: GitHub fine-grained `github_pat_`, Hugging Face `hf_`, Anthropic `sk-ant-api03-` and `sk-ant-admin01-`, Stripe restricted `rk_live_` and `rk_test_`, Slack `xapp-`, and the rest of GitLab's token-prefix table (`gloas-`, `gldt-`, `glrt-`, `glrtr-`, `glcbt-`, `glptt-`, `glft-`, `glimt-`, `glagent-`, `glwt-`, `glsoat-`, `glffct-`). Slack `xoxb-` ids may be 11 to 13 digits and `xoxp-` ids 3 to 13. Each prefix cites the vendor page that publishes it in `internal/validators/secrets/provider_rules.go`. Rows added here whose body has no vendor-published length require a digit or an upper-case letter in the body, so a lower-case slug after the prefix is not reported.
+  ⚠ Findings for these tokens now carry the provider's type where one exists (`GITHUB_TOKEN`, `GITLAB_TOKEN`, `SLACK_TOKEN`, `STRIPE_API_KEY`) at 93–95 instead of `API_KEY_OR_SECRET` at 55–100, and Hugging Face and Anthropic keys are reported as `API_KEY_OR_SECRET` at 92 (they have no type of their own yet), so a suppression rule or a `--confidence` threshold keyed to the old type or score may need review.
+- **suppressions (rules that matched nothing):** a scan now says when an enabled suppression rule for a
+  file it examined in full matched no finding, which happens when the finding moved, changed or was
+  removed ([#885](https://github.com/awslabs/ferret-scan/issues/885)). One stderr line,
+  `Note: N enabled suppression rule(s) for files scanned in this run matched no finding (…): <ids>.
+  Run --generate-suppressions to re-anchor the ones whose finding only moved.`, on `--file` and
+  `--stdin`, and `stats.suppression_rules_unmatched` in the json and yaml reports (absent when there is
+  none). Measured with #885's fixture (5 rules, then one line inserted at the top): main reported
+  `active=5 suppressed=0` and named nothing on either path; now both name the 5 rules and count them,
+  at the same exit code. A rule for a file the run did not read, or of a type a narrowed run did not
+  look for, is not counted, and a `--generate-suppressions` run does not name the rules it re-anchored
+  or migrated to the current hash formula. On the `--stdin --enable-redaction` gateway, whose stderr is
+  the findings document, the count rides in the document and the note is not printed.
+- **redaction (synthetic, exhausted family):** a file refused because the synthetic strategy ran out
+  of distinct replacements for one value family is now reported under its own cause, `synthetic
+  replacement space exhausted`, in every format's unredacted disclosure (the text report's cause
+  group, `unredacted[].cause` in json and yaml, the csv `Not Redacted Reason`, and the junit, sarif
+  and gitlab-sast messages), instead of the generic `redaction refused`
+  ([#886](https://github.com/awslabs/ferret-scan/issues/886)). The cause is read from the
+  redactor's typed error (`errors.Is(err, redactors.ErrSyntheticSpaceExhausted)`), not from its
+  wording. Nothing else changes: the file is still refused, still counted in `files_not_redacted`,
+  and `--fail-on-incomplete` still exits 3. ⚠ A consumer that matches the cause strings sees a new
+  value.
+- **cli (`--stdin --debug`):** `--stdin --debug` and `--file - --debug` now print the validators' own
+  debug lines, as `--file --debug` does ([#887](https://github.com/awslabs/ferret-scan/issues/887)).
+  `core.ScanContent` and `core.ScanFile` built their validators without an observer, so a
+  validator's debug output was never written. Measured on main over a one-line copyright notice:
+  `--file --debug` printed 4 `[DEBUG]` lines, `--stdin --debug` 0; now `--stdin --debug` prints the
+  intellectual-property validator's 3-line legal-notice summary and its observer detail. The fourth
+  `--file` line, `[DEBUG] Parallel processing`, describes the file pipeline, which stdin does not use.
+  Without `--debug` nothing changes. A `pkg/scan` caller that sets `Debug` now also gets the
+  validators' observer lines, on its `LogWriter`.
+- **cli (`--stdin --generate-suppressions`):** on the `--stdin --enable-redaction` gateway, whose stderr
+  is the findings document, `--generate-suppressions` no longer writes its "Updated suppression rules: …"
+  lines ahead of that document ([#887](https://github.com/awslabs/ferret-scan/issues/887)). Measured on
+  main with `--format json` and two findings: stderr began with that line and did not parse as JSON, and
+  with no finding it held a bare "No findings to generate suppression rules for" where the gateway
+  otherwise writes nothing; now stderr is the JSON document (or empty), as `2> findings.json` expects,
+  and the rule file is written as before. Everywhere stderr is a human channel the lines are unchanged,
+  and a failure to write the rule file is still printed. The generating run's findings,
+  `stats.suppressed`, exit code and rules were already those of `--file` and are unchanged.
+- **passport (MRZ):** a German passport MRZ, whose issuing state is `D<<` (ICAO Doc 9303 Part 3
+  gives Germany the one-letter code `D`), is now reported on line 1 as well as line 2
+  ([#888](https://github.com/awslabs/ferret-scan/issues/888)). Line 1 carries the holder's name and
+  matched nothing, so under `--enable-redaction` it stayed in clear while line 2 was masked; it now
+  scores 80 as `MRZ_TD3`, like the `FRA` twin. A German line 2 scores 85 like `FRA`'s and `CAN`'s
+  instead of 75. Identity-card MRZs (TD1, TD2) are still not reported as `PASSPORT`.
+- **secrets**: stored password hashes are now reported as `API_KEY_OR_SECRET` with `detection_method`
+  `password_hash`, wherever they are written: crypt(3) `$1$`, `$apr1$`, `$5$`, `$6$` (with or without
+  `rounds=`), bcrypt `$2a$/$2b$/$2y$`, yescrypt `$y$`, scrypt `$7$`, PHC argon2 and pbkdf2, Django
+  `pbkdf2_sha256$`/`argon2$`/`bcrypt_sha256$`, LDAP `{SSHA}`-style and MySQL `*`+40 hex, in shadow and
+  htpasswd records, kickstart, cloud-init, `.env`, JSON, SQL, Dockerfile and bare lines. A
+  traditional 13-character DES crypt is reported (`password_hash_record`) as field 2 of a shadow or
+  passwd record or in an htpasswd file. A quoted hash is no longer dropped when its salt starts with
+  a letter (it read as a shell variable): in the issue's salt batches 6 of 120 were reported, now 120
+  of 120. A text that is exactly one hash grammar now scores as a specific pattern, so a hash an
+  existing path already reported keeps its type, text, line and `detection_method` and may score
+  higher (a quoted `password: "$6$..."` with a digit-led salt: 90 to 100). Lookalikes such as `"$USER$HOST$SUFFIX"`, `$1$2`
+  and locked `!`/`*` shadow fields report nothing. ([#902](https://github.com/awslabs/ferret-scan/issues/902))
+- **secrets**: the private members of a JSON Web Key (`d`, `p`, `q`, `dp`, `dq`, `qi`, `k` in an
+  object with a known `"kty"`) are reported with `detection_method` `jwk_private_member` at 60 or
+  more; they were seen only by the quoted-entropy path, capped at 55 (LOW). A member that path already
+  reported keeps its type, text and line. Public members (`n`, `e`, `x`, `y`) are unchanged.
+  ([#902](https://github.com/awslabs/ferret-scan/issues/902))
+- **secrets**: private keys written outside 5-dash PEM are now reported: PuTTY `.ppk` files (any
+  version, encrypted or not, indented, CRLF or `\n`-escaped in a JSON string) and ssh.com `---- BEGIN
+  SSH2 ... PRIVATE KEY ----` blocks as `SSH_PRIVATE_KEY`, any other 4/5-dash `... PRIVATE KEY` armour
+  label as `SSH_PRIVATE_KEY`, and OpenVPN static / tls-crypt-v2 keys and age identities as
+  `API_KEY_OR_SECRET`, each with its own `detection_method`. In the issue's reproduction the four
+  container files go from no finding to 95-100. A PEM written on one line (space-joined or a JSON
+  string) is reported once instead of 2-3 times; the multi-line finding is the one kept, so a
+  suppression rule written for a dropped copy goes stale. A finding whose whole text is such a
+  container keeps its type, text and line and now scores like a PEM (a `.ppk` under
+  `"private_key"`: 72 to 100). ([#902](https://github.com/awslabs/ferret-scan/issues/902))
+- **config warnings, `--debug`:** a `Warning: config value …` about a value read from a profile's
+  `validators:` block now names the profile in its path, as the unknown-key warning does
+  (`profiles.zz.validators.cloud_resources.custom_patterns[0]`); before, it read like a value from
+  the base config. ⚠ A value that is bad in both the base block and the profile is now two warnings, one naming
+  each block, where it was one. `--debug` now writes the validators' configure-time lines
+  (`Cloud Resource Validator initialized: … N custom patterns`, the internal-URL pattern counts) on
+  `--file` and `--stdin`; the observer was attached after the validators had been configured, so they
+  were never written
+  ([#903](https://github.com/awslabs/ferret-scan/issues/903), the profile label and box 8).
+- **pkg/scan (`RedactFile`):** `RedactFileResult` gains `ConfigWarnings`, the configured values under
+  `validators:` the redaction could not use, in the form and order `Result.ConfigWarnings` gives
+  ([#903](https://github.com/awslabs/ferret-scan/issues/903)). `core.RedactFile` reported them, but
+  `scan.RedactFile` dropped them, so a caller whose pattern RE2 rejects got a redacted copy that looked
+  complete although the value that pattern was meant to find was never looked for. The field is a
+  pointer, nil when every value was usable, so `RedactFileResult` stays comparable. Additive: no
+  existing field or signature changes.
+- **cli (`--stdin`, config value warnings):** `--stdin` now prints the
+  `Warning: config value <path>: <problem> — <effect>` line `--file` prints for a value under
+  `validators:` its validator cannot use, and the report carries the same lines as data
+  ([#903](https://github.com/awslabs/ferret-scan/issues/903)). Measured on main over 8 bad configs
+  (`cloud_resources`, `intellectual_property`, `social_media`): `--file` printed all 8 and `--stdin`
+  none, in default mode, `--quiet` and `--pre-commit-mode`; now `--stdin` prints the same 8 lines. json
+  and yaml reports gain `stats.config_warnings` and sarif gains
+  `invocations[].toolConfigurationNotifications[]`, on `--file` and `--stdin`, so the `--stdin
+  --enable-redaction` gateway, whose stderr is the findings document, carries the warning in that
+  document instead of dropping it (0 of 8 on main, 7 of 8 now; the eighth row has no finding, so no
+  document is written). Both appear only when a value was unusable: a usable config's report keeps
+  every byte. Findings and exit codes are unchanged.
+- **redaction (card tracks):** `format_preserving` and `synthetic` no longer keep a Track 1's
+  cardholder name (11 of the issue's 11 Track 1 files kept it; now 0), and `synthetic` no longer
+  writes a Luhn-valid PAN into a frame: over 10 synthetic runs of the issue's 40 files, re-scanning
+  the copies reported 24 card findings on v2.6.0 and 0 now. Synthetic also redacts the 11 files with a
+  labelled security code, which it refused before (`files_not_redacted` 11 to 0)
+  ([#905](https://github.com/awslabs/ferret-scan/issues/905)).
+- **explain (`--explain`):** a `CARD_TRACK_DATA` finding's rationale and drafted suppression reason
+  now read "Flagged as card track data" and "Placeholder/example: card track data …" instead of
+  "a card track data" ([#905](https://github.com/awslabs/ferret-scan/issues/905)).
+  `CARD_SECURITY_CODE` keeps "a card security code". Findings, scores and exit codes are unchanged.
+- **redaction (Office/OpenDocument values across text nodes):** a value the scanner reports across a
+  boundary between text nodes of an `.xlsx`/`.xlsm`, `.pptx`/`.pptm` or OpenDocument file is now
+  rewritten in every node it covers, and a copy that would still carry one is refused instead of
+  written ([#914](https://github.com/awslabs/ferret-scan/issues/914)). The scanner joins a slide's runs
+  and an OpenDocument paragraph or cell with a space and a sheet's cells with a tab, so a name in one
+  paragraph and a word in the next read as one PERSON_NAME and three numeric cells as one PHONE; the
+  redactor looked for the value inside one node, found none, rewrote nothing and reported success.
+  Measured on v2.6.0 over the public corpus: 65 such values left in the copies of four files, each
+  written at exit 0 with nothing in `stats.files_not_redacted`; now 0, under `simple` and
+  `format_preserving`. `simple` writes its token in the first node and removes the rest of the value
+  from the others; a same-length mask is cut at the node boundaries, so a masked cell keeps its width.
+  A covered worksheet cell is rewritten as an inline string, so a shared string other cells show is
+  not edited. Every copy is now read back through the scanner's own Office reader before it is
+  written; a value it still finds (one spanning a Word `<w:tab/>`, for instance, which is not
+  rewritten yet) refuses the file as `reported value not found in the writable bytes`, so it is listed
+  in `stats.files_not_redacted`, the not-redacted warning prints, and `--fail-on-incomplete` exits 3.
+  Findings are unchanged (golden corpus and `make score` identical).
+- **office (text extraction, redaction):** a paragraph is now a boundary the validators respect. The
+  Office reader ended a slide's paragraph and an OpenDocument paragraph with a space, so a name at the
+  end of one paragraph and a capitalised word at the start of the next were reported as one
+  `PERSON_NAME` (`<first> <last> English`); it now ends them with a newline. Runs inside one paragraph
+  and an `.ods`/`.ots` sheet's cells stay joined by a space, and `.docx`/`.xlsx` are unchanged. ⚠ The
+  line numbers of findings in `.pptx`/`.pptm`/`.odp`/`.odt`/`.ott` files change (a slide was one line;
+  it is now one line per paragraph), so a baseline or suppression keyed on a line number in those files
+  is re-anchored; findings that crossed a paragraph change or disappear. The redactor's boundary map
+  follows the reader. Part of
+  [#914](https://github.com/awslabs/ferret-scan/issues/914).
+- **redaction (legacy .doc/.xls/.ppt):** a reported number, date or flag stored as a typed property
+  (a custom property of type Number is a VT_I4, Date a VT_FILETIME) is now overwritten with zeros in
+  its property set, and the copy is checked before it is written: a reported value the redactor
+  finds in no stream, or one still readable after the overwrite, refuses the file with the cause in
+  `stats.files_not_redacted`, the not-redacted warning and a failing `--fail-on-incomplete`. Such a
+  value has no text in the stream, so it was never overwritten and the copy was reported as
+  redacted; on the public `govdocs1--000696.doc` a 10-digit VT_I4 custom property was reported again,
+  byte for byte, by a re-scan of the copy under both strategies. That re-scan now reports 0 of the
+  original 26 findings (was 1, plus 6 findings on masked fields). A property value that is only the
+  `*` mask is no longer collected as metadata, so a redacted copy no longer yields
+  `Author: *****`-style findings ([#915](https://github.com/awslabs/ferret-scan/issues/915)).
+- **redaction (legacy .doc/.xls/.ppt, format_preserving):** every occurrence of a reported value is
+  now overwritten, overlapping ones included. The overwrite resumed after the bytes it had just
+  written, so an occurrence starting inside the previous one was skipped; `simple`'s mask destroyed
+  it anyway, but the format-preserving rendering keeps the value's last characters, and the skipped
+  occurrence could be left exactly as it was while the file was reported as redacted. On the public
+  `poi--PPT95.ppt` a 9-digit value reported as SSN, stored in a repeating binary pattern, survived
+  18 times in the `format_preserving` copy; it now survives 0 times, and the `simple` copy is
+  byte-identical to before ([#916](https://github.com/awslabs/ferret-scan/issues/916)).
+- **web (`/scan`):** a scan that runs longer than 30 seconds now gets its response instead of an
+  empty reply. The server's 30-second write timeout started when the request headers were read, so it
+  also covered reading and scanning the upload, and a longer scan found it already expired: on a
+  29,938,764-byte CSV the CLI reported 8,812 findings in 41.5 s while `/scan` answered
+  `curl: (52) Empty reply from server` after 39.4 s. `/scan` now starts the 30-second write budget
+  when its response starts, so the same upload returns HTTP 200 with all 8,812 findings; the read
+  timeouts are unchanged ([#922](https://github.com/awslabs/ferret-scan/issues/922)).
+- **web: `/export` exports the scan the server ran.** It used to rebuild findings from the JSON the
+  browser posted back, which carries neither the explanation, nor the context keywords, nor typed
+  metadata: in the parity test 18 of 28 exported bodies lost the explanation, 6 the context keywords
+  and 2 the verbose validation block, and because every result travelled in one request under the
+  1 MiB body cap, 782 findings answered HTTP 400. `/scan` now keeps its result server-side (per
+  browser session, an hour at most, bounded in count and size) and returns a `scan_id`; `/export`
+  takes `scan_ids` and formats exactly those results, in all seven formats byte-identical to
+  `formatters.Export` of the same scan. 782 and 5,000 findings export. ⚠ An API client that posted
+  `results` to `/export` now gets HTTP 400 naming `scan_ids`: keep the `ferret_scan_session` cookie
+  `/scan` sets and send `{"format", "scan_ids", "show_match", "verbose"}`.
+  ([#923](https://github.com/awslabs/ferret-scan/issues/923))
+- **web: a narrowed `/scan` says so.** The response gains the `scan` block the CLI's json report
+  carries (checks run and not run, confidence bands, config source), omitted for a full-scope scan
+  as on the CLI. ([#904](https://github.com/awslabs/ferret-scan/issues/904))
+- **coverage: a file every preprocessor failed on carries the cause `cannot parse`.** The worker
+  pool stated no cause for the router's "all preprocessors failed" error, so `/scan` disclosed 12 of
+  the 639 public corpus files with an empty cause while the CLI recovered `cannot parse` from the
+  prose. ([#924](https://github.com/awslabs/ferret-scan/issues/924))
+- **web (`/scan`):** a finding inside an embedded attachment is now named `<upload> -> <member>`, as
+  the CLI names it, instead of by the upload alone. Over the 639 public corpus files, 90 findings in
+  4 uploads had lost which attachment held them. The suppression hash folds in the file name, so a
+  rule the CLI generated for such a finding did not suppress it on the web; it now does, and a rule
+  created in the web UI before this change keeps suppressing what it did
+  ([#924](https://github.com/awslabs/ferret-scan/issues/924)).
+- **web (`/scan`):** a text upload carrying a NUL byte, which the router refuses, is now reported as
+  not examined with the cause `cannot parse`, as on the CLI, instead of answering success with no
+  finding and no disclosure (2 of the 639 public corpus files)
+  ([#924](https://github.com/awslabs/ferret-scan/issues/924)).
+- **cli (`--web`):** the port check before the server starts now probes the address `--bind` names
+  instead of every interface, so `--web --bind 127.0.0.1` no longer listens on `0.0.0.0` and `[::]`
+  for a moment before its loopback bind. It also answers for the right address: with a port held only
+  on `[::1]`, as a dev server on `localhost` holds it, `--port <that port>` moved the server to 8080
+  with `Port <n> is not available`; it now starts on the port it was given. The server listens once
+  and serves that listener, so the check and the bind can no longer disagree
+  ([#926](https://github.com/awslabs/ferret-scan/issues/926)).
+- **web (`--bind ::1`):** an IPv6 bind address now starts the server. It failed with `could not find
+  an available port ... too many colons in address`, and behind that the Origin check answered 403 to
+  a POST from a page served on `[::1]`; both now work
+  ([#926](https://github.com/awslabs/ferret-scan/issues/926)).
+- **bankaccount (published example IBAN):** `GB82 WEST 1234 5698 7654 32`, the worked example the
+  Wikipedia IBAN article prints for a "fictitious United Kingdom bank", is reported as `IBAN` at
+  LOW 15 instead of 100 HIGH, in its compact, spaced, hyphenated and lower-case spellings and
+  whatever keywords surround it. It publishes `confidence_ceiling: 15`, so no document adjustment
+  lifts it, and records `not_published_example: false` in `validation_checks`. The value is capped,
+  never dropped, so it is still redacted. A mod-97-valid IBAN one account digit away, and every
+  other IBAN, keep their score. Part of
+  [#930](https://github.com/awslabs/ferret-scan/issues/930): the German example IBAN, the VINs and
+  the CMS example NPI stay as they are until the golden and score fixtures that use them as real
+  values are replaced.
+- **phone:** numbers in Ofcom's TV and radio drama blocks (London `020 7946 0xxx`, the no-area
+  `01632 960xxx` and mobile `07700 900xxx`, nationally or as `+44`/`0044`, `(0)` included) are held at
+  LOW 15 with the ceiling published, as NANP's `555-0100`..`0199` already is. On a labelled line each
+  of 15 forms read `PHONE` 100 HIGH and now reads 15 LOW; every one is still reported, so still
+  redacted. A number one digit outside each block keeps its 100. Manchester's `0161 496 0xxx` and the
+  other Ofcom blocks are not capped yet. ([#930](https://github.com/awslabs/ferret-scan/issues/930))
+- **medicalid (published example NPI):** `1234567893`, the worked example of CMS's NPI check-digit
+  specification, is reported as `NPI` at LOW 15 instead of 90-100 HIGH (`NPI: 1234567893` read 90,
+  `Provider NPI: 1234567893 on the claim.` 100). It publishes `confidence_ceiling: 15`, so no document
+  adjustment lifts it, and records `not_published_example: false` in `validation_checks`. The value is
+  capped, never dropped, so it is still redacted. Every other NPI keeps its score, including an
+  NPI-Luhn-valid value two digits away. ([#930](https://github.com/awslabs/ferret-scan/issues/930))
+- **phone (Manchester drama block):** Ofcom's Manchester drama block `0161 496 0000`..`0999`,
+  nationally or as `+44`/`0044`, `(0)` included, is held at LOW 15 with the ceiling published, like the
+  London, no-area and mobile blocks: `Phone: 0161 496 0815` read `PHONE` 100 and now reads 15, still
+  reported and redacted. `0161 497 0000` and `0161 496 1000` keep their 100. The other area blocks Ofcom
+  publishes (0113-0118, 0121, 0131, 0141, 0151, 0191, 028, 029) are not capped yet.
+  ([#930](https://github.com/awslabs/ferret-scan/issues/930))
+- **secrets:** credential values a vendor publishes as an example are held at LOW 15, as the AWS example access key already was, instead of reading HIGH on the generic and provider paths (#930): the AWS documentation example secret access key on a `secret = "…"` line (the `aws_secret_access_key = …` form was already 15), Stripe's documented `sk_test_…` and `pk_test_…` keys, and Google Authenticator's example TOTP secret `JBSWY3DPEHPK3PXP`. The match is exact against a short list in `internal/validators/secrets/published_example_secrets.go`, each entry citing the page that publishes it; a value one character away, or with a character added, keeps its score. A listed value is still reported, so redaction still rewrites it. ⚠ A finding for one of these four values drops from HIGH to LOW, so a `--confidence high` run, a `--pre-commit-mode` gate or a suppression rule keyed to its old confidence changes.
+- **secrets:** three more shapes that are not credentials are no longer read as one on the right of a secret-named key (#931): prose that says where a token goes (`token = your-bot-token-goes-here-replace-me`, `token = replace-with-your-token`; three or more lower-case words joined by `-`, at least two of them marker words such as `your`, `replace`, `here`), an angle-bracket redaction marker (`secret: "<REDACTED>"`), and an index expression (`secret = os.environ["SECRET_KEY"]`). On main these reported `API_KEY_OR_SECRET` at 75 to 100. A passphrase of dictionary words with one marker word in it, a password inside angle brackets and a credential next to any of these keys still report.
+- **secrets**: the value of a secret-named assignment is no longer reported when it is not a literal:
+  a regular expression (`trade_secret: "\\b(Confidential|Trade\\s+Secret|...)"`, the shipped
+  `config.yaml`'s own pattern), a rooted file path (`private_key=/etc/ssl/private/server.key`), a
+  member chain, dotted call or concatenation operand (`config.secret_key`, `process.env.JWT_SECRET`,
+  `os.getenv(DB_PASSWORD_ENV)`, `+name[2]+`), ferret-scan's own `simple` redaction marker
+  (`[API_KEY_OR_SECRET-REDACTED]`, also as a JSON string ending in `\n`) or a separator-keeping `*`
+  mask, and a provider prefix around a placeholder body (`glpat-` and a run of `x`, Slack's documented
+  `xoxb-not-a-real-token-this-will-not-work`). Each read HIGH (75-100) before; a redacted copy
+  therefore re-scanned as still leaking. The rule reads only the value's own bytes. In Python, JS/TS,
+  Go and HCL files an unquoted value in code position is still left to the lexical gate (#753).
+  ([#931](https://github.com/awslabs/ferret-scan/issues/931), [#981](https://github.com/awslabs/ferret-scan/issues/981))
+- **secrets**: an unquoted assignment value now ends where it does. At a two-byte `\n`, `\r` or `\t`
+  escape that is followed by the next `key=`/`key:`, another escape or the end of the value (a
+  quoted source string such as `"password=x\nuser=y"` no longer reports `x\nuser=y`, and
+  `...KEY\n` loses its trailing `\n`); and at `&` in a URL fragment's parameters, as it already did in
+  a query string (`cb#access_token=<a>&refresh_token=<b>` reports the two tokens apart instead of one
+  span running to `expires_in=3600`). A `#` at the start of a line or after a space still marks a
+  commented-out assignment, taken whole. Because the span is what redaction rewrites and what a
+  suppression rule hashes, a rule written for one of the old over-long spans goes stale.
+  ([#932](https://github.com/awslabs/ferret-scan/issues/932))
+- **secrets**: the detect-secrets pragma `pragma: allowlist secret` (which ferret-scan itself appends
+  to every `hash:` line of a generated suppression file) no longer counts as a credential label. Its
+  word `secret` raised the value beside it: a quoted 64-hex rule hash read 55 (LOW) alone and 95-100
+  (HIGH) with the pragma; it now reads the same with and without it. The pragma does not exempt its
+  line: a real credential beside it is reported exactly as without the comment (use a suppression
+  rule to accept a finding). ([#933](https://github.com/awslabs/ferret-scan/issues/933))
+- **intellectualproperty**: source code and markup that merely contain an IP marker word are no
+  longer reported as copyright, trademark or confidentiality notices: a keyword that is an
+  alternative inside a regular expression (the `trade_secret:` regex in a ferret-scan config), two
+  or more keywords quoted as a string list, a lowercase `trademark` or a `™` after a function word
+  ("with trademark", "a ™"), a lowercase `(r)` call argument (`basename(r)`), and a year-less `©`,
+  `(c)` or `Copyright` followed by a lowercase word (the QuickTime `©xyz` atom name, "copyright
+  notice with ..."). On this repository's own `config.yaml`, `docs/configuration.md`, both
+  `examples/*.yaml`, the validator's source and the files the issue names, HIGH findings go from 20
+  to 0 (178 to 89 at any confidence). Every real-notice control in the package tests keeps its
+  confidence. ([#934](https://github.com/awslabs/ferret-scan/issues/934))
+- **personname (places and fragments):** a place whose last word is a surname, the tail of a place
+  name read by the comma pattern, and a pair of short all-caps syllables the name data does not know
+  are no longer reported as `PERSON_NAME`. Measured on main @ 2fb4719 with `--config /dev/null`, this
+  repository's own files reported `Hong Kong` at 100, `Middle East` and `Flushing Meadows` at 91,
+  `La Paz` at 91, `NEM MIN` and `EI LUO` at 92, and the second word of one city plus the next city as
+  `Surname, Given` at 99, each at HIGH. A whole-phrase list (keyed on the entire value, like the
+  font-family list, so no word of it is silenced in a real name) takes the measured places; the comma
+  pattern no longer starts inside a place after a toponym prefix the name data does not know; and an
+  all-caps candidate made only of syllables of three letters or fewer needs every syllable to be in
+  the name data. The new golden decoy case reads 10 findings (4 HIGH) on main and none on the branch;
+  the names that share a word or a shape with these values keep their confidence. A street name read
+  as a person is not part of this change ([#935](https://github.com/awslabs/ferret-scan/issues/935)).
+- **personname (street names):** the words of a numbered street (a house number, one to four
+  Title-Case words and a street type such as Lane or Blvd) and a street type followed by a town that
+  the comma pattern read as `Surname, Given` are no longer reported as `PERSON_NAME`. Measured on
+  main @ 3aa380e with `--config /dev/null --confidence all`, four street lines quoted from this
+  repository's own comments reported 6 `PERSON_NAME` findings at 67-93 (4 HIGH); the branch
+  reports none, and `US_STREET_ADDRESS` still reports both streets, so the bytes stay redacted when
+  both checks run. A person whose surname is a street type keeps their confidence when no house
+  number is in front of the name or the given name is one the name data knows
+  ([#935](https://github.com/awslabs/ferret-scan/issues/935)).
+- **personname (comma lists):** in a comma-separated list, the last word of one item and the next
+  item are no longer reported together as a `Surname, Given` name. Measured on main @ 3aa380e with
+  `--config /dev/null --confidence all --checks PERSON_NAME` over `internal/validators/personname/`,
+  11 comma-form spans taken across a list comma (8 at HIGH, 93-100) are gone. The span was what
+  redaction rewrote, so it masked the tail of one name and all of the next and left the rest of the
+  first in clear; each name in a list is now reported, and redacted, on its own. `Surname, Given`
+  written alone keeps its score, and so does a two-item list of single words, which reads the same.
+  The inverted first author of a reference list keeps its score too: when the next item is a person
+  written `Given Surname`, the list is one of people, not of places. Measured on the 639-file public
+  corpus against main: 37 list spans gone, every one a place, office or role read as a name; 3 real
+  names newly reported on their own; 2 real-name occurrences no longer covered, both the given name
+  after a Spanish double surname, whose surnames are still reported. A list in which every author
+  is inverted cannot be told from a list of single words by shape, and only its last item is
+  reported ([#936](https://github.com/awslabs/ferret-scan/issues/936)).
+- **ipaddress (`::` identifiers, four-part versions):** three shapes that are not addresses no
+  longer read `IP_ADDRESS` 100 HIGH. A `::`-separated identifier segment such as `"::EC2"` is not
+  reported: `::/96` (the unspecified address, the loopback and the deprecated IPv4-compatible block)
+  joins the non-sensitive ranges, and a match followed by a second `::` is a path, not one address.
+  A version quoted beside its own product token (`` `4.3.3.2` out of `LibreOffice/4.3.3.2` ``) is
+  held to the product-version ceiling, LOW 55, and one directly after a capitalised name (`Acme
+  Server Manager 26.8.0.3`) is no longer lifted by an IP keyword elsewhere on the line, so it stays
+  at the context-free cap, MEDIUM 75. Measured on this repository's own lines: 4 findings at 100
+  HIGH become 1 dropped, 1 LOW and 2 MEDIUM. Versions are demoted, never dropped, so they are still
+  redacted; a labelled or URL-authority address and every public compressed IPv6 address keep
+  their score ([#937](https://github.com/awslabs/ferret-scan/issues/937)).
+- **phone:** an ISO 6709 point string (the QuickTime `©xyz` / XMP GPS form, `+4012.22-07500.25/`,
+  `+40.7128-074.0060+000.125/`) and a decimal written after `00` (`00125.37`, `00074.56695-7`) are no
+  longer reported as phone numbers. On the issue's lines `PHONE` reported 8 findings (3 HIGH at 95, 5
+  LOW at 15) and now reports none; the numbers nearest the rule (the German `+49-911/1234567`, the EPP
+  `+1.7035550123`, dotted and `00` forms) keep their findings and scores.
+  ([#938](https://github.com/awslabs/ferret-scan/issues/938))
+- **ssn, passport (byte counts, passport labels):** a nine-digit value whose own context says what
+  else it is no longer reads HIGH. A bare nine-digit run followed by a byte unit (`bytes`, `-byte`,
+  `B`, `KiB` and the rest of the IEC and SI family) is reported as `SSN` at no more than LOW 55,
+  the ceiling the validator already gives a value whose column header names another identifier,
+  and it publishes that ceiling so no document adjustment lifts it; the passport validator no
+  longer reports it at all. A value labelled as a passport number, on its line or by a
+  `Passport Number` field label on the line above, is held to the same ceiling as an `SSN` unless
+  an SSN label is on its line, and keeps its `PASSPORT` finding. Measured on this repository's own
+  lines: 4 `SSN` findings at 95 HIGH and 1 `PASSPORT` at 90 HIGH become `SSN` LOW 55 and no
+  passport finding, while every value is still reported and redacted; a labelled SSN, hyphenated or
+  bare, and a labelled passport number keep their score
+  ([#939](https://github.com/awslabs/ferret-scan/issues/939)).
+- **otp (`otpauth://` URIs without a secret):** a URI with no `secret=` parameter, an empty one,
+  or a placeholder such as `otpauth://totp/...` is no longer reported as `OTPAUTH_URI`; it read
+  100 HIGH while the same URI carrying the published example secret read LOW 15. A provisioning URI
+  is reported for the secret it holds, which the Key Uri Format makes a required parameter and
+  `docs/validators-new.md` already listed as required. Measured on this repository's own lines
+  (the validator's help text, its source comment and the validator documentation): 6 findings at
+  100 HIGH become 0; every URI that carries a secret, whatever its parameter order or the case of
+  the parameter name, keeps its score, and an account name in the URI's label is still reported
+  by the email validator ([#940](https://github.com/awslabs/ferret-scan/issues/940)).
+- **PDF text extraction**: a PDF whose cross-reference stream or object stream has a corrupt 2-byte
+  zlib header is now read instead of skipped. The extractor rewrites each invalid FlateDecode header
+  in an in-memory copy (same length, so offsets hold) and retries; the issue's synthetic
+  `xref_bad.pdf` and `objstm_bad.pdf` went from 0 findings and "PDF library panic ... zlib: invalid
+  header" to the same EMAIL finding as the intact file. Where the stream body is damaged too, the
+  disclosure now names the unreadable part ("cross-reference section unreadable", "document catalog
+  or page tree unreadable") instead of "PDF library panic".
+  [#944](https://github.com/awslabs/ferret-scan/issues/944)
+- **web (startup banner):** the `--web` banner no longer suggests exposures. On a loopback bind it
+  suggested `--bind 0.0.0.0`, which serves the unauthenticated UI on every interface; it now names an
+  SSH local forward of the same port (`ssh -N -L <port>:127.0.0.1:<port> <this host>`). On a
+  non-loopback bind it suggested `-p 8082:<port>`, which publishes on every host interface and, with a
+  host port other than the server's, fails the Origin check on every POST (403); it now names
+  `-p 127.0.0.1:<port>:<port>`. An IPv6 loopback bind is shown as `http://[::1]:<port>`
+  ([#951](https://github.com/awslabs/ferret-scan/issues/951)).
+- **personname:** a name that appears on one line both bare and inside a longer match
+  (`Signed by Jane Doe, witnessed by Dr. Jane Doe.`) is now two findings, so the bare copy is
+  redacted too. Overlapping matches were deduplicated by comparing TEXTS, which dropped the bare
+  occurrence as "contained" in the titled one wherever it sat; containment is now by span, and the
+  occurrence inside `Dr. Jane Doe` still collapses into it. On the issue's fixture `main` left 2
+  of 2 names in clear under `simple`, `format_preserving` and `synthetic` (its re-scan reports both
+  again); now 0 in `.txt` and `.docx` under all three and in `.doc`, `.xls` and `.ppt` under the two
+  they offer. With the titled copy first on the line, `.txt` is fully masked and the OOXML and
+  legacy Office writers refuse the file (naming `PERSON_NAME`) where `main` wrote the name in clear
+  and reported success. The same text comparison also dropped a name contained in a longer,
+  different one anywhere on its line (500 of the 15,931 names on a 256 KiB line of distinct names,
+  each a surname prefix of another), and cost O(n²) per line: that line took 35.8 s on `main` and
+  5.8 s now.
+  ([#966](https://github.com/awslabs/ferret-scan/issues/966))
+- **suppressions (generated rules):** `--generate-suppressions` no longer moves a rule it wrote for one
+  finding onto another finding of the same run. When a finding with no recorded context and a copy of
+  it that records its line were reported together (the secrets validator's one-line PEM findings before
+  #979), the copy's empty-context compatibility hash equalled the first finding's hash, generation
+  "migrated" the first finding's rule to the copy, and the first finding was reported again on the next
+  run: 36 of 36 such PEM findings measured on 2fb4719. A rule whose hash is a current finding's own
+  identity is now never migrated
+  ([#981](https://github.com/awslabs/ferret-scan/issues/981)).
+- **formatters (config provenance):** a project config found in the working directory is now named
+  in the report whether or not it narrowed anything, and gitlab-sast and text name it too
+  ([#1007](https://github.com/awslabs/ferret-scan/issues/1007)). Before this, `ScanScope` existed
+  only for a narrowed run, so a `.ferret-scan.yaml` that disabled nothing was disclosed on stderr
+  alone, in every format, and json had no `scan` block at all; gitlab-sast and text dropped the
+  config name even on a narrowed run. Now json and yaml carry `scan.config`, junit and sarif their
+  config properties, gitlab-sast an `info` entry in `scan.messages[]`, and text a `Config:` line
+  after the report. csv stays stderr-only. A run with no config in the working directory keeps
+  every byte. ⚠ A json, yaml, junit or sarif report of a run governed by a working-directory config
+  now gains the `scan` block (junit and sarif the matching properties), and a gitlab-sast or text
+  report one `info` message or `Config:` line; a consumer that compared those documents byte for
+  byte against a stored baseline will see the difference.
+- **cli (`--quiet`):** a `--file` run no longer prints one `Warning: Skipping <path>: excluded by
+  .gitignore` line per path the operator's own `--exclude` or `.gitignore` left out. They are one
+  `Note: N path(s) left out as requested (.gitignore: A, --exclude: B)` line, with the paths listed
+  under `--verbose` or `--debug`, and `--quiet` withholds it. `--quiet` now also withholds the
+  `Suppressed N findings …` line and the `N enabled suppression rule(s) … matched no finding` note on
+  `--file`, and the latter on `--stdin` (its `Suppressed` line already was); the counts stay in
+  `stats.suppressed` and `stats.suppression_rules_unmatched`. ⚠ A script that grepped stderr for
+  `Warning: Skipping` to find excluded paths reads `Note: … left out as requested` (and `--verbose`
+  for the list) instead. The pre-commit default (`PRE_COMMIT=1` without `--quiet`) still prints the
+  suppression notes, as before; the two TM-13 config Notes are unchanged
+  ([#1008](https://github.com/awslabs/ferret-scan/issues/1008), items 1 and 2).
+- **tabular (CSV/TSV column headers):** a two-column file is now read as a table when it has the
+  evidence three columns do not need ([#1018](https://github.com/awslabs/ferret-scan/issues/1018)).
+  The table reader started at three fields, so `phone,qty` held PHONE at 85 with no header credit
+  and `name,passport_number` reported no PASSPORT at all, while the three-column spelling of the
+  same data gave 100. A two-column file is a table when both header cells are at most three words
+  without a digit, every data row has two fields, and the data holds a digit;
+  lists of "surname, forename" lines, prose with a comma per line and all-word tables such as `name,city` still
+  read as text. Measured on main with synthetic values: `phone,qty` with one data row: PHONE 85, now 100;
+  `name,passport_number` with three rows: 0 findings, now 3 PASSPORT.
+- **phone:** the sixteen other blocks of 1,000 numbers Ofcom reserves for TV and radio drama are held at
+  LOW 15 with the ceiling published, as the four already held are: `0113`, `0114`, `0115`, `0116`,
+  `0117`, `0118`, `0121`, `0131`, `0141` and `0151` `496 0000`-`0999`, `0191 498 0xxx`,
+  `028 9649 6xxx`, `029 2018 0xxx`, `0808 157 0xxx`, `0909 879 0xxx` and `0306 999 0xxx`, nationally or
+  as `+44`/`0044`. On a labelled line the first and last number of each block read `PHONE` 100 HIGH and
+  now read 15 LOW; every one is still reported, so still redacted. A number one digit outside a block
+  keeps its 100. ⚠ Northern Ireland's block is `028 9649 6xxx`, as Ofcom's page lists it; the
+  `028 9018 0xxx` block that older copies of the table give is not held.
+  ([#1019](https://github.com/awslabs/ferret-scan/issues/1019))
+- **redaction (`--redaction-strategy synthetic`):** a synthetic SSN replacement is never a
+  Luhn-valid nine-digit number any more ([#1020](https://github.com/awslabs/ferret-scan/issues/1020)).
+  The 666 and 9xx areas the generator draws lead with 6 and 9, which the Canadian SIN check accepts,
+  so about one draw in ten passed it and could re-detect as `CA_SIN` in the redacted copy. Measured
+  on main over 100,000 draws: 10,111 were Luhn-valid and 7,597 of those lead with a digit a SIN may
+  start with; now 0 of 100,000. A draw that would pass has its last digit moved, so the other nine in
+  ten are exactly as before.
+- **nationalid:** up to two filler words (`is`, `es`, `é`, `number`, `no.`, `nº`) may stand between a
+  label and its value, so "Our Social Insurance Number is" and "Employee SIN number is:" followed by a
+  valid number are read; before, they reported nothing and the value stayed in clear in a redacted
+  copy. At most two words: a longer clause between the label and the digits is still not read.
+  ([#1021](https://github.com/awslabs/ferret-scan/issues/1021))
+- **phone:** the six blocks of 10,000 numbers ARCEP reserves for audiovisual works (`01 99 00`,
+  `02 61 91`, `03 53 01`, `04 65 71`, `05 36 49` and `06 39 98`, each followed by any four digits) are
+  held at LOW 15 with the ceiling published, as NANP's `555-0100`..`0199` and Ofcom's drama blocks are.
+  Written `+33 1 99 00 47 18`, `+33199004718`, `0033 1 99 00 47 18`, `+33 (0)1 99 00 47 18` or
+  nationally without spaces (`0199004718`), the first and last number of each block read `PHONE` 100
+  HIGH and now read 15 LOW; every one is still reported, so still redacted. A number one digit outside
+  a block keeps its 100. ([#1026](https://github.com/awslabs/ferret-scan/issues/1026))
+
+### ⚡ Performance
+
+- **redaction (plain text):** redacting a text file no longer rebuilds the whole document and
+  re-copies it into the position correlator once per finding, so the plain-text redactor's own
+  work now grows with the number of values instead of with values times file size
+  ([#1005](https://github.com/awslabs/ferret-scan/issues/1005)). The redacted copies and the audit
+  log are byte-identical to the previous release's. The completeness sweep that runs after the
+  positional pass is unchanged and is still quadratic in the number of distinct values; it now
+  accounts for most of the remaining time on files with more than about 8,000 findings.
+- **redaction (completeness sweep):** the pass that removes every remaining copy of a reported value
+  after a text file is redacted, and the check that no reported value survives in a written copy, now
+  look for all values in one pass over the document instead of one pass per value, so their cost
+  grows with the number of distinct values instead of with values times file size
+  ([#1005](https://github.com/awslabs/ferret-scan/issues/1005)). On a synthetic file with one distinct
+  email per finding the sweep took 0.62 / 2.0 / 7.8 / 29 s of CPU at 4,000 / 8,000 / 16,000 / 32,000
+  values and takes 0.09 / 0.16 / 0.29 / 0.61 s. The redacted text, the list of swept values, the order
+  replacements are generated in and every error message are unchanged.
+
+### 📚 Documentation
+
+- **pkg/redact (package doc):** the thread-safety section no longer names a cross-validator signal
+  processor and a confidence calibrator in `internal/validators/enhanced_integration.go`, a file
+  the v2 refactor removed with both. The state a shared `Engine` serializes on is the dual-path
+  bridge's metrics, which every `Redact` call updates under the bridge's mutexes; the advice to pool
+  one engine per worker under high concurrency stands
+  ([#774](https://github.com/awslabs/ferret-scan/issues/774)).
+- **help (`--help PHONE`), phone README:** the Reasonable Length factor no longer says only "Must be
+  7-15 digits". It says that a leading `+` counts toward the 15, and names the E.164 gate a `+` or
+  `00` number is also held to since the international forms were added for
+  [#889](https://github.com/awslabs/ferret-scan/issues/889): an unassigned country code or more
+  than 15 digits caps the number at 15, and so does a national length its code's plan does not
+  allow unless phone evidence is on the line. The phone README lists the gate's ceiling and the
+  ceiling for a number after a word that is not a phone label beside the two it had.
+- **help (`--help CREDIT_CARD`, `--help PHONE`), validator READMEs:** the credit-card page now
+  describes `CARD_TRACK_DATA` (Track 1, Track 2, URL-encoded Track 2, EMV tag 57) and
+  `CARD_SECURITY_CODE` (labelled CVV2/CVC2/CID): what each matches, how it is scored and how each
+  strategy redacts it ([#905](https://github.com/awslabs/ferret-scan/issues/905)). It no longer lists
+  a `PRIVATE_LABEL_CARD` type, which nothing emits (a card starting with 8 is reported as
+  `CREDIT_CARD`), or JCB prefixes 2131 and 1800, which are not typed as JCB. The phone page names the
+  international display forms, `tel:` URIs and vCard `TEL` values added for
+  [#889](https://github.com/awslabs/ferret-scan/issues/889), and both the page and the phone README
+  list Ofcom's three drama ranges beside NANP's 555-0100 to 555-0199 as reserved numbers held at 15.
+- **docs and help**: `--help` text for `--quiet` says it also withholds the suppression and exclusion notes; `--help passport` and the passport README list the German, current-Canadian and French shapes behind a label and Germany's `D<<` MRZ code; the secrets README describes password hashes, JWK private members, non-literal values, value span bounds, the allowlist pragma, the provider table and the published-example ceiling; the README lists `NATIONAL_ID` (twenty validators); `--explain` names the five NATIONAL_ID types by country ("a Brazilian CPF"); `docs/suppression-system.md` documents `partialFingerprints["ferretFindingIdentity/v1"]`; the web `/export` is documented as taking `scan_ids` ([#983](https://github.com/awslabs/ferret-scan/issues/983)).
+
 ## [v2.6.0] - 2026-11-10
 
 ### ⚠️ Breaking Changes
