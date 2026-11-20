@@ -54,32 +54,6 @@
     },
     {
       "category": "sast",
-      "confidence": "Medium",
-      "description": "Ferret Scan detected bank account identifier in this file.\n\n**Location:** <golden:new_validators_decoys> (line 5)\n**Confidence:** MEDIUM (60.0%)\n**Detected by:** bank_account validator\n\n**Context:**\n```\ntest iban DE89 3704 0044 0532 0130 00 example fixture\n```\n\n**Additional Information:**\n- context_impact: -25\n\n**Remediation:**\nRemove bank account, routing, IBAN or SWIFT/BIC values. Use a documented test value in fixtures, and store real payment details in a payments vault.",
-      "id": "ferret-<HASH>",
-      "identifiers": [
-        {
-          "name": "Ferret Scan Check Type",
-          "type": "ferret_scan_check_type",
-          "value": "IBAN"
-        },
-        {
-          "name": "Ferret Scan Validator",
-          "type": "ferret_scan_validator",
-          "value": "bank_account"
-        }
-      ],
-      "location": {
-        "end_line": 5,
-        "file": "<golden:new_validators_decoys>",
-        "start_line": 5
-      },
-      "message": "Bank account identifier detected: [HIDDEN] (confidence: MEDIUM)",
-      "name": "Bank Account Identifier Detected",
-      "severity": "High"
-    },
-    {
-      "category": "sast",
       "confidence": "Low",
       "description": "Ferret Scan detected medical or healthcare identifier in this file.\n\n**Location:** <golden:new_validators_decoys> (line 7)\n**Confidence:** LOW (40.0%)\n**Detected by:** medicalid validator\n\n**Context:**\n```\nshape only 1EG4-TE5-MK73 without context\n```\n\n**Additional Information:**\n- context_impact: 0\n\n**Remediation:**\nRemove patient identifiers (MRN, Medicare MBI, NHS or CHI number, insurance member ID) or replace them with synthetic values, and confirm the record's handling requirements. A DEA number is also a prescribing credential. An NPI is published publicly and is usually safe alone.",
       "id": "ferret-<HASH>",
@@ -102,6 +76,32 @@
       },
       "message": "Medical or healthcare identifier detected: [HIDDEN] (confidence: LOW)",
       "name": "Medical Identifier Detected",
+      "severity": "Medium"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected bank account identifier in this file.\n\n**Location:** <golden:new_validators_decoys> (line 5)\n**Confidence:** LOW (15.0%)\n**Detected by:** bank_account validator\n\n**Context:**\n```\ntest iban DE89 3704 0044 0532 0130 00 example fixture\n```\n\n**Additional Information:**\n- context_impact: -25\n\n**Remediation:**\nRemove bank account, routing, IBAN or SWIFT/BIC values. Use a documented test value in fixtures, and store real payment details in a payments vault.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "IBAN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "bank_account"
+        }
+      ],
+      "location": {
+        "end_line": 5,
+        "file": "<golden:new_validators_decoys>",
+        "start_line": 5
+      },
+      "message": "Bank account identifier detected: [HIDDEN] (confidence: LOW)",
+      "name": "Bank Account Identifier Detected",
       "severity": "Medium"
     }
   ]

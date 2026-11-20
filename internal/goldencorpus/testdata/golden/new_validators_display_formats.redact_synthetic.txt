@@ -12,7 +12,7 @@ type=DATE_OF_BIRTH line=4 conf=90.00 match=3/14/87
 type=DATE_OF_BIRTH line=4 conf=90.00 match=March 14th, 1987
 type=DATE_OF_BIRTH line=5 conf=90.00 match=03.14.1987
 type=DRIVERS_LICENSE line=3 conf=70.00 match=D123-4567-8901
-type=IBAN line=2 conf=80.00 match=DE89 3704 0044 0532 0130 00
+type=IBAN line=2 conf=15.00 match=DE89 3704 0044 0532 0130 00
 type=MEDICARE_MBI line=1 conf=95.00 match=1EG4-TE5-MK73
 type=US_STREET_ADDRESS line=6 conf=95.00 match=123 42nd Street
 type=US_STREET_ADDRESS line=7 conf=90.00 match=1234 US Highway 61

@@ -29,7 +29,7 @@
     {
       "category": "sast",
       "confidence": "High",
-      "description": "Ferret Scan detected cloud resource identifier in this file.\n\n**Location:** <golden:cloud_resources_test_context> (line 1)\n**Confidence:** HIGH (95.0%)\n**Detected by:** cloud_resources validator\n\n**Context:**\n```\nprod arn:aws:iam::123456789012:role/PaymentsAdmin\n```\n\n**Remediation:**\nReplace the identifier with a variable, a parameter or a service-discovery lookup. These identifiers embed account, subscription, project or tenant anchors that reveal ownership and infrastructure layout, so scrub them from anything shared outside your organization.",
+      "description": "Ferret Scan detected cloud resource identifier in this file.\n\n**Location:** <golden:cloud_resources_test_context> (line 1)\n**Confidence:** HIGH (95.0%)\n**Detected by:** cloud_resources validator\n\n**Context:**\n```\nprod arn:aws:iam::111122223333:role/PaymentsAdmin\n```\n\n**Remediation:**\nReplace the identifier with a variable, a parameter or a service-discovery lookup. These identifiers embed account, subscription, project or tenant anchors that reveal ownership and infrastructure layout, so scrub them from anything shared outside your organization.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -55,7 +55,7 @@
     {
       "category": "sast",
       "confidence": "Medium",
-      "description": "Ferret Scan detected cloud resource identifier in this file.\n\n**Location:** <golden:cloud_resources_test_context> (line 2)\n**Confidence:** MEDIUM (75.0%)\n**Detected by:** cloud_resources validator\n\n**Context:**\n```\nexample arn:aws:iam::123456789012:role/PaymentsAdmin\n```\n\n**Remediation:**\nReplace the identifier with a variable, a parameter or a service-discovery lookup. These identifiers embed account, subscription, project or tenant anchors that reveal ownership and infrastructure layout, so scrub them from anything shared outside your organization.",
+      "description": "Ferret Scan detected cloud resource identifier in this file.\n\n**Location:** <golden:cloud_resources_test_context> (line 2)\n**Confidence:** MEDIUM (75.0%)\n**Detected by:** cloud_resources validator\n\n**Context:**\n```\nexample arn:aws:iam::111122223333:role/PaymentsAdmin\n```\n\n**Remediation:**\nReplace the identifier with a variable, a parameter or a service-discovery lookup. These identifiers embed account, subscription, project or tenant anchors that reveal ownership and infrastructure layout, so scrub them from anything shared outside your organization.",
       "id": "ferret-<HASH>",
       "identifiers": [
         {
@@ -77,6 +77,32 @@
       "message": "Cloud resource identifier detected: [HIDDEN] (confidence: MEDIUM)",
       "name": "Cloud Resource Identifier Detected",
       "severity": "High"
+    },
+    {
+      "category": "sast",
+      "confidence": "Low",
+      "description": "Ferret Scan detected cloud resource identifier in this file.\n\n**Location:** <golden:cloud_resources_test_context> (line 3)\n**Confidence:** LOW (15.0%)\n**Detected by:** cloud_resources validator\n\n**Context:**\n```\nprod arn:aws:iam::123456789012:role/PaymentsAdmin\n```\n\n**Remediation:**\nReplace the identifier with a variable, a parameter or a service-discovery lookup. These identifiers embed account, subscription, project or tenant anchors that reveal ownership and infrastructure layout, so scrub them from anything shared outside your organization.",
+      "id": "ferret-<HASH>",
+      "identifiers": [
+        {
+          "name": "Ferret Scan Check Type",
+          "type": "ferret_scan_check_type",
+          "value": "AWS_ARN"
+        },
+        {
+          "name": "Ferret Scan Validator",
+          "type": "ferret_scan_validator",
+          "value": "cloud_resources"
+        }
+      ],
+      "location": {
+        "end_line": 3,
+        "file": "<golden:cloud_resources_test_context>",
+        "start_line": 3
+      },
+      "message": "Cloud resource identifier detected: [HIDDEN] (confidence: LOW)",
+      "name": "Cloud Resource Identifier Detected",
+      "severity": "Medium"
     }
   ]
 }

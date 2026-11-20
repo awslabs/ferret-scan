@@ -7,5 +7,5 @@ LEVEL    VALIDATOR    TYPE                 CONF%    LINE       MATCH            
 [HIGH  ] dob          DATE_OF_BIRTH          90.00% line     5 03.14.1987                  <golden:new_validators_display_formats>
 [HIGH  ] physical_... US_STREET_ADDRESS      90.00% line     7 1234 US Highway 61          <golden:new_validators_display_formats>
 [MEDIUM] physical_... US_STREET_ADDRESS      85.00% line     8 742 evergreen terrace       <golden:new_validators_display_formats>
-[MEDIUM] bank_account IBAN                   80.00% line     2 DE89 3704 0044 0532 0130 00 <golden:new_validators_display_formats>
 [MEDIUM] driversli... DRIVERS_LICENSE        70.00% line     3 D123-4567-8901              <golden:new_validators_display_formats>
+[LOW   ] bank_account IBAN                   15.00% line     2 DE89 3704 0044 0532 0130 00 <golden:new_validators_display_formats>

@@ -38,6 +38,10 @@ func TestThePublishedExampleIBANIsHeldAtLow(t *testing.T) {
 		"iban gb82west12345698765432",
 		"Pay to IBAN GB82-WEST-1234-5698-7654-32 by Friday",
 		"bank account IBAN: GB82WEST12345698765432 for wire transfers", // positive keywords do not lift it
+		"IBAN: DE89 3704 0044 0532 0130 00",                            // #1024: the registry's Germany example
+		"IBAN: DE89370400440532013000",
+		"Pay to IBAN DE89-3704-0044-0532-0130-00 by Friday",
+		"bank account IBAN: DE89370400440532013000 for wire transfers",
 	} {
 		got := publishedIBANFindings(t, line)
 		if len(got) != 1 {
@@ -53,7 +57,7 @@ func TestThePublishedExampleIBANIsHeldAtLow(t *testing.T) {
 // TestThePublishedExampleCeilingIsPublished: the bridge adds a document-level adjustment after this
 // validator returns, so the cap holds only when the ceiling is in the metadata.
 func TestThePublishedExampleCeilingIsPublished(t *testing.T) {
-	for _, line := range []string{"IBAN: GB82WEST12345698765432", "IBAN: GB82 WEST 1234 5698 7654 32"} {
+	for _, line := range []string{"IBAN: GB82WEST12345698765432", "IBAN: GB82 WEST 1234 5698 7654 32", "IBAN: DE89370400440532013000", "IBAN: DE89 3704 0044 0532 0130 00"} {
 		matches, err := NewValidator().ValidateContent(line, "probe.txt")
 		if err != nil {
 			t.Fatalf("ValidateContent: %v", err)
@@ -68,14 +72,16 @@ func TestThePublishedExampleCeilingIsPublished(t *testing.T) {
 }
 
 // TestAnIBANOneDigitAwayKeepsItsScore is the control #930 asks for: a mod-97-valid value one
-// account digit away from the example is a different IBAN and is not demoted, and neither is the
-// German example #930 also names, which this change does not list (see publishedExampleIBANs).
+// account digit away from the example is a different IBAN and is not demoted. The German example is
+// listed since #1024 (published_example_ibans.go); DE02 1203 0000 0000 2020 51 is another valid
+// German IBAN and keeps HIGH. A one-character edit of DE89... cannot be a control: mod-97 rejects it.
 func TestAnIBANOneDigitAwayKeepsItsScore(t *testing.T) {
 	for _, line := range []string{
 		"IBAN: GB55WEST12345698765433",
 		"IBAN: GB55 WEST 1234 5698 7654 33",
 		"IBAN: GB12WEST12345698765431",
-		"IBAN: DE89370400440532013000",
+		"IBAN: DE02120300000000202051",
+		"IBAN: DE02 1203 0000 0000 2020 51",
 	} {
 		got := publishedIBANFindings(t, line)
 		if len(got) != 1 || got[0] < 90 {

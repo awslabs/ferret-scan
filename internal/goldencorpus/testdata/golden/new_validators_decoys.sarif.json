@@ -69,69 +69,6 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "test iban \ntest iban DE89 3704 0044 0532 0130 00 example fixture\n example fixture"
-                  },
-                  "startLine": 5
-                },
-                "region": {
-                  "endColumn": 38,
-                  "snippet": {
-                    "text": "test iban DE89 3704 0044 0532 0130 00 example fixture"
-                  },
-                  "startColumn": 11,
-                  "startLine": 5
-                }
-              }
-            }
-          ],
-          "message": {
-            "text": "Bank Account Identifier Detected in <golden:new_validators_decoys> at line 5 (confidence: 60.0% - MEDIUM). Matched text: 'DE89 3704 0044 0532 0130 00'"
-          },
-          "partialFingerprints": {
-            "ferretFindingIdentity/v1": "ebe4285086da7ab3a0befd90fcc9ea267a17d9e98308d7b6fa6bfa00481f5ae6"
-          },
-          "properties": {
-            "confidence": 60,
-            "confidenceLevel": "MEDIUM",
-            "metadata": {
-              "confidence_adjustment": 0,
-              "context_confidence": 0.7,
-              "context_doctype": "Unknown",
-              "context_domain": "Financial",
-              "context_impact": -25,
-              "country": "DE",
-              "normalized": "DE89370400440532013000",
-              "original_confidence": 60,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
-              "validation_checks": {
-                "mod97_checksum": true,
-                "valid_characters": true,
-                "valid_country": true,
-                "valid_length": true
-              },
-              "validation_path": "document"
-            },
-            "validator": "bank_account"
-          },
-          "rank": 75,
-          "ruleId": "IBAN"
-        },
-        {
-          "level": "error",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "<golden:new_validators_decoys>"
-                },
-                "contextRegion": {
-                  "snippet": {
                     "text": "shape only \nshape only 1EG4-TE5-MK73 without context\n without context"
                   },
                   "startLine": 7
@@ -183,6 +120,71 @@
           },
           "rank": 60,
           "ruleId": "MEDICARE_MBI"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:new_validators_decoys>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "test iban \ntest iban DE89 3704 0044 0532 0130 00 example fixture\n example fixture"
+                  },
+                  "startLine": 5
+                },
+                "region": {
+                  "endColumn": 38,
+                  "snippet": {
+                    "text": "test iban DE89 3704 0044 0532 0130 00 example fixture"
+                  },
+                  "startColumn": 11,
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Bank Account Identifier Detected in <golden:new_validators_decoys> at line 5 (confidence: 15.0% - LOW). Matched text: 'DE89 3704 0044 0532 0130 00'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "ebe4285086da7ab3a0befd90fcc9ea267a17d9e98308d7b6fa6bfa00481f5ae6"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
+              "context_confidence": 0.7,
+              "context_doctype": "Unknown",
+              "context_domain": "Financial",
+              "context_impact": -25,
+              "country": "DE",
+              "normalized": "DE89370400440532013000",
+              "original_confidence": 15,
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "validation_checks": {
+                "mod97_checksum": true,
+                "not_published_example": false,
+                "valid_characters": true,
+                "valid_country": true,
+                "valid_length": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "bank_account"
+          },
+          "rank": 52.5,
+          "ruleId": "IBAN"
         }
       ],
       "tool": {
