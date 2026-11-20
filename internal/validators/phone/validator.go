@@ -201,7 +201,8 @@ type phonePattern struct {
 	minDigits int
 	maxDigits int
 
-	// continuesChain, when set, rejects a match the line carries on past its end (see FR_National).
+	// continuesChain, when set, rejects a match that is one stretch of a longer chain on its line
+	// (see frPairsContinue).
 	continuesChain func(line string, start, end int) bool
 }
 
@@ -426,19 +427,13 @@ func NewValidator() *Validator {
 		// alternative and "01 42.34 56-78" stays unmatched. Appended last so every earlier pattern
 		// keeps its index (TestPatternIndexes in e164_gate_test.go).
 		{
-			name:      "FR_National",
-			regex:     regexp.MustCompile(`\b0[1-9](?: \d\d){4}\b|\b0[1-9](?:\.\d\d){4}\b|\b0[1-9](?:-\d\d){4}\b`),
-			minDigits: 10,
-			maxDigits: 10,
-			country:   "FR",
-			format:    "0X XX XX XX XX",
-			// A sixth pair ("01.42.34.56.78.90") is a longer dotted or dashed chain, a version or a
-			// serial, not a number; the compact form's \b has no such look-ahead for it, a
-			// separator-joined one needs it.
-			continuesChain: func(line string, start, end int) bool {
-				return end+2 < len(line) && line[end] == line[start+2] && line[end+1] >= '0' && line[end+1] <= '9' &&
-					line[end+2] >= '0' && line[end+2] <= '9'
-			},
+			name:           "FR_National",
+			regex:          regexp.MustCompile(`\b0[1-9](?: \d\d){4}\b|\b0[1-9](?:\.\d\d){4}\b|\b0[1-9](?:-\d\d){4}\b`),
+			minDigits:      10,
+			maxDigits:      10,
+			country:        "FR",
+			format:         "0X XX XX XX XX",
+			continuesChain: frPairsContinue,
 		},
 	}
 
