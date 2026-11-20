@@ -71,7 +71,7 @@ func frPairsContinue(line string, start, end int) bool {
 		return 1
 	}
 	first := start
-	for {
+	for run < frHexRunLimit { // the walk stops at the limit, so a line of pairs costs O(1) per match
 		g := width(first-1, -1)
 		if g == 0 || !pairAt(line, first-g-2) {
 			break
@@ -79,7 +79,7 @@ func frPairsContinue(line string, start, end int) bool {
 		first -= g + 2
 		run++
 	}
-	for i := end; ; {
+	for i := end; run < frHexRunLimit; {
 		g := width(i, 1)
 		if g == 0 || !pairAt(line, i+g) {
 			break
