@@ -1,0 +1,22 @@
+=== REDACTED ===
+Card number: 4242451503147973
+Sandbox card 5555 7325 4887 8088 for the checkout test
+{"number": "378200363509358", "exp_month": 12, "exp_year": 2030}
+| Discover | 6011553460812327 | Any 3 digits | Any future date |
+card_number = "3056995438372012"
+Visa debit: 4000381932405688
+Mastercard (2-series) 2223523550119613
+JCB 3530392527533355
+UnionPay 6200888184752479
+Braintree valid card 4012108446812554
+=== FINDINGS (sorted) ===
+type=AMERICAN_EXPRESS line=3 conf=15.00 match=378282246310005
+type=DINERS_CLUB line=5 conf=15.00 match=3056930009020004
+type=DISCOVER line=4 conf=15.00 match=6011111111111117
+type=JCB line=8 conf=15.00 match=3530111333300000
+type=MASTERCARD line=2 conf=1.00 match=5555 5555 5555 4444
+type=MASTERCARD line=7 conf=15.00 match=2223003122003222
+type=UNIONPAY line=9 conf=15.00 match=6200000000000005
+type=VISA line=1 conf=15.00 match=4242424242424242
+type=VISA line=6 conf=15.00 match=4000056655665556
+type=VISA line=10 conf=15.00 match=4012888888881881

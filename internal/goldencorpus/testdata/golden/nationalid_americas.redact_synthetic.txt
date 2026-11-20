@@ -5,9 +5,9 @@ RUN 0007638-9
 CUIL 00-02298638-3
 Employee SIN: 000 200 171
 Social Insurance Number: 000-101-478
-CURP: WEJW058088JSMWML77
+CURP: WEJW050088JSMWML77
 Pedido 000.325.269-85
-CPF: 172.984.064-78
+CPF: 000.655.102-79
 Pago sin recargo: 000 200 171
 Sinónimo 000 200 171
 backup to the NAS 000 200 171
@@ -16,6 +16,7 @@ RFC 7231 section 6
 === FINDINGS (sorted) ===
 type=AR_CUIL line=4 conf=90.00 match=20-12173870-9
 type=BR_CPF line=1 conf=95.00 match=172.984.064-77
+type=BR_CPF line=9 conf=40.00 match=172.984.064-78
 type=CA_SIN line=5 conf=95.00 match=613 891 563
 type=CA_SIN line=6 conf=95.00 match=916-635-287
 type=CL_RUT line=2 conf=95.00 match=6.001.216-4
