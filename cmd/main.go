@@ -173,8 +173,10 @@ func loadConfiguration(configFile string) *config.Config {
 // close that hole — see #293 for the opt-in gating decision, which is a policy call —
 // but it turns an invisible substitution into a reviewable one.
 //
-// NOT gated on --quiet. That flag suppresses progress output; which config governed the
-// run is a disclosure, and in CI (where --quiet is most used) it matters more, not less.
+// Gated on a --quiet TYPED on the command line only (#1008), not on pre-commit mode, a non-interactive
+// run or a config file's `quiet:` (see quietOnTheCommandLine): the operator who types --quiet has asked for a silent stderr, and the report names the config source
+// and the narrowed checks in its scope block (#1007). The pre-commit default, where the disclosure
+// matters most (TB-7), still prints it; the caller decides, so this function stays a plain writer.
 //
 // narrowed, when given and non-nil, is what the config limited the checks to, and the note names
 // it instead of saying only that the config "can disable detection types" (#673 §2, #904): that
@@ -1450,7 +1452,7 @@ func main() {
 	// said. Ungated for the reason TM-13 gives for the provenance note: it is a statement about
 	// what governed the scan, not progress output.
 	disabledDetectionTypes, unrecognisedDisabledTypes := collectDisabledDetectionTypes(standardValidators)
-	reportDisabledDetectionTypes(os.Stderr, disabledDetectionTypes, unrecognisedDisabledTypes)
+	reportDisabledDetectionTypes(os.Stderr, disabledDetectionTypes, unrecognisedDisabledTypes, withholdsTM13Notes(finalConfig.format))
 	// Configured values these validators could not use (#903): a regex RE2 rejects, an entry of the wrong
 	// type. Each was dropped, so what it configured did not happen. Ungated, like the disclosure above and
 	// for the same reason, and unlike the unknown-key warning: --quiet and pre-commit mode are where a
@@ -2003,8 +2005,10 @@ func main() {
 		warnUnknownConfigKeys(os.Stderr, cfg)
 	}
 
-	// The config-provenance note is NOT gated. It is a disclosure about what governed the scan, not
-	// progress output, so it is gated on neither --quiet, non-interactive, nor pre-commit mode.
+	// The config-provenance note is a disclosure about what governed the scan, not progress output, so it
+	// is gated on neither non-interactive nor pre-commit mode, nor on a config file's `quiet:`. A --quiet
+	// typed on the command line withholds it (and the disabled-types Note) except under --format csv,
+	// because the report carries both facts (#1008, withholdsTM13Notes).
 	//
 	// The pre-commit gate used to be here, and the comment that justified it argued against itself:
 	// it said "CI is exactly where a config that silently fails to apply is most dangerous" and then
@@ -2032,8 +2036,15 @@ func main() {
 	//
 	// It writes to stderr, so scripts parsing results on stdout are unaffected, and it never changes
 	// the exit code.
-	reportConfigProvenance(os.Stderr, cfg, flags.configFile,
-		configChecksNarrowingFor(cfg, effectiveProfileName, validatorNames(standardValidators), nil))
+	//
+	// A --quiet typed on the command line withholds this Note and the disabled-types Note above, except
+	// under --format csv, whose document has no scope block. Neither the default of a pre-commit hook nor
+	// `quiet: true` in a config file does (#1008; see quietOnTheCommandLine for why a file cannot silence it). Both facts stay in the report: the scope block names the config source
+	// and the narrowed checks, and stats.disabled_detection_types lists the sub-types switched off.
+	if !withholdsTM13Notes(finalConfig.format) {
+		reportConfigProvenance(os.Stderr, cfg, flags.configFile,
+			configChecksNarrowingFor(cfg, effectiveProfileName, validatorNames(standardValidators), nil))
+	}
 
 	// The built-in precommit profile's one remaining override of a config, named
 	// under the same rule as the note above (#768).
@@ -3635,6 +3646,29 @@ func effectivePrecommitQuiet(pc *precommit.PrecommitConfig) bool {
 		return f != nil && f.Value.String() == "true"
 	}
 	return pc.QuietMode
+}
+
+// quietOnTheCommandLine reports whether the operator typed --quiet (or --quiet=true) on THIS command
+// line. It is the gate for the two TM-13 Notes (#1008), and deliberately not finalConfiguration.quiet:
+// that value also takes `defaults.quiet` and a profile's `quiet`, which a config file inside the scanned
+// tree can set, and a config that can both disable detection types and silence the Note naming it
+// reopens TB-7 (THREAT_MODEL.md TM-13). A flag is the operator's own act; a file is not.
+func quietOnTheCommandLine() bool {
+	if !isFlagSet("quiet") {
+		return false
+	}
+	f := flag.Lookup("quiet")
+	return f != nil && f.Value.String() == "true"
+}
+
+// withholdsTM13Notes reports whether this run's --quiet withholds the two TM-13 Notes ("using project
+// config" and "config disabled N sub-type(s)"): a --quiet typed on the command line, for every format
+// whose document carries the same facts in its scope block (#1007). csv is the one format that does
+// not, so for it stderr is the only channel and the Notes stay (#1008, the csv residual in
+// docs/COVERAGE_DISCLOSURE.md). TestTM13NotesFollowTheScopeBlock renders every format, so a format that
+// gains or loses the scope block changes this answer's test rather than silently losing the disclosure.
+func withholdsTM13Notes(format string) bool {
+	return quietOnTheCommandLine() && format != "csv"
 }
 
 func isFlagSet(name string) bool {

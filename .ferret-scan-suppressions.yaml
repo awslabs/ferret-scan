@@ -141,27 +141,27 @@ rules:
         finding_type: PERSON_NAME
         line_number: "131"
     - id: SUP-00000060
-      hash: 164ed125ab0e943baa44450aef45dc414be735da4542c11c3e5fe6a8c6f58ec2 # pragma: allowlist secret
+      hash: d7bff921d6e8c1235e2ee05ca1198ee47dd20feffbdf12543c5d75191b3d4c17 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-18T22:39:25.359605248Z
+      last_seen_at: 2026-11-19T22:59:05.487660554Z
       metadata:
         confidence: "100.00"
         filename: main.go
         finding_type: SSN
-        line_number: "1631"
+        line_number: "1633"
     - id: SUP-00000061
-      hash: 6bf9f7d462d0655e76f2ba302e12833b132a946089e563b5ae586533abe85f3c # pragma: allowlist secret
+      hash: 8fecee9c2ec3363cd05acffb2a7e032821940b9accdb1967d1d297b9a730ce08 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-18T22:39:25.359605248Z
+      last_seen_at: 2026-11-19T22:59:05.487660554Z
       metadata:
         confidence: "100.00"
         filename: main.go
         finding_type: SSN
-        line_number: "3378"
+        line_number: "3389"
     - id: SUP-00000062
       hash: 3a79dcc87207894473a53d3271dd0fda96f3c2c2c1e3e55a9c80b1cfbbd88b15 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"

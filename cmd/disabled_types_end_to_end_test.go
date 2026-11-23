@@ -28,9 +28,9 @@ func TestDisabledTypesDisclosedOnStderr(t *testing.T) {
 		args []string
 	}{
 		{"plain", nil, nil},
-		// --quiet suppresses progress output. This is a disclosure about what governed the scan,
-		// so it must survive.
-		{"--quiet", nil, []string{"--quiet"}},
+		// --quiet=false is no --quiet. A --quiet typed on the command line withholds the Note since
+		// #1008 (TestQuietWithholdsTheTM13Notes), because the report carries the same fact.
+		{"--quiet=false", nil, []string{"--quiet=false"}},
 		// The TM-13 case: IsPrecommitEnvironment() is true from environment variables alone, so a
 		// gated disclosure takes no flag to suppress.
 		{"PRE_COMMIT=1", []string{"PRE_COMMIT=1"}, nil},

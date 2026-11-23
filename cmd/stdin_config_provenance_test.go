@@ -84,12 +84,14 @@ func TestStdinConfigProvenanceSurvivesQuietAndPrecommit(t *testing.T) {
 		}
 	}
 
-	for _, flag := range []string{"--pre-commit-mode", "--quiet"} {
+	// --quiet is not in this loop since #1008: a --quiet typed on the command line withholds the Note
+	// (the report's scope block names the config), pinned by TestQuietWithholdsTheTM13Notes. The
+	// pre-commit flag still does not.
+	for _, flag := range []string{"--pre-commit-mode"} {
 		out := runStdin(t, bin, hostileConfigDir(t), nil, flag)
 		if !strings.Contains(out, "project config") {
-			t.Errorf("%s suppressed the disclosure on the STDIN path. --quiet documents suppressing "+
-				"PROGRESS output; which config governed the run is not progress. Got %d bytes:\n%s",
-				flag, len(out), out)
+			t.Errorf("%s suppressed the disclosure on the STDIN path. Which config governed the run is "+
+				"not progress output. Got %d bytes:\n%s", flag, len(out), out)
 		}
 	}
 }
