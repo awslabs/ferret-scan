@@ -18,6 +18,10 @@ on:
       # it is how a quality regression gets blessed. Without this line, editing
       # baseline.json to make `make score` pass would receive zero checks.
       - 'internal/scorecorpus/testdata/**'
+      # The golden snapshots and the metadata-key census are data too (#1050: a PR that
+      # regenerated three snapshots to turn main's goldencorpus green again ran no Go test,
+      # while every code PR of the same hour went red on exactly those snapshots).
+      - 'internal/goldencorpus/testdata/**'
   push:
     branches: [main, master]
     paths:
@@ -30,6 +34,10 @@ on:
       # it is how a quality regression gets blessed. Without this line, editing
       # baseline.json to make `make score` pass would receive zero checks.
       - 'internal/scorecorpus/testdata/**'
+      # The golden snapshots and the metadata-key census are data too (#1050: a PR that
+      # regenerated three snapshots to turn main's goldencorpus green again ran no Go test,
+      # while every code PR of the same hour went red on exactly those snapshots).
+      - 'internal/goldencorpus/testdata/**'
   workflow_dispatch:
 
 permissions:
