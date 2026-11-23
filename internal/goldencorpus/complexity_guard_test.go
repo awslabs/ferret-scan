@@ -301,6 +301,81 @@ var complexityTargets = []struct {
 		threshold:  15 * time.Second,
 	},
 	{
+		// #1023 / #902 Part C: the four detections added after the rows above, each timed on its own
+		// carrier with distinct values (complexity_part_c_test.go has the generators).
+		//
+		// MEASURED when the rows were added (linux/amd64, 16 CPUs, host load 14-20, CPU clock, 4 pairs,
+		// 6 runs of the correct code; the same readings under -race for one row at a time, since the
+		// whole guard skips under -race). Correct code reads 3.83x-4.11x on all four rows (margin below
+		// the 8.0 bound: >= 1.95x). A "quadratic overlay" is a one-line mutant of the production file
+		// that rescans from the start per item, run with `go test -overlay`; the readings are the best
+		// regressed ratio and its margin above 8.0:
+		//
+		//	http_auth.go  re-run reBasicScheme over the line per Basic match     12.63x  1.58x
+		//	password_hashes.go  re-run rePasswordHash over line[:start] per hash 14.07x  1.76x
+		//	private_key_containers.go  scan content[:start] for a Private-MAC
+		//	    regex per PuTTY header                                           10.03x  1.25x
+		//	jwk_private.go  score each member with an empty line hint, so the
+		//	    keyword search runs over the whole line per member               18.31x  2.29x
+		//
+		// The PuTTY mutant is below the 1.5x the repo asks for. The reason is the instrument, not the
+		// row: the PuTTY base spends 71% of its CPU profile in the generic keyword path
+		// (findKeywordSecrets, cumulative; 0.24 s per ValidateContent call at 400 keys), which the
+		// Part C source sits beside, and ratio = 4*(1+3f) needs the quadratic term f to be a third of the base reading
+		// before 8.0 is crossed (see TestGrowthRatioMissesASparseQuadratic). Cheaper mutants did NOT
+		// fail: a literal-anchored rescan of the PuTTY prefix read 8.06x here (7.71x on an earlier,
+		// larger fixture) and 6.27x or 4.33x with two other regexes, a JWK re-tokenizer 7.08x, and a
+		// removed enclosure bound (containerCoverScanLimit) 4.03x on JWK (3.89x on an earlier PuTTY
+		// fixture): those quadratics are real but sit under the detection floor.
+		//
+		// HTTP authentication headers (http_auth.go): a Basic and a Bearer credential per repetition on
+		// ONE line, so the per-line regex passes and the decode pipeline run over every candidate.
+		name:            "secrets_http_auth_headers",
+		new:             func() validatorUnderTest { return secrets.NewValidator() },
+		gen:             genHTTPAuthHeaders,
+		minMatches:      700,
+		wantMatchGrowth: true,
+		threshold:       15 * time.Second,
+	},
+	{
+		// PuTTY Private-Lines (private_key_containers.go findPuttyContainers): one whole ed25519 .ppk
+		// per repetition with real line breaks, so the header scan, the Private-Lines window and the
+		// line walk repeat per key. Real breaks rather than the `\n` escape: on one line the generic
+		// keyword path costs 3x more per byte, which shrinks the share the container pass has.
+		name:            "secrets_putty_private_lines",
+		new:             func() validatorUnderTest { return secrets.NewValidator() },
+		gen:             genPuttyPrivateLines,
+		minMatches:      350,
+		wantMatchGrowth: true,
+		threshold:       15 * time.Second,
+	},
+	{
+		// A long `$6$` line (password_hashes.go): distinct sha512crypt hashes on ONE line, the case
+		// where a per-hash re-scan of the line from its start would be quadratic.
+		name:            "secrets_sha512crypt_line",
+		new:             func() validatorUnderTest { return secrets.NewValidator() },
+		gen:             genSHA512CryptLine,
+		minMatches:      350,
+		wantMatchGrowth: true,
+		threshold:       15 * time.Second,
+	},
+	{
+		// A JWK with many members (jwk_private.go): six private members per key on one line, so the
+		// per-line bookkeeping of appendJWKPrivateMembers (same-text map, enclosure check) is timed.
+		// baseReps 100 (39 KB) and 400 (156 KB) on purpose: measured on this tree, between 400 and 500
+		// repetitions (~160-195 KB on one line) the quoted-entropy path starts scoring each member 80
+		// instead of 50, the JWK pass no longer replaces them (2400 -> 19 jwk_private_member findings),
+		// and two sizes on opposite sides of that point would time two different paths. The floor is
+		// 600 of the base's 700 findings, so it fails unless >= 500 are jwk_private_member.
+		name:            "secrets_jwk_private_members",
+		new:             func() validatorUnderTest { return secrets.NewValidator() },
+		gen:             genJWKPrivateMembers,
+		minMatches:      600,
+		wantMatchGrowth: true,
+		baseReps:        100,
+		threshold:       15 * time.Second,
+	},
+	{
 		name: "socialmedia",
 		// This validator is CONFIG-GATED: NewValidator alone leaves
 		// patternsConfigured false, so ValidateContent returns immediately at
