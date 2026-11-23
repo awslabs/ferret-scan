@@ -917,6 +917,12 @@ func (r *report) exportCount(s set, dir, name, format string, body []byte, surfa
 	if len(got) != want {
 		r.fail("%s: export %s on %s holds %d finding(s), the /scan responses it names held %d", s.name, name, surface, len(got), want)
 	}
+	// The CLI's report carries a stats block, and /export carries it too (#904): it must be there and
+	// its total must be the findings the body lists.
+	st, _ := m["stats"].(map[string]any)
+	if total, ok := st["total_findings"].(json.Number); !ok || total.String() != strconv.Itoa(len(got)) {
+		r.fail("%s: export %s on %s has stats.total_findings %v for %d finding(s)", s.name, name, surface, st["total_findings"], len(got))
+	}
 }
 
 // exportsHostOnly checks the host web surface's exports alone, for a run without the container:

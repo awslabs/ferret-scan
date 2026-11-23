@@ -218,7 +218,9 @@ func TestExportCountHoldsTheJSONBodyToTheScans(t *testing.T) {
 		name, format, body string
 		wantFail           bool
 	}{
-		{"all three", "json", `{"results":[1,2,3]}`, false},
+		{"all three", "json", `{"results":[1,2,3],"stats":{"total_findings":3}}`, false},
+		{"no stats block (#904)", "json", `{"results":[1,2,3]}`, true},
+		{"stats disagree with the results (#904)", "json", `{"results":[1,2,3],"stats":{"total_findings":2}}`, true},
 		{"short", "json", `{"results":[1,2]}`, true},
 		{"refusal body", "json", `{"error":"scan_ids is required"}`, true},
 		{"other formats are not counted", "csv", `a,b`, false},

@@ -21,7 +21,7 @@ import (
 // core.ScanFileCtx builds for this request (core.ParseChecksToRun then core.BuildValidatorSetWithOverrides,
 // the calls scanner.go makes), and the disabled sub-types are what those validators report. The web has
 // no profile, so none is reported.
-func (ws *WebServer) webScanScope(cfg *config.Config, checks string, confidence map[string]bool) *formatters.ScanScope {
+func (ws *WebServer) webScanScope(cfg *config.Config, checks string, confidence map[string]bool) (*formatters.ScanScope, map[string][]string, []string) {
 	var checksSlice []string
 	if checks != "" && checks != "all" {
 		checksSlice = strings.Split(checks, ",")
@@ -42,7 +42,7 @@ func (ws *WebServer) webScanScope(cfg *config.Config, checks string, confidence 
 		cwd = ""
 	}
 	sm, _ := ws.initializeSuppressionManager(ws.suppressionsPath)
-	return formatters.NewScanScope(formatters.ScopeInputs{
+	scope := formatters.NewScanScope(formatters.ScopeInputs{
 		ChecksRun:               run,
 		AllChecks:               core.CheckNames(),
 		ConfidenceLevel:         confidence,
@@ -50,6 +50,8 @@ func (ws *WebServer) webScanScope(cfg *config.Config, checks string, confidence 
 		Config:                  formatters.ConfigSourceOf(sourcePath, ws.configPath != "", cwd),
 		SuppressionRulesEnabled: suppressionRulesInForce(sm),
 	})
+	// The two disclosures stats carries beside the scope, from the same validator set (#904).
+	return scope, disabled, core.ConfigWarnings(validators)
 }
 
 // suppressionRulesInForce counts the rules IsSuppressed can apply: enabled, applied by the loader and
