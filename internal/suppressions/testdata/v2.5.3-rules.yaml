@@ -1,0 +1,52 @@
+# A rule file written by ferret-scan v2.5.3 (commit 17ef96b4), unedited except that the four rules were
+# switched on (`enabled: true`). Generated with:
+#   ferret-scan --config /dev/null --file customers.txt --confidence all --generate-suppressions --suppression-file rules.yaml
+# over the five-line CRLF/indented fixture in v253_rules_test.go (#885). Its hashes are formula v2: they
+# digest the context windows with their edge whitespace, so on every line that has any they differ from the
+# v5 hash a current binary writes for the same finding.
+version: "1.0"
+rules:
+    - id: SUP-00000001
+      hash: e1465e5ec4ca80e477f37efbe3ada99694d265cb587e89a467b8031c79961dc4 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: true
+      created_at: 2026-11-19T22:47:05.593757916Z
+      last_seen_at: 2026-11-19T22:47:05.593757916Z
+      metadata:
+        confidence: "100.00"
+        filename: customers.txt
+        finding_type: VISA
+        line_number: "3"
+    - id: SUP-00000002
+      hash: 1c79e15e8d66b7aeecc9c41e5e77adcd1d3ce434316a468a1655072df4ec8023 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: true
+      created_at: 2026-11-19T22:47:05.593757916Z
+      last_seen_at: 2026-11-19T22:47:05.593757916Z
+      metadata:
+        confidence: "100.00"
+        filename: customers.txt
+        finding_type: VISA
+        line_number: "5"
+    - id: SUP-00000003
+      hash: e47d720085d60c0a214ab3d309ec832c718deeb5e06d28526ab65a7e175d38a0 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: true
+      created_at: 2026-11-19T22:47:05.593757916Z
+      last_seen_at: 2026-11-19T22:47:05.593757916Z
+      metadata:
+        confidence: "56.00"
+        filename: customers.txt
+        finding_type: BUSINESS
+        line_number: "2"
+    - id: SUP-00000004
+      hash: 2e1862c2beadcfb96e7a38c4fb4fd821b36a3f8867bcab8577c3da6a28ca8df1 # pragma: allowlist secret
+      reason: Auto-generated suppression rule (disabled by default)
+      enabled: true
+      created_at: 2026-11-19T22:47:05.593757916Z
+      last_seen_at: 2026-11-19T22:47:05.593757916Z
+      metadata:
+        confidence: "100.00"
+        filename: customers.txt
+        finding_type: SSN
+        line_number: "4"
