@@ -74,8 +74,8 @@ matched (`US`, `UK`, `Canada`, `CanadaCurrent`, `Germany`, `France`, `EU`, `MRZ`
   GBR12345678 is not detected
 
 #### Canadian Passport
-- 2 letters followed by 6 digits (e.g., GK123456); this is the only Canadian
-  shape detected
+- 2 letters followed by 6 digits (e.g., GK123456)
+- current shape (#992): 1 letter, 6 digits, 2 letters (e.g., R123456KX), detected behind a passport label
 
 #### EU Passport
 - 2 letters followed by 7 letters or digits (e.g., DE1234567)

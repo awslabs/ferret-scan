@@ -3014,8 +3014,9 @@ func NormalizeOutput(format, s string) string {
 }
 
 // ferretIDPattern matches the gitlab-sast vulnerability id "ferret-<16 hex>".
-// The id is a SHA256 over "filename:line:type" (mapper.go GenerateVulnerabilityID),
-// so it is stable for a fixed file path but varies with the per-run temp dir.
+// The id is a SHA256 over the report's own location.file path, the line and the type
+// (mapper.go GenerateVulnerabilityID, #1073), so it follows the printed path and not
+// the checkout or temp directory the scan ran from.
 // The snapshot already locks the filename/line/type it derives from, so the raw
 // hash carries no extra signal — normalize it to keep file-mode snapshots stable.
 var ferretIDPattern = regexp.MustCompile(`ferret-[0-9a-f]{16}`)

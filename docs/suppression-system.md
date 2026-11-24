@@ -352,7 +352,7 @@ next save starts a new one.
 - ✅ **Rule Indexing**: Hash-based indexing for O(1) lookup performance
 - ✅ **Bulk Operations**: Efficient bulk enable/disable/delete and bulk expiration management
 - ✅ **Web-mode caching**: `SuppressionManager` cached on `WebServer` with mtime-based reload
-- ✅ **YAML pragma comments**: `# pragma: allowlist secret` auto-added to `hash:` lines so the file doesn't trip ferret-scan's own scanner
+- ✅ **YAML pragma comments**: `# pragma: allowlist secret` auto-added to `hash:` lines so other secret scanners (detect-secrets reads this pragma) do not flag the file; ferret-scan itself does not honour it (#1002), and a hash reads 55 and is not a secret
 
 ### Planned Improvements
 
