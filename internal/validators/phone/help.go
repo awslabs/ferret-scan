@@ -29,7 +29,7 @@ Confidence comes from phone evidence on the match's line: each phone word (phone
 			"Toll-free: 1-800-555-1234, (800) 555-1234, +1-800-555-1234",
 			"With extensions: 555-123-4567 ext 123, +1-555-123-4567 x456",
 			"Various separators: spaces, dashes, dots, parentheses",
-			"FR_National: 01 42 34 56 78, 01.42.34.56.78, 01-42-34-56-78 (a trunk 0, a digit 1-9, four pairs, one separator)",
+			"French national (FR_National, a trunk 0 and four pairs with one separator): 01 42 34 56 78, 01.42.34.56.78, 01-42-34-56-78",
 		},
 
 		SupportedFormats: []string{
