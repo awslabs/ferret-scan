@@ -25,6 +25,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/web"
 
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/explain"
 	"github.com/awslabs/ferret-scan/v2/internal/help"
 	"github.com/awslabs/ferret-scan/v2/internal/observability"
@@ -1209,7 +1210,7 @@ func main() {
 
 	// Handle web mode early - validate flags and start web server if requested
 	if flags.webMode {
-		if err := handleWebMode(flags.webPort, flags.webBind, flag.Args(), flags.inputFile, flags.configFile, flags.suppressionFile, flags.excludePatterns); err != nil {
+		if err := handleWebMode(flags.webPort, flags.webBind, flag.Args(), flags.inputFile, flags.configFile, flags.suppressionFile, flags.excludePatterns, webScanOptions(flags, validatorBudgets)); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -3776,7 +3777,7 @@ func parseChecksToRun(checks string) map[string]bool {
 }
 
 // handleWebMode validates web mode flags and starts the web server
-func handleWebMode(port, bindFlag string, args []string, inputFile, configFile, suppressionFile string, excludePatterns []string) error {
+func handleWebMode(port, bindFlag string, args []string, inputFile, configFile, suppressionFile string, excludePatterns []string, scanOpts web.ScanOptions) error {
 	// Validate that no file arguments are provided with web mode
 	if len(args) > 0 {
 		return fmt.Errorf("--web flag cannot be used with file arguments\n"+
@@ -3809,7 +3810,22 @@ func handleWebMode(port, bindFlag string, args []string, inputFile, configFile, 
 	bindAddr, _ := web.ResolveBindAddress(bindFlag)
 
 	// Start web server
-	return startWebServer(finalPort, bindAddr, configFile, suppressionFile, excludePatterns)
+	return startWebServer(finalPort, bindAddr, configFile, suppressionFile, excludePatterns, scanOpts)
+}
+
+// webScanOptions turns the CLI scan flags --web applies (#925: --profile, --disable-ip-types,
+// --validator-budget, --debug) into the server's options. The rest of the scan flags are either
+// equivalent in the page (the web inventory's webEquivalent) or refused by validateWebModeFlags.
+func webScanOptions(flags extractedFlags, budgets map[string]execguard.ValidatorBudget) web.ScanOptions {
+	o := web.ScanOptions{ProfileName: flags.profileName, ValidatorBudgets: budgets, Debug: flags.debug}
+	if flags.disableIPTypes != "" {
+		o.DisableIPTypes = ipTypeOverrides(&finalConfiguration{disableIPTypes: flags.disableIPTypes}).DisabledIPTypes
+	}
+	if flags.debug {
+		// The validators' own [DEBUG] lines are gated on this, as prepareRun sets it for a CLI run.
+		os.Setenv("FERRET_DEBUG", "1")
+	}
+	return o
 }
 
 // validateWebModeFlags validates that incompatible flags are not used with --web
@@ -3889,7 +3905,19 @@ func validateWebModeFlags() error {
 
 	if isFlagSet("list-profiles") {
 		incompatibleFlags = append(incompatibleFlags, "--list-profiles")
-		troubleshooting = append(troubleshooting, "Web mode does not currently support configuration profiles")
+		troubleshooting = append(troubleshooting, "--list-profiles prints the configured profiles and exits; to scan under one in the web UI, start it with --web --profile <name>")
+	}
+
+	// An upload has no directory tree for .gitignore to apply to, and /scan returns every finding, so a
+	// flag that promises either would be accepted and do nothing (#925).
+	if isFlagSet("respect-gitignore") {
+		incompatibleFlags = append(incompatibleFlags, "--respect-gitignore")
+		troubleshooting = append(troubleshooting, "Web mode scans uploaded files, not a directory tree, so there is no .gitignore to honor; use --exclude to skip paths in a dropped folder")
+	}
+
+	if isFlagSet("limit") {
+		incompatibleFlags = append(incompatibleFlags, "--limit")
+		troubleshooting = append(troubleshooting, "Web mode shows every finding; --limit caps the CLI's report only")
 	}
 
 	// --fail-on-incomplete controls the CLI process exit code; the web server is a
@@ -3911,14 +3939,9 @@ func validateWebModeFlags() error {
 		troubleshooting = append(troubleshooting, "Web mode has its own suppressed findings display")
 	}
 
-	if isFlagSet("validator-budget") {
-		incompatibleFlags = append(incompatibleFlags, "--validator-budget")
-		troubleshooting = append(troubleshooting, "Web mode does not apply per-validator CLI budgets; it runs with the default per-file timeout")
-	}
-
 	if isFlagSet("max-live-bytes") {
 		incompatibleFlags = append(incompatibleFlags, "--max-live-bytes")
-		troubleshooting = append(troubleshooting, "Web mode does not apply the CLI live-bytes memory cap")
+		troubleshooting = append(troubleshooting, "Web mode does not apply the CLI live-bytes memory cap: /scan requests are not admitted against a shared byte budget")
 	}
 
 	// If any incompatible flags were found, return an error
@@ -4026,9 +4049,10 @@ func isPortAvailable(port string) bool {
 
 // startWebServer starts the web server on the specified port + bind address
 // with timeout and resilience.
-func startWebServer(port, bindAddr, configFile, suppressionFile string, excludePatterns []string) error {
+func startWebServer(port, bindAddr, configFile, suppressionFile string, excludePatterns []string, scanOpts web.ScanOptions) error {
 	// Import web server package
 	webServer := web.NewWebServerWithOptions(port, bindAddr, configFile, suppressionFile, excludePatterns)
+	webServer.SetScanOptions(scanOpts)
 
 	// Start the web server (this will block)
 	return webServer.Start()

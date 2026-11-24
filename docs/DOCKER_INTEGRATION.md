@@ -72,6 +72,11 @@ docker run --rm \
   ferret-scan --web --port 8080
 ```
 
+`--web` also takes `--config`, `--suppression-file`, `--exclude`, `--profile`, `--disable-ip-types`,
+`--validator-budget` and `--debug` (the debug log goes to the container's stderr, `docker logs`), and
+refuses `--respect-gitignore`, `--limit`, `--list-profiles` and `--max-live-bytes` at startup with a message
+naming the flag. See [Scan flags with `--web`](user-guides/README-WebUI.md#scan-flags-with---web).
+
 The `127.0.0.1:` prefix keeps the UI on this machine: inside the container the server binds
 `0.0.0.0` (the image sets `FERRET_CONTAINER_MODE=true`), so the publish is the boundary, and to use
 the UI from another machine you forward the port over SSH from that machine
