@@ -20,8 +20,8 @@ var arcepFictionBlocks = []struct{ z, ab, pq string }{
 }
 
 // arcepSpellings are the ways a French number is written that the phone check reports on a labelled
-// line. The spaced national form ("01 99 00 47 18") is not among them: main reports no phone number
-// for any French number so written ("01 23 45 67 89" too), a separate gap from this one.
+// line. The national form written in pairs ("01 99 00 47 18", dots, dashes) is covered by
+// fr_national_test.go (#1052): main reported no phone number for it.
 func arcepSpellings(z, ab, pq, tail string) []string {
 	ab4 := ab + pq + tail // the eight digits after Z
 	return []string{
