@@ -32,8 +32,30 @@ const (
 
 // ssn returns a well-formed SSN made at test time, so no value is committed; the self-scan reports it
 // HIGH in a .md file, which is what a release note quoting an example value looks like to the gate.
+//
+// A uniform draw is not enough for "reports it HIGH": the
+// validator demotes a value with three identical digits in a row (hasRepeatingPatterns, e.g.
+// 444-26-3333 or 304-99-9982) to 65, the regenerate below runs at --confidence high, and the
+// fragment then yields 0 rules. Measured before this guard: 11 of 2,000 uniform draws read 65, and
+// the test, which draws twice per run, failed 3 times in 168 runs on main and on an unrelated
+// branch. Redrawing while two adjacent digits are equal rules that demotion out, and it also rules
+// out the validator's "area repeats the group" block (121-12-xxxx has "11" in it); the remaining
+// repeating-block test, area equal to the serial's first three digits, is checked on its own.
 func ssn(r *rand.Rand) string {
-	return fmt.Sprintf("%03d-%02d-%04d", 100+r.Intn(500), 10+r.Intn(90), 1000+r.Intn(9000))
+	for {
+		v := fmt.Sprintf("%03d-%02d-%04d", 100+r.Intn(500), 10+r.Intn(90), 1000+r.Intn(9000))
+		digits := strings.ReplaceAll(v, "-", "")
+		adjacent := false
+		for i := 1; i < len(digits); i++ {
+			if digits[i] == digits[i-1] {
+				adjacent = true
+				break
+			}
+		}
+		if !adjacent && digits[0:3] != digits[5:8] {
+			return v
+		}
+	}
 }
 
 type scratch struct {
