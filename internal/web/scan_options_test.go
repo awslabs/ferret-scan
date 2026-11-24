@@ -101,6 +101,7 @@ func TestWebProfileAppliesToScan(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := optScan(t, ws, "m.txt", optMixed).types()
+	t.Logf("types without --profile: %v; with --profile ssnonly: %v", all, got)
 	if !got["SSN"] || len(got) != 1 {
 		t.Errorf("--profile ssnonly (checks: SSN) must restrict the scan to SSN, got %v (no profile: %v)", got, all)
 	}
@@ -149,7 +150,9 @@ func TestWebDisableIPTypesAppliesToScan(t *testing.T) {
 		t.Fatal("control: the copyright notice must be reported without --disable-ip-types")
 	}
 	ws, _ := startForOptions(t, "", ScanOptions{DisableIPTypes: []string{"copyright"}})
-	if got := optScan(t, ws, "c.txt", body).types(); got["INTELLECTUAL_PROPERTY"] {
+	got := optScan(t, ws, "c.txt", body).types()
+	t.Logf("types without the flag: %v; with --disable-ip-types copyright: %v", optScan(t, plain, "c.txt", body).types(), got)
+	if got["INTELLECTUAL_PROPERTY"] {
 		t.Errorf("--disable-ip-types copyright must drop the copyright finding, got %v", got)
 	}
 }
