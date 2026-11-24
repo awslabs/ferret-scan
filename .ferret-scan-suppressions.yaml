@@ -1417,27 +1417,27 @@ rules:
         finding_type: SSN
         line_number: "95"
     - id: SUP-00000209
-      hash: 390aed0ec89a13dad406db3a2d0d5e00270edb2821261a7dd7988d91784e3b71 # pragma: allowlist secret
+      hash: 2e0c91246f3a5333d6ab834f4d1d70036333530b4e6a13007e83aae1222719b9 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-24T20:42:21.114145062Z
+      last_seen_at: 2026-11-24T21:13:32.770444594Z
       metadata:
         confidence: "90.00"
         filename: redactverify.go
         finding_type: INSURANCE_MEMBER_ID
-        line_number: "507"
+        line_number: "525"
     - id: SUP-00000210
-      hash: 4b0a4f19a0254f7a81c3bb96cc4543093f791912cffafb8e87171844707ae803 # pragma: allowlist secret
+      hash: dd195da49e1accfc2e4f4d2a44db2cd865777e9ea111ce2b207a7f9e4647ad68 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-24T20:42:21.114145062Z
+      last_seen_at: 2026-11-24T21:13:32.770444594Z
       metadata:
         confidence: "92.00"
         filename: redactverify.go
         finding_type: PERSON_NAME
-        line_number: "270"
+        line_number: "284"
     - id: SUP-00000211
       hash: 18bc509eeb65344fb5b178e1b8f8a5fe37ab7f7a702af5ce49aef98905347d73 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
