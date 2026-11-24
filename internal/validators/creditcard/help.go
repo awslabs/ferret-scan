@@ -18,6 +18,8 @@ The check looks for 16-digit numbers (15 for American Express) that may be forma
 
 A bare run of digits (no spaces or dashes between groups) reaches HIGH only when something names it as a card: a card word on its line, inside an identifier on the line (cardNumber, card_number), or in the header of its CSV column. Without one it scores at most 75 (MEDIUM), so a counter or row number that happens to pass the Luhn check is not presented as a confirmed card. It is still reported and redacted.
 
+A number a payment processor or card network publishes as a test card (the Adyen, Authorize.Net, Braintree, Checkout.com, Square and Stripe test-card pages the check carries, copied digit for digit) is capped at 15 (LOW), however the line around it reads, and so is a literal test pattern or a repeating shape. It is still reported and redacted, and the cap holds in documents too. A real card one digit away from a published number keeps its score.
+
 **Supported Credit Card Types:**
 - **VISA** - Cards starting with 4
 - **MASTERCARD** - Cards starting with 5 (51-55) or 2221-2720 range

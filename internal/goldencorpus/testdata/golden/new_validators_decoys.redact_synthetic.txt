@@ -10,5 +10,5 @@ shape only 2WeE8Ziy8kgJa without context
 3 items in way of progress
 === FINDINGS (sorted) ===
 type=ABA_ROUTING line=6 conf=65.00 match=021000021
-type=IBAN line=5 conf=60.00 match=DE89 3704 0044 0532 0130 00
+type=IBAN line=5 conf=15.00 match=DE89 3704 0044 0532 0130 00
 type=MEDICARE_MBI line=7 conf=40.00 match=1EG4-TE5-MK73

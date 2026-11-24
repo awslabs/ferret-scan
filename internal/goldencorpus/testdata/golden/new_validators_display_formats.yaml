@@ -186,34 +186,6 @@ results:
             not_false_positive: true
             street_type_suffix: true
         validation_path: document
-    - text: DE89 3704 0044 0532 0130 00
-      line_number: 2
-      type: IBAN
-      confidence: 80
-      confidence_level: MEDIUM
-      filename: <golden:new_validators_display_formats>
-      validator: bank_account
-      metadata:
-        confidence_adjustment: 0
-        context_confidence: 0.5
-        context_doctype: Unknown
-        context_domain: Healthcare
-        context_impact: -5
-        country: DE
-        normalized: DE89370400440532013000
-        original_confidence: 80
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
-        validation_checks:
-            mod97_checksum: true
-            valid_characters: true
-            valid_country: true
-            valid_length: true
-        validation_path: document
     - text: D123-4567-8901
       line_number: 3
       type: DRIVERS_LICENSE
@@ -244,4 +216,34 @@ results:
             not_all_same: true
             not_all_zeros: true
             not_sequential: false
+        validation_path: document
+    - text: DE89 3704 0044 0532 0130 00
+      line_number: 2
+      type: IBAN
+      confidence: 15
+      confidence_level: LOW
+      filename: <golden:new_validators_display_formats>
+      validator: bank_account
+      metadata:
+        confidence_adjustment: 0
+        confidence_ceiling: 15
+        context_confidence: 0.5
+        context_doctype: Unknown
+        context_domain: Healthcare
+        context_impact: -5
+        country: DE
+        normalized: DE89370400440532013000
+        original_confidence: 15
+        semantic_context:
+            FinancialData: 0
+            MedicalData: 0
+            PersonalData: 0
+            Production: 0
+            TestData: 0
+        validation_checks:
+            mod97_checksum: true
+            not_published_example: false
+            valid_characters: true
+            valid_country: true
+            valid_length: true
         validation_path: document

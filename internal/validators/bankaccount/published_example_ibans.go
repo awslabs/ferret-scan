@@ -15,11 +15,9 @@ import "github.com/awslabs/ferret-scan/v2/internal/detector"
 // not a positive of the golden or score corpus. Popularity in documentation is not enough, and no
 // registry reserves IBAN values, so the list is short on purpose:
 //
-//   - The German example #930 also names is a positive of two golden cases
-//     (new_validators_display_formats and new_validators_decoys, IBAN MEDIUM 80 and 60). Listing
-//     it would move both snapshots, so it waits until those fixtures use another value.
-//   - The SWIFT IBAN registry's per-country samples change between releases, so they are not a
-//     stable list either (docs/proposals/CONFIDENCE_CONTRACT.md measured that).
+//   - The SWIFT IBAN registry's per-country samples change between releases, so the registry as a
+//     whole is not a stable list (docs/proposals/CONFIDENCE_CONTRACT.md measured that). Only the
+//     German sample is listed, from the registry release recorded in ibanRegistryExamples.
 //
 // A listed value is capped, never dropped: it is still reported, so redaction still rewrites it,
 // at no more than publishedExampleCeiling, and the ceiling is published so the document bridge
@@ -30,6 +28,14 @@ var publishedExampleIBANs = map[string]string{
 	// read 2026-11-11: "Example (fictitious United Kingdom bank, sort code 12-34-56, account number
 	// 98765432)", printed as GB82 WEST 1234 5698 7654 32.
 	"GB82WEST12345698765432": "Wikipedia IBAN article, fictitious United Kingdom bank example",
+
+	// SWIFT, "IBAN Registry" (ISO 13616), https://www.swift.com/swift-resource/11971/download. The
+	// Germany entry's "IBAN electronic format example" is DE89370400440532013000, printed as
+	// "DE89 3704 0044 0532 0130 00" (#1024). The registry gives it as a specimen of the format, not
+	// an account. Source of this entry: ibanRegistryExamples["DE"] (iban_registry_examples_test.go),
+	// which TestIBANRegistryMatchesDownload wrote from that download on 2026-11-04; the download
+	// answered 403 to a plain fetch on 2026-11-19, so this entry was not re-read that day.
+	"DE89370400440532013000": "SWIFT IBAN Registry, Germany IBAN electronic format example",
 }
 
 // publishedExampleCeiling is the confidence a published example IBAN is held to: the top of LOW,

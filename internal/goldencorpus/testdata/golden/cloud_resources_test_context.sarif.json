@@ -13,14 +13,14 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "prod \nprod arn:aws:iam::123456789012:role/PaymentsAdmin"
+                    "text": "prod \nprod arn:aws:iam::111122223333:role/PaymentsAdmin"
                   },
                   "startLine": 1
                 },
                 "region": {
                   "endColumn": 50,
                   "snippet": {
-                    "text": "prod arn:aws:iam::123456789012:role/PaymentsAdmin"
+                    "text": "prod arn:aws:iam::111122223333:role/PaymentsAdmin"
                   },
                   "startColumn": 6,
                   "startLine": 1
@@ -29,16 +29,16 @@
             }
           ],
           "message": {
-            "text": "Cloud Resource Identifier Detected in <golden:cloud_resources_test_context> at line 1 (confidence: 95.0% - HIGH). Matched text: 'arn:aws:iam::123456789012:role/PaymentsAdmin'"
+            "text": "Cloud Resource Identifier Detected in <golden:cloud_resources_test_context> at line 1 (confidence: 95.0% - HIGH). Matched text: 'arn:aws:iam::111122223333:role/PaymentsAdmin'"
           },
           "partialFingerprints": {
-            "ferretFindingIdentity/v1": "088ba8045e008bc432888bcf9f3608068fbfcf69a405c424145081af855ddd3e"
+            "ferretFindingIdentity/v1": "10dae2aae3bbedd7c10cf85da9a4ccc6f2746c3dfc0f1fff1acbd091180f15ab"
           },
           "properties": {
             "confidence": 95,
             "confidenceLevel": "HIGH",
             "metadata": {
-              "account_id": "123456789012",
+              "account_id": "111122223333",
               "confidence_adjustment": 0,
               "confidence_factors": [
                 "base_match:+85",
@@ -81,14 +81,14 @@
                 },
                 "contextRegion": {
                   "snippet": {
-                    "text": "example \nexample arn:aws:iam::123456789012:role/PaymentsAdmin"
+                    "text": "example \nexample arn:aws:iam::111122223333:role/PaymentsAdmin"
                   },
                   "startLine": 2
                 },
                 "region": {
                   "endColumn": 53,
                   "snippet": {
-                    "text": "example arn:aws:iam::123456789012:role/PaymentsAdmin"
+                    "text": "example arn:aws:iam::111122223333:role/PaymentsAdmin"
                   },
                   "startColumn": 9,
                   "startLine": 2
@@ -97,16 +97,16 @@
             }
           ],
           "message": {
-            "text": "Cloud Resource Identifier Detected in <golden:cloud_resources_test_context> at line 2 (confidence: 75.0% - MEDIUM). Matched text: 'arn:aws:iam::123456789012:role/PaymentsAdmin'"
+            "text": "Cloud Resource Identifier Detected in <golden:cloud_resources_test_context> at line 2 (confidence: 75.0% - MEDIUM). Matched text: 'arn:aws:iam::111122223333:role/PaymentsAdmin'"
           },
           "partialFingerprints": {
-            "ferretFindingIdentity/v1": "7efeba0461aa58f08bbd5d269bb8c3efc17417b911e09ccb36eb4f0a3895c4fa"
+            "ferretFindingIdentity/v1": "6e40b1cf062e8ab8835a51ac42503bc10c03edd26292be3fe410b5e1b86524b8"
           },
           "properties": {
             "confidence": 75,
             "confidenceLevel": "MEDIUM",
             "metadata": {
-              "account_id": "123456789012",
+              "account_id": "111122223333",
               "confidence_adjustment": 0,
               "confidence_factors": [
                 "base_match:+85",
@@ -138,6 +138,75 @@
             "validator": "cloud_resources"
           },
           "rank": 72.5,
+          "ruleId": "AWS_ARN"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "<golden:cloud_resources_test_context>"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "prod \nprod arn:aws:iam::123456789012:role/PaymentsAdmin"
+                  },
+                  "startLine": 3
+                },
+                "region": {
+                  "endColumn": 50,
+                  "snippet": {
+                    "text": "prod arn:aws:iam::123456789012:role/PaymentsAdmin"
+                  },
+                  "startColumn": 6,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Cloud Resource Identifier Detected in <golden:cloud_resources_test_context> at line 3 (confidence: 15.0% - LOW). Matched text: 'arn:aws:iam::123456789012:role/PaymentsAdmin'"
+          },
+          "partialFingerprints": {
+            "ferretFindingIdentity/v1": "088ba8045e008bc432888bcf9f3608068fbfcf69a405c424145081af855ddd3e"
+          },
+          "properties": {
+            "confidence": 15,
+            "confidenceLevel": "LOW",
+            "metadata": {
+              "account_id": "123456789012",
+              "confidence_adjustment": 0,
+              "confidence_ceiling": 15,
+              "confidence_factors": [
+                "base_match:+85",
+                "valid_account_id:+10"
+              ],
+              "context_confidence": 1,
+              "context_doctype": "Unknown",
+              "context_domain": "Financial",
+              "original_confidence": 15,
+              "provider": "aws",
+              "resource_type": "AWS_ARN",
+              "semantic_context": {
+                "FinancialData": 0,
+                "MedicalData": 0,
+                "PersonalData": 0,
+                "Production": 0,
+                "TestData": 0.1
+              },
+              "service": "iam",
+              "validation_checks": {
+                "not_test_data": true,
+                "reasonable_length": true,
+                "valid_account_id": true,
+                "valid_format": true
+              },
+              "validation_path": "document"
+            },
+            "validator": "cloud_resources"
+          },
+          "rank": 42.5,
           "ruleId": "AWS_ARN"
         }
       ],
