@@ -13,7 +13,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/awslabs/ferret-scan/v2/internal/core"
 	"github.com/awslabs/ferret-scan/v2/internal/execguard"
@@ -157,18 +156,28 @@ func TestWebDisableIPTypesAppliesToScan(t *testing.T) {
 	}
 }
 
+// A budget the server is given reaches every validator of a web scan and cuts it short the way
+// --file's does. The budget is a MATCH limit, not a time limit: a 1ns TimeLimit is observed only
+// once the clock has moved past the deadline, and on a coarse clock (Windows ticks at 0.5-15.6 ms)
+// a two-line scan finishes inside one tick and reads complete, which is what made the first
+// version of this test red on windows-latest while ubuntu and macOS passed (execguard/budget.go,
+// "A budget shorter than the platform clock's resolution..."). A match limit fires on the count
+// of findings, which no clock can move. The flag parses time limits only; the map it fills is the
+// same ScanOptions.ValidatorBudgets this test fills, so the plumbing under test is the same.
 func TestWebValidatorBudgetAppliesToScan(t *testing.T) {
 	plain, _ := startForOptions(t, "", ScanOptions{})
 	if optScan(t, plain, "m.txt", optMixed).Incomplete {
 		t.Fatal("control: a scan without a budget must be complete")
 	}
-	budgets := map[string]execguard.ValidatorBudget{} // what --validator-budget all=1ns expands to
+	budgets := map[string]execguard.ValidatorBudget{}
 	for _, name := range core.CheckNames() {
-		budgets[name] = execguard.ValidatorBudget{TimeLimit: time.Nanosecond}
+		budgets[name] = execguard.ValidatorBudget{MatchLimit: 1}
 	}
 	ws, _ := startForOptions(t, "", ScanOptions{ValidatorBudgets: budgets})
-	if !optScan(t, ws, "m.txt", optMixed).Incomplete {
-		t.Errorf("--validator-budget all=1ns must make the scan incomplete, as on --file")
+	// Two SSNs for one validator: the second is over the limit, so the scan must say it was cut short.
+	resp := optScan(t, ws, "m.txt", "ssn 449-87-4100\nssn 449-87-4101\n"+optMixed)
+	if !resp.Incomplete {
+		t.Errorf("a validator budget on the server must make the scan incomplete, as on --file")
 	}
 }
 
