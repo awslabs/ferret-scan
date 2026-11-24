@@ -162,17 +162,6 @@ rules:
         filename: main.go
         finding_type: SSN
         line_number: "3389"
-    - id: SUP-00000062
-      hash: 3a79dcc87207894473a53d3271dd0fda96f3c2c2c1e3e55a9c80b1cfbbd88b15 # pragma: allowlist secret
-      reason: "fixture: documentation example of what the scanner reports"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
-      metadata:
-        confidence: "95.00"
-        filename: configuration.md
-        finding_type: AWS_ARN
-        line_number: "676"
     - id: SUP-00000063
       hash: 611aa2e864a0389b4ac77f155022301ba03f30416e0a6a8d700e8f6b67f866b3 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
@@ -1570,39 +1559,6 @@ rules:
         filename: replacement.go
         finding_type: AWS_ACCESS_KEY
         line_number: "1417"
-    - id: SUP-00000224
-      hash: 88aa26cce29daa3e08e072cfae9c0bb950325948949551b2297c547bfce0d2d0 # pragma: allowlist secret
-      reason: "fixture: validator README example of what this check reports"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "95.00"
-        filename: README.md
-        finding_type: AWS_ARN
-        line_number: "14"
-    - id: SUP-00000225
-      hash: 13aca7e82109cbd84e883856b7f2e36ba609883fdf5ed7ec6766431dc10847c9 # pragma: allowlist secret
-      reason: "fixture: validator README example of what this check reports"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "95.00"
-        filename: README.md
-        finding_type: AWS_ARN
-        line_number: "16"
-    - id: SUP-00000226
-      hash: 4933e5ee4a84a008c39415baa98a89d65d0cdd8d6581894bfa137e15562b7e2c # pragma: allowlist secret
-      reason: "fixture: validator README example of what this check reports"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "95.00"
-        filename: README.md
-        finding_type: AWS_ARN
-        line_number: "17"
     - id: SUP-00000227
       hash: 94c82f633819319c82d52c9c40704f649a81b462e2432f0358351b5131af018c # pragma: allowlist secret
       reason: "fixture: validator README example of what this check reports"
@@ -1735,17 +1691,6 @@ rules:
         filename: README.md
         finding_type: ALIBABA_ARN
         line_number: "76"
-    - id: SUP-00000239
-      hash: 07d0d649332b313738a586de3c86e851115fd9623b3547ac5f9f5805ea253b45 # pragma: allowlist secret
-      reason: "fixture: validator README example of what this check reports"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
-      metadata:
-        confidence: "95.00"
-        filename: README.md
-        finding_type: AWS_ARN
-        line_number: "175"
     - id: SUP-00000240
       hash: 06c183bc4490389d04ac6eda2b4b0df6947b39c335ed35cc10d0462b0c44f9c8 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
@@ -4188,17 +4133,6 @@ rules:
         filename: metadata_validator.go
         finding_type: SSN
         line_number: "3087"
-    - id: SUP-00000529
-      hash: febf023bc39c6085930f37de365497169424b483e85fbf1b82ce3b3e28fb488b # pragma: allowlist secret
-      reason: "fixture: example value in a pattern comment or keyword table of the validator"
-      enabled: true
-      created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T00:18:00.597613762Z
-      metadata:
-        confidence: "95.00"
-        filename: validator.go
-        finding_type: AWS_ARN
-        line_number: "2478"
     - id: SUP-00000530
       hash: ad6257a7452638e2b3a6d0039c605e19dfbe1fcfd590fc7acd461acddb02a8cd # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"

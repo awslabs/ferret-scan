@@ -158,7 +158,9 @@ release note the #966 fix now reads correctly (a bare name beside a titled one):
 86 `detector FP` and 6 `public`. Waves 9 and 10 (#982–#1049) then fixed the detectors behind #930's NPI
 and secret rows, #931, #932, #933, #935's street names and #936, reworded the fixtures their rules covered,
 and held the Ofcom and ARCEP fiction numbers at LOW; the 69 rules whose finding was gone and the 15 whose
-finding now reads LOW 15 were deleted: 524 rules, 507 `fixture`, 11 `detector FP` and 6 `public`.
+finding now reads LOW 15 were deleted: 524 rules, 507 `fixture`, 11 `detector FP` and 6 `public`. Wave 11 (#1060)
+then held the IBAN registry's DE example and AWS's documentation account at LOW; the 6 `fixture` rules covering
+those two values in docs, a README and a comment were deleted: 518 rules, 501 `fixture`, 11 `detector FP` and 6 `public`.
 Rule IDs are not contiguous after a deletion, and the generator numbers a new rule from the highest ID.
 
 A rule matches a finding by its identity hash: the type, the line, the file's basename, the line number,
