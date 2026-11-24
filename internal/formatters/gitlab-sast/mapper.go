@@ -36,7 +36,7 @@ func (m *VulnerabilityMapper) MapToGitLabVulnerability(match detector.Match, sou
 	}
 
 	// Generate deterministic vulnerability ID
-	vulnID := m.GenerateVulnerabilityID(match)
+	vulnID := m.GenerateVulnerabilityID(match, sourceRoot)
 
 	// Map confidence level to severity (use Ferret's confidence_level classification)
 	confidenceLevel := m.GetConfidenceLevel(match.Confidence)
@@ -56,10 +56,7 @@ func (m *VulnerabilityMapper) MapToGitLabVulnerability(match detector.Match, sou
 
 	// Create location information. Virtual matches (stdin, in-memory) keep
 	// their synthetic label as-is; only filesystem paths get normalized.
-	locationFile := match.Filename
-	if !match.IsVirtual() {
-		locationFile = m.normalizeFilePath(match.Filename, sourceRoot)
-	}
+	locationFile := m.reportPath(match, sourceRoot)
 	location := GitLabLocation{
 		File:      locationFile,
 		StartLine: match.LineNumber,
@@ -85,10 +82,26 @@ func (m *VulnerabilityMapper) MapToGitLabVulnerability(match detector.Match, sou
 	return vulnerability, nil
 }
 
+// reportPath is the path the report prints in location.file: a virtual match keeps its
+// synthetic label, a filesystem path is made SourceRoot-relative and stripped of "../".
+func (m *VulnerabilityMapper) reportPath(match detector.Match, sourceRoot string) string {
+	if match.IsVirtual() {
+		return match.Filename
+	}
+	return m.normalizeFilePath(match.Filename, sourceRoot)
+}
+
 // GenerateVulnerabilityID creates a deterministic ID using SHA256 hash
-func (m *VulnerabilityMapper) GenerateVulnerabilityID(match detector.Match) string {
-	// Create deterministic ID based on file, line, and check type
-	// This ensures the same vulnerability gets the same ID across scans
+func (m *VulnerabilityMapper) GenerateVulnerabilityID(match detector.Match, sourceRoot string) string {
+	// The id is a hash of what the report prints (location.file, line, check type), not of the
+	// scanned path (#1017). The CLI hands the formatter an absolute path, so hashing it made the
+	// same file in two checkout directories two ids; the web hashes the upload name, which is
+	// what location.file prints there. Hashing the printed path makes the CLI id stable across
+	// checkout locations and equal to the web's for the same name.
+	//
+	// Cost, paid once at the release that made this change: every id differs from the one an
+	// earlier release emitted, so GitLab triage state keyed on the old ids (dismissals, issue
+	// links) detaches. The column stays out of the hash for the same reason (see below).
 	//
 	// Two findings of the same type on one line therefore hash alike. That WAS the
 	// #328 collapse — GitLab deduplicates by id, so it kept one and silently dropped
@@ -102,7 +115,7 @@ func (m *VulnerabilityMapper) GenerateVulnerabilityID(match detector.Match) stri
 	// existing GitLab triage state (dismissals, issue links) from the findings it
 	// belongs to. Verified by mutation: dropping the column here breaks nothing,
 	// dropping the guard reintroduces the collision.
-	data := fmt.Sprintf("%s:%d:%s", match.Filename, match.LineNumber, match.Type)
+	data := fmt.Sprintf("%s:%d:%s", m.reportPath(match, sourceRoot), match.LineNumber, match.Type)
 	hash := sha256.Sum256([]byte(data))
 	return fmt.Sprintf("ferret-%x", hash[:8])
 }

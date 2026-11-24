@@ -26,7 +26,7 @@ type Formatter struct {
 // VulnerabilityMapperInterface defines the contract for vulnerability mapping
 type VulnerabilityMapperInterface interface {
 	MapToGitLabVulnerability(match detector.Match, sourceRoot string) (*GitLabVulnerability, error)
-	GenerateVulnerabilityID(match detector.Match) string
+	GenerateVulnerabilityID(match detector.Match, sourceRoot string) string
 	MapConfidenceLevelToSeverity(confidenceLevel string) string
 	ValidateMapping(match detector.Match) error
 }
