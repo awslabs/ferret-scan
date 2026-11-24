@@ -41,7 +41,7 @@ func sweepRemainingReference(text string, matches []detector.Match, replacementF
 		// refused the file. Same predicate as ResidualTypes, deliberately.
 		// Standalone only, same rule as the predicate. textBytes is hoisted above the loop: taking
 		// []byte(text) here copies the whole document once per candidate.
-		if c, _ := occurrenceKinds(textBytes, []byte(m.Text)); c > 0 {
+		if c, edge, _ := occurrenceKinds3(textBytes, []byte(m.Text)); c > 0 || (edge > 0 && len(m.Text) >= embeddedSweepLen) {
 			seen[m.Text] = m
 			continue
 		}
@@ -85,7 +85,7 @@ func sweepRemainingReference(text string, matches []detector.Match, replacementF
 			continue
 		}
 		swept = append(swept, v)
-		if _, emb := occurrenceKinds(textBytes, []byte(v)); emb > 0 {
+		if _, edge, inner := occurrenceKinds3(textBytes, []byte(v)); (edge+inner > 0 && len(v) < embeddedSweepLen) || (inner > 0 && len(v) >= embeddedSweepLen) {
 			// Mixed: some occurrences are the value and some are inside longer tokens.
 			mixed = append(mixed, v)
 			mixedRepl[v] = repl
@@ -137,7 +137,7 @@ func sweepRemainingReference(text string, matches []detector.Match, replacementF
 	// the only instance was the golden fixture's own decoy. Paying O(len(text)) per mixed value is
 	// acceptable when the count is ~0 and incorrectness is not.
 	for _, v := range mixed {
-		out = replaceStandaloneOnly(out, v, mixedRepl[v])
+		out = replaceStandaloneOnly(out, v, mixedRepl[v], len(v) >= embeddedSweepLen)
 	}
 	return out, swept, nil
 }
@@ -215,4 +215,31 @@ func survivesReference(written []byte, value string) bool {
 		}
 	}
 	return false
+}
+
+// occurrenceKinds3 is occurrenceKinds with the embedded count split into edge (a word byte on one
+// side) and interior (both sides), by the per-occurrence scan the reference is.
+func occurrenceKinds3(hay, needle []byte) (standalone, edge, interior int) {
+	if len(needle) == 0 || len(hay) < len(needle) {
+		return 0, 0, 0
+	}
+	for i := 0; i+len(needle) <= len(hay); {
+		j := bytes.Index(hay[i:], needle)
+		if j < 0 {
+			break
+		}
+		at := i + j
+		before := at > 0 && isWordByte(hay[at-1])
+		after := at+len(needle) < len(hay) && isWordByte(hay[at+len(needle)])
+		switch {
+		case before && after:
+			interior++
+		case before || after:
+			edge++
+		default:
+			standalone++
+		}
+		i = at + 1
+	}
+	return standalone, edge, interior
 }

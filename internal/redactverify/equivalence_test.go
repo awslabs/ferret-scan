@@ -127,7 +127,7 @@ func TestSweepRemainingMatchesPerValueReference(t *testing.T) {
 
 		var wantCalls, gotCalls []string
 		wantOut, wantSw, wantErr := sweepRemainingReference(doc, ms, fuzzReplacer(mode, &wantCalls))
-		gotOut, gotSw, gotErr := SweepRemaining(doc, ms, fuzzReplacer(mode, &gotCalls))
+		gotOut, gotSw, gotErr := sweepOnce(doc, ms, fuzzReplacer(mode, &gotCalls)) // one round: the reference is one round (#968 repeats rounds in SweepRemaining)
 
 		if gotOut != wantOut || !reflect.DeepEqual(gotSw, wantSw) || fmt.Sprint(gotErr) != fmt.Sprint(wantErr) ||
 			!reflect.DeepEqual(gotCalls, wantCalls) {
@@ -226,8 +226,8 @@ func TestScanKindsMatchesOccurrenceKinds(t *testing.T) {
 			t.Fatalf("string and []byte haystacks disagree: %v vs %v", got, gotB)
 		}
 		for _, n := range needles {
-			s, e := occurrenceKinds([]byte(doc), []byte(n))
-			if want := (kinds{s > 0, e > 0}); got[n] != want {
+			s, edge, inner := occurrenceKinds3([]byte(doc), []byte(n))
+			if want := (kinds{s > 0, edge+inner > 0, edge > 0, inner > 0}); got[n] != want {
 				t.Fatalf("round %d: doc %q needle %q: want %+v got %+v", i, doc, n, want, got[n])
 			}
 		}

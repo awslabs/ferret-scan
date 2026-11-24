@@ -11,8 +11,13 @@ import (
 // kinds records whether a needle has at least one STANDALONE and at least one EMBEDDED occurrence in
 // a document, by the rule occurrenceKinds applies (no word byte abutting it on either side is
 // standalone; any word byte on either side is embedded). It is occurrenceKinds with the counts
-// reduced to the two facts every caller of the sweep and the predicate actually reads.
-type kinds struct{ standalone, embedded bool }
+// reduced to the facts every caller of the sweep and the predicate actually reads.
+//
+// An embedded occurrence is further split by how many sides a word byte abuts: EDGE (one side, so the
+// value starts or ends the longer token: `Smith` in `Smithson`) and INTERIOR (both sides: `BEEF1234567`
+// inside `0xDEADBEEF12345678`). The sweep masks an edge occurrence of a long value and never an
+// interior one (embeddedSweepLen, #968).
+type kinds struct{ standalone, embedded, edge, interior bool }
 
 // scanKinds answers, for every needle at once, what occurrenceKinds(hay, needle) would, in ONE pass
 // over hay: an Aho-Corasick automaton over the needles, so the cost is O(len(hay) + total needle
@@ -149,8 +154,14 @@ nextNeedle:
 			id := t - 1
 			end := i + 1
 			at := end - int(lens[id])
-			if (at > 0 && isWordByte(hay[at-1])) || (end < n && isWordByte(hay[end])) {
+			before, after := at > 0 && isWordByte(hay[at-1]), end < n && isWordByte(hay[end])
+			if before || after {
 				found[id].embedded = true
+				if before && after {
+					found[id].interior = true
+				} else {
+					found[id].edge = true
+				}
 			} else {
 				found[id].standalone = true
 			}

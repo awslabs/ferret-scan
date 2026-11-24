@@ -19,46 +19,85 @@ func mask(v string) string { return strings.Repeat("*", len(v)) }
 func maskFor(x detector.Match) (string, error) { return mask(x.Text), nil }
 
 // TestSweepSparesAValueEmbeddedInALongerToken is the regression test for the case the repo's own golden
-// corpus already proved: a blind substring sweep corrupts data it was never asked to touch.
+// corpus proved: a blind substring sweep corrupts data it was never asked to touch.
 //
 // internal/goldencorpus reports the 11-byte INSURANCE_MEMBER_ID `BEEF1234567` on one line, and a
 // separate decoy line reads `cache blob 0xDEADBEEF12345678 evicted`, which the fixture exists to keep
-// clean. The value occurs inside that hex constant. Before the standalone rule, TestGoldenRedact was RED
-// on both simple and format_preserving — silently, at exit 0.
-//
-// A length floor cannot protect this: the value is 11 bytes, far above any plausible minimum.
+// clean. The value occurs INSIDE that hex constant, word bytes on both sides, so it is left alone at
+// any length. A short value (`BEEF`, 4 bytes) at the EDGE of the constant is left alone too: only a
+// value of embeddedSweepLen or more is masked at an edge (#968).
 func TestSweepSparesAValueEmbeddedInALongerToken(t *testing.T) {
 	const decoy = "cache blob 0xDEADBEEF12345678 evicted\n"
-	got, swept, err := SweepRemaining(decoy, []detector.Match{m("BEEF1234567", "INSURANCE_MEMBER_ID")}, maskFor)
-	if err != nil {
-		t.Fatalf("SweepRemaining: %v", err)
+	for _, v := range []string{"BEEF1234567", "BEEF123", "BEEF1234"} {
+		got, swept, err := SweepRemaining(decoy, []detector.Match{m(v, "INSURANCE_MEMBER_ID")}, maskFor)
+		if err != nil {
+			t.Fatalf("SweepRemaining: %v", err)
+		}
+		if got != decoy {
+			t.Errorf("the sweep rewrote %q inside a longer token.\n got: %q\nwant: %q", v, got, decoy)
+		}
+		if len(swept) != 0 {
+			t.Errorf("reported %d swept value(s) while changing nothing: %v", len(swept), swept)
+		}
 	}
-	if got != decoy {
-		t.Errorf("the sweep rewrote a value embedded in a longer token.\n got: %q\nwant: %q\n"+
-			"Those bytes are part of a hex constant, not the reported value. Rewriting them corrupts a "+
-			"document the tool was asked to redact, not to edit.", got, decoy)
-	}
-	if len(swept) != 0 {
-		t.Errorf("reported %d swept value(s) while changing nothing: %v", len(swept), swept)
+	const edge = "ref=1234abcdef end\n" // `1234` opens a longer token: a 4-byte value stays standalone-only
+	if got, _, _ := SweepRemaining(edge, []detector.Match{m("1234", "TEST_TYPE")}, maskFor); got != edge {
+		t.Errorf("a short value at the edge of a longer token was rewritten: %q", got)
 	}
 }
 
-// TestSweepStillRemovesAStandaloneOccurrence is the other half. The standalone rule must not become "any
-// value that appears embedded anywhere is untouchable" — the copy that IS the value still has to go.
+// TestSweepMasksALongValueAtATokenEdge pins #968: a reported value of 8 or more bytes is masked where
+// it occurs standalone AND where it starts or ends a longer token. The first two edge cases are the
+// shapes measured in the public corpus (a name followed by more letters; an id followed by `_`).
+func TestSweepMasksALongValueAtATokenEdge(t *testing.T) {
+	const v = "BEEF1234567"
+	for _, tc := range []struct{ name, doc string }{
+		{"standalone only", "member id: BEEF1234567\n"},
+		{"embedded followed by letters", "name: BEEF1234567xyz\n"},
+		{"embedded followed by underscore", "ref=BEEF1234567_01\n"},
+		{"embedded preceded by a token", "ref=abcBEEF1234567\n"},
+		{"standalone and at an edge", "id BEEF1234567 and BEEF1234567xyz\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, swept, err := SweepRemaining(tc.doc, []detector.Match{m(v, "INSURANCE_MEMBER_ID")}, maskFor)
+			if err != nil {
+				t.Fatalf("SweepRemaining: %v", err)
+			}
+			if strings.Contains(got, v) {
+				t.Errorf("an occurrence of a reported %d-byte value survived: %q", len(v), got)
+			}
+			if len(got) != len(tc.doc) {
+				t.Errorf("a same-length mask changed the length: %d -> %d", len(tc.doc), len(got))
+			}
+			if len(swept) != 1 {
+				t.Errorf("swept = %v, want exactly the one value", swept)
+			}
+		})
+	}
+}
+
+// TestSweepStillRemovesAStandaloneOccurrence is the other half. The standalone rule must not become
+// "any value that appears embedded anywhere is untouchable": the copy that IS the value still has to
+// go, and the interior copy must stay, for a long value (which is also masked at an edge) and a short one.
 func TestSweepStillRemovesAStandaloneOccurrence(t *testing.T) {
-	const doc = "member id: BEEF1234567\ncache blob 0xDEADBEEF12345678 evicted\n"
-	got, swept, err := SweepRemaining(doc, []detector.Match{m("BEEF1234567", "INSURANCE_MEMBER_ID")}, maskFor)
-	if err != nil {
-		t.Fatalf("SweepRemaining: %v", err)
-	}
-	if strings.Contains(got, "member id: BEEF1234567") {
-		t.Errorf("the standalone occurrence survived:\n%s", got)
-	}
-	if !strings.Contains(got, "0xDEADBEEF12345678") {
-		t.Errorf("the embedded occurrence was rewritten as collateral:\n%s", got)
-	}
-	if len(swept) != 1 {
-		t.Errorf("swept = %v, want exactly the one value", swept)
+	for _, v := range []string{"BEEF1234567", "BEEF123"} {
+		doc := "member id: " + v + "\nref " + v + "_x\ncache blob 0xDEADBEEF12345678 evicted\n"
+		got, swept, err := SweepRemaining(doc, []detector.Match{m(v, "INSURANCE_MEMBER_ID")}, maskFor)
+		if err != nil {
+			t.Fatalf("SweepRemaining: %v", err)
+		}
+		if strings.Contains(got, "member id: "+v) {
+			t.Errorf("%s: the standalone occurrence survived:\n%s", v, got)
+		}
+		if long := len(v) >= embeddedSweepLen; strings.Contains(got, "ref "+v+"_x") == long {
+			t.Errorf("%s: edge occurrence masked=%v, want %v:\n%s", v, !long, long, got)
+		}
+		if !strings.Contains(got, "0xDEADBEEF12345678") {
+			t.Errorf("%s: the interior occurrence was rewritten as collateral:\n%s", v, got)
+		}
+		if len(swept) != 1 {
+			t.Errorf("%s: swept = %v, want exactly the one value", v, swept)
+		}
 	}
 }
 
@@ -235,5 +274,31 @@ func TestOccurrenceKindsCountsOverlapping(t *testing.T) {
 			t.Errorf("occurrenceKinds(%q, %q) = (%d, %d), want (%d, %d)",
 				tc.hay, tc.needle, c, e, tc.wantClean, tc.wantEmbed)
 		}
+	}
+}
+
+// TestSweepRepeatsWhenAReplacementReformsAnotherValue pins the round loop SweepRemaining gained with
+// #968. Two reported values overlap in one digit run; the leftmost is replaced first and the
+// replacement keeps its last four digits (format_preserving does), which with the bytes after it spell
+// the second value again, now standalone. One round left it there and the dispatch-point floor refused
+// the file (measured on a public corpus .txt: 9 findings, "redaction refused").
+func TestSweepRepeatsWhenAReplacementReformsAnotherValue(t *testing.T) {
+	keep4 := func(x detector.Match) (string, error) {
+		return strings.Repeat("*", len(x.Text)-4) + x.Text[len(x.Text)-4:], nil
+	}
+	const doc = "id 9990001234567890 x\n"
+	ms := []detector.Match{m("9990001234", "PHONE"), m("1234567890", "PHONE")}
+	out, swept, err := SweepRemaining(doc, ms, keep4)
+	if err != nil {
+		t.Fatalf("SweepRemaining: %v", err)
+	}
+	if r := ResidualTypes([]byte(out), ms); len(r) > 0 {
+		t.Errorf("a reported value survives the sweep: %q (residual %v)", out, r)
+	}
+	if len(swept) != 2 {
+		t.Errorf("swept = %v, want both values", swept)
+	}
+	if one, _, _ := sweepOnce(doc, ms, keep4); len(ResidualTypes([]byte(one), ms)) == 0 {
+		t.Errorf("non-vacuity: one round already cleans %q, so this test does not exercise the loop", doc)
 	}
 }
