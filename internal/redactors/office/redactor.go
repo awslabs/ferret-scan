@@ -994,6 +994,22 @@ func (or *OfficeRedactor) redactOfficeContent(zipContents *OfficeZipContents, ex
 	// Computed once: see distinctPartCount for why building it per match was quadratic.
 	partCount := distinctPartCount(textPositions)
 
+	// Locate every distinct value in ONE pass over the extracted text (valueTrie) instead of one
+	// strings.Index per value inside redactMatch: the i-th value's first occurrence sits about i
+	// values in, so N distinct values cost N^2/2 value-lengths of scanning.
+	distinct := make([]string, 0, len(units))
+	for i := range units {
+		if t := units[i].match.Text; t != "" {
+			if _, done := partCache[t]; !done {
+				partCache[t] = matchLocation{firstOffset: -1}
+				distinct = append(distinct, t)
+			}
+		}
+	}
+	for i, loc := range locateAll(extractedText, textPositions, distinct, partCount) {
+		partCache[distinct[i]] = loc
+	}
+
 	// The units no route below could place, kept so closeBoundarySpans can give the ones it does place
 	// an audit entry.
 	var unlocated []officeWriteUnit
