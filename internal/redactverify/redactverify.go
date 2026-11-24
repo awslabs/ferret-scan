@@ -238,7 +238,16 @@ func SweepRemaining(text string, matches []detector.Match, replacementFor func(m
 	have := map[string]bool{}
 	out := text
 	for round := 0; round < sweepRounds; round++ {
-		next, swept, err := sweepOnce(out, matches, repl)
+		// Edges are judged on the ORIGINAL document only. After round one a value can abut a
+		// replacement where it abutted a digit, so an occurrence that was inside a longer token
+		// reads as an edge; masking it exposes the next one. Measured on a public corpus .txt: a
+		// long digit run lost one phone-number-length chunk per round. Later rounds therefore
+		// sweep standalone occurrences only, which is what the cascade they exist for produces.
+		edgeLen := embeddedSweepLen
+		if round > 0 {
+			edgeLen = noEdge
+		}
+		next, swept, err := sweepOnce(out, matches, repl, edgeLen)
 		if err != nil {
 			return text, nil, err
 		}
@@ -262,7 +271,12 @@ func SweepRemaining(text string, matches []detector.Match, replacementFor func(m
 // for the dispatch-point floor to refuse, which is the safe outcome; raise it if a corpus file shows one.
 const sweepRounds = 4
 
-func sweepOnce(text string, matches []detector.Match, replacementFor func(m detector.Match) (string, error)) (string, []string, error) {
+// noEdge is an edgeLen no value reaches: standalone occurrences only.
+const noEdge = int(^uint(0) >> 1)
+
+// sweepOnce is one round. edgeLen is the shortest value whose edge occurrences it masks:
+// embeddedSweepLen in the first round, and noEdge in every later one.
+func sweepOnce(text string, matches []detector.Match, replacementFor func(m detector.Match) (string, error), edgeLen int) (string, []string, error) {
 	if text == "" || len(matches) == 0 || replacementFor == nil {
 		return text, nil, nil
 	}
@@ -282,7 +296,7 @@ func sweepOnce(text string, matches []detector.Match, replacementFor func(m dete
 		// never reach the pair-building below, so the sweep would report success while the floor
 		// refused the file. Same predicate as ResidualTypes, deliberately.
 		// Standalone, or a long value that starts or ends a longer token (embeddedSweepLen, #968).
-		if found[t].standalone || (found[t].edge && len(t) >= embeddedSweepLen) {
+		if found[t].standalone || (found[t].edge && len(t) >= edgeLen) {
 			seen[t] = first[t]
 			continue
 		}
@@ -326,7 +340,7 @@ func sweepOnce(text string, matches []detector.Match, replacementFor func(m dete
 			continue
 		}
 		swept = append(swept, v)
-		if long := len(v) >= embeddedSweepLen; (found[v].embedded && !long) || (found[v].interior && long) {
+		if long := len(v) >= edgeLen; (found[v].embedded && !long) || (found[v].interior && long) {
 			// Mixed: some occurrences are masked and some are left as they are (a short value's
 			// embedded ones, a long value's interior ones). A long value with no interior occurrence
 			// takes the fast path below: every occurrence of it is masked.
@@ -382,7 +396,7 @@ func sweepOnce(text string, matches []detector.Match, replacementFor func(m dete
 	// shortcut: that is values x text for a document with thousands of values that are each embedded
 	// somewhere and standalone elsewhere; make it one pass when a corpus file shows one (#1005).
 	for _, v := range mixed {
-		out = replaceStandaloneOnly(out, v, mixedRepl[v], len(v) >= embeddedSweepLen)
+		out = replaceStandaloneOnly(out, v, mixedRepl[v], len(v) >= edgeLen)
 	}
 	return out, swept, nil
 }
@@ -411,10 +425,14 @@ func replaceStandaloneOnly(s, needle, repl string, edgeToo bool) string {
 		before := at > 0 && isWordByte(s[at-1])
 		after := at+len(needle) < len(s) && isWordByte(s[at+len(needle)])
 		if (before && after) || ((before || after) && !edgeToo) {
-			b.WriteString(needle) // embedded: leave it exactly as it was
-		} else {
-			b.WriteString(repl)
+			// Embedded: leave it as it was, and step ONE byte, not past it. An occurrence that
+			// starts inside this one (a phone number overlapping another in a longer digit run) may
+			// be the one at the token's edge, and stepping past this one skipped it (#968).
+			b.WriteByte(s[at])
+			i = at + 1
+			continue
 		}
+		b.WriteString(repl)
 		i = at + len(needle)
 	}
 	return b.String()

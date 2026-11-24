@@ -127,7 +127,7 @@ func TestSweepRemainingMatchesPerValueReference(t *testing.T) {
 
 		var wantCalls, gotCalls []string
 		wantOut, wantSw, wantErr := sweepRemainingReference(doc, ms, fuzzReplacer(mode, &wantCalls))
-		gotOut, gotSw, gotErr := sweepOnce(doc, ms, fuzzReplacer(mode, &gotCalls)) // one round: the reference is one round (#968 repeats rounds in SweepRemaining)
+		gotOut, gotSw, gotErr := sweepOnce(doc, ms, fuzzReplacer(mode, &gotCalls), embeddedSweepLen) // one round: the reference is one round (#968 repeats rounds in SweepRemaining)
 
 		if gotOut != wantOut || !reflect.DeepEqual(gotSw, wantSw) || fmt.Sprint(gotErr) != fmt.Sprint(wantErr) ||
 			!reflect.DeepEqual(gotCalls, wantCalls) {

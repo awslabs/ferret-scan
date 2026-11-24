@@ -71,9 +71,10 @@ const perValueBound = 3.0
 //	regressed (the one-pass arm replaced by the reference, overlay)     1.00x           0.33x: FAILS
 //
 // Since #968 SweepRemaining repeats its one-pass round until a round changes nothing, so a document
-// the first round cleans pays a second, empty, round: the ratio roughly halves. Readings at load 35-45
-// with the round loop: 8.19x (pairs 6.4-8.2x, margin 2.73x) plain, 10.99x (margin 3.66x) under -race.
-// A round loop that rescanned once per value would read ~1x and fail, as before.
+// the first round cleans pays a second, empty, round (standalone-only, so cheaper than the first).
+// Readings with the round loop, load 7-10: 10.99x and 12.41x (pairs 8.2-12.5x, margin >= 3.66x) plain,
+// 11.15x (pairs 10.5-11.2x, margin 3.72x) under -race. A round loop that rescanned once per value
+// would read ~1x and fail, as before.
 //
 // Per-pair samples sit within 12.5-16x on every run; the one-pass growth logged beside them on the same
 // runs read 6.1-6.5x (pairs 2.3-7.7x) plain and 5.2-5.4x under -race.

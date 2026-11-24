@@ -298,7 +298,44 @@ func TestSweepRepeatsWhenAReplacementReformsAnotherValue(t *testing.T) {
 	if len(swept) != 2 {
 		t.Errorf("swept = %v, want both values", swept)
 	}
-	if one, _, _ := sweepOnce(doc, ms, keep4); len(ResidualTypes([]byte(one), ms)) == 0 {
+	if one, _, _ := sweepOnce(doc, ms, keep4, embeddedSweepLen); len(ResidualTypes([]byte(one), ms)) == 0 {
 		t.Errorf("non-vacuity: one round already cleans %q, so this test does not exercise the loop", doc)
+	}
+}
+
+// TestSweepFindsAnEdgeOccurrenceOverlappingAnInteriorOne pins the one-byte step in
+// replaceStandaloneOnly: in `x 91231231231231 y` the 10-digit value occurs at offset 1 (digits on
+// both sides: interior, kept) and at offset 4 (the run's end: an edge, masked). Stepping past the
+// kept occurrence skipped the edge one; measured on a public corpus .txt, 7-16 edge copies of three
+// reported phone numbers survived that way.
+func TestSweepFindsAnEdgeOccurrenceOverlappingAnInteriorOne(t *testing.T) {
+	const v = "1231231231"
+	const doc = "x 91231231231231 y\nid " + v + "\n"
+	out, _, err := SweepRemaining(doc, []detector.Match{m(v, "PHONE")}, maskFor)
+	if err != nil {
+		t.Fatalf("SweepRemaining: %v", err)
+	}
+	if strings.Contains(out, "id "+v) {
+		t.Errorf("the standalone occurrence survived: %q", out)
+	}
+	if strings.Contains(out, "1231231 y") {
+		t.Errorf("the edge occurrence overlapping an interior one survived: %q", out)
+	}
+}
+
+// TestLaterRoundsDoNotErodeALongerToken pins the standalone-only rule of rounds after the first. In a
+// digit run made of a repeating 10-digit value, round one masks the occurrence at the run's edge; the
+// next occurrence then abuts the replacement instead of a digit and reads as an edge. Judging edges
+// on the rewritten text peeled the run one value per round (measured on a public corpus .txt).
+func TestLaterRoundsDoNotErodeALongerToken(t *testing.T) {
+	const v = "1234567890"
+	doc := "run 9" + strings.Repeat(v, 4) + " end\nid " + v + "\n"
+	ph := func(x detector.Match) (string, error) { return "[" + x.Type + "]", nil }
+	out, _, err := SweepRemaining(doc, []detector.Match{m(v, "PHONE")}, ph)
+	if err != nil {
+		t.Fatalf("SweepRemaining: %v", err)
+	}
+	if got := strings.Count(out, "[PHONE]"); got != 2 {
+		t.Errorf("%d replacements, want 2 (the standalone copy and the run's one edge): %q", got, out)
 	}
 }
