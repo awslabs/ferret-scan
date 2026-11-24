@@ -218,3 +218,24 @@ func TestSanitizeSuppressedMatches_RevealsWithShowMatch(t *testing.T) {
 		t.Error("suppressed Context.FullLine should be present when ShowMatch=true")
 	}
 }
+
+// TestSanitizeMetadata_ValidatorVerdictKeys: the validators' own verdict keys (#1053) reach
+// the report with the match text hidden, with the values the validators give them.
+func TestSanitizeMetadata_ValidatorVerdictKeys(t *testing.T) {
+	meta := map[string]interface{}{
+		"country":            "BR",
+		"checksum_valid":     false,
+		"check_digit_valid":  true,
+		"confidence_ceiling": float64(40),
+		"clean_number":       "23456789093", // value-bearing: still withheld
+	}
+	got := SanitizeMetadata(meta, "234.567.890-93", false, "")
+	for _, k := range []string{"country", "checksum_valid", "check_digit_valid", "confidence_ceiling"} {
+		if v, ok := got[k]; !ok || v != meta[k] {
+			t.Errorf("%s = %v, %v; want %v kept", k, v, ok, meta[k])
+		}
+	}
+	if _, ok := got["clean_number"]; ok {
+		t.Error("clean_number must stay withheld")
+	}
+}
