@@ -218,3 +218,27 @@ func TestWebDebugWritesToServerStderrNotTheResponse(t *testing.T) {
 		t.Errorf("the debug log carries the matched value %q", ssn)
 	}
 }
+
+// A profile's own validator settings reach the scan (ScanConfig.Profile), and --disable-ip-types still
+// outranks the profile's list, as docs/configuration.md says it does on --file.
+func TestWebProfileValidatorSettingsAndFlagPrecedence(t *testing.T) {
+	const body = "Copyright (c) 2024 Example Corporation. All rights reserved.\n"
+	cfg := writeConfig(t, "profiles:\n  nocopy:\n    checks: all\n    enable_preprocessors: true\n"+
+		"    validators:\n      intellectual_property:\n        disabled_types:\n          - copyright\n")
+
+	ws, err := startForOptions(t, cfg, ScanOptions{ProfileName: "nocopy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := optScan(t, ws, "c.txt", body).types(); got["INTELLECTUAL_PROPERTY"] {
+		t.Errorf("the profile disables copyright, but a copyright finding was reported: %v", got)
+	}
+
+	ws, err = startForOptions(t, cfg, ScanOptions{ProfileName: "nocopy", DisableIPTypes: []string{"patent"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := optScan(t, ws, "c.txt", body).types(); !got["INTELLECTUAL_PROPERTY"] {
+		t.Errorf("--disable-ip-types patent replaces the profile's list, so copyright must be reported again: %v", got)
+	}
+}
