@@ -23,6 +23,7 @@ import (
 	"github.com/awslabs/ferret-scan/v2/internal/config"
 	"github.com/awslabs/ferret-scan/v2/internal/core"
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
+	"github.com/awslabs/ferret-scan/v2/internal/execguard"
 	"github.com/awslabs/ferret-scan/v2/internal/explain"
 	"github.com/awslabs/ferret-scan/v2/internal/formatters"
 	formatterShared "github.com/awslabs/ferret-scan/v2/internal/formatters/shared"
@@ -77,6 +78,11 @@ type WebServer struct {
 	mux              *http.ServeMux
 	server           *http.Server
 	cachedConfig     *config.Config
+
+	// opts are the CLI scan flags --web applies to every /scan (#925); profile is opts.ProfileName
+	// resolved against cachedConfig at Start().
+	opts    ScanOptions
+	profile *config.Profile
 
 	suppCacheMu     sync.RWMutex
 	suppCacheMgr    *suppressions.SuppressionManager
@@ -202,6 +208,24 @@ func notExaminedFrom(diags []parallel.FileDiagnostic) []notExaminedFile {
 	return out
 }
 
+// ScanOptions are the CLI scan flags a web server applies to every /scan, the way the CLI applies them to
+// a --file scan (#925). The zero value changes nothing.
+type ScanOptions struct {
+	// ProfileName is --profile: the config profile whose checks, confidence, verbose, recursive and
+	// preprocessor defaults sit between the config file and the form, and whose validator settings apply.
+	// Start() refuses an unknown name, as the CLI does.
+	ProfileName string
+	// DisableIPTypes is --disable-ip-types; nil leaves the configured set alone.
+	DisableIPTypes []string
+	// ValidatorBudgets is --validator-budget, parsed; nil means no budget.
+	ValidatorBudgets map[string]execguard.ValidatorBudget
+	// Debug is --debug: scans run with the debug observer, which writes to the server's stderr.
+	Debug bool
+}
+
+// SetScanOptions sets the CLI scan flags applied to every /scan. Call it before Start.
+func (ws *WebServer) SetScanOptions(o ScanOptions) { ws.opts = o }
+
 // NewWebServerWithOptions creates a new web server instance with config and
 // suppression file paths supplied by the caller. Empty strings preserve the
 // existing default behavior (search standard locations). excludePatterns from
@@ -258,10 +282,22 @@ func (ws *WebServer) Start() error {
 		ws.cachedConfig = config.LoadConfigOrDefault("")
 	}
 
+	// --profile (#925): an unknown name refuses to start, as it refuses a CLI run, rather than
+	// scanning every upload with the defaults.
+	if ws.opts.ProfileName != "" {
+		if ws.cachedConfig != nil {
+			ws.profile = ws.cachedConfig.GetProfile(ws.opts.ProfileName)
+		}
+		if ws.profile == nil {
+			return fmt.Errorf("refusing to start: Profile '%s' not found in config file\n"+
+				"Hint: name a profile under `profiles:` in the config given by --config (or discovered)", ws.opts.ProfileName)
+		}
+	}
+
 	// Configured values a validator could not use (#903), named once here, at
 	// load, rather than on every request. Every check, because a request may
-	// select any of them; the web UI applies no profile.
-	for _, w := range core.ConfigWarnings(core.BuildValidatorSet(core.ParseChecksToRun(nil), ws.cachedConfig, nil)) {
+	// select any of them; under --profile, the profile's values too.
+	for _, w := range core.ConfigWarnings(core.BuildValidatorSet(core.ParseChecksToRun(nil), ws.cachedConfig, ws.profile)) {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
 	}
 
@@ -585,6 +621,9 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 		if cfg != nil && cfg.Defaults.ConfidenceLevels != "" {
 			confidence = cfg.Defaults.ConfidenceLevels
 		}
+		if ws.profile != nil && ws.profile.ConfidenceLevels != "" {
+			confidence = ws.profile.ConfidenceLevels
+		}
 	}
 
 	checks := request.FormValue("checks")
@@ -593,6 +632,9 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 		if cfg != nil && cfg.Defaults.Checks != "" {
 			checks = cfg.Defaults.Checks
 		}
+		if ws.profile != nil && ws.profile.Checks != "" {
+			checks = ws.profile.Checks
+		}
 	}
 
 	// An explicit "false" from the form still wins; absent means "use the config".
@@ -600,9 +642,15 @@ func (ws *WebServer) handleScan(responseWriter http.ResponseWriter, request *htt
 	if request.FormValue("verbose") == "" && cfg != nil {
 		verbose = cfg.Defaults.Verbose
 	}
+	if request.FormValue("verbose") == "" && ws.profile != nil {
+		verbose = ws.profile.Verbose // as resolveConfiguration: a profile's value replaces the config's
+	}
 	recursive := request.FormValue("recursive") == "true"
 	if request.FormValue("recursive") == "" && cfg != nil {
 		recursive = cfg.Defaults.Recursive
+	}
+	if request.FormValue("recursive") == "" && ws.profile != nil {
+		recursive = ws.profile.Recursive
 	}
 	// Optional relative path from a folder drop (e.g. "myrepo/src/foo.go") —
 	// Go strips path components from multipart filename headers, so the
@@ -971,18 +1019,25 @@ func (ws *WebServer) runFullCLIScan(ctx context.Context, filePath, originalFilen
 	if cfg != nil {
 		enablePreprocessors = cfg.Defaults.EnablePreprocessors
 	}
+	if ws.profile != nil {
+		enablePreprocessors = ws.profile.EnablePreprocessors
+	}
 
 	scanConfig := core.ScanConfig{
 		FilePath:            filePath,
 		Checks:              checksSlice,
-		Debug:               false,
+		Debug:               ws.opts.Debug, // --debug: the observer writes to this process's stderr (LogWriter nil)
 		Verbose:             verbose,
 		Recursive:           recursive,
 		EnablePreprocessors: enablePreprocessors,
 		EnableRedaction:     false,
 		Config:              cfg,
-		Profile:             nil,
+		Profile:             ws.profile,
 		SuppressionManager:  nil,
+		ValidatorBudgets:    ws.opts.ValidatorBudgets,
+	}
+	if ws.opts.DisableIPTypes != nil {
+		scanConfig.ValidatorOverrides = &core.ValidatorOverrides{DisabledIPTypes: ws.opts.DisableIPTypes}
 	}
 
 	result, err := core.ScanFileCtx(ctx, scanConfig)

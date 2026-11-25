@@ -40,6 +40,10 @@ var webEquivalent = map[string]string{
 	"show-suppressed":       "implicit: /scan always returns the suppressed findings in `suppressed`; validateWebModeFlags refuses --show-suppressed with --web",
 	"generate-suppressions": "/suppressions/create per finding and /suppressions/bulk-create with `findings`; validateWebModeFlags refuses --generate-suppressions with --web",
 	"suppression-expires":   "`expires_at` on /suppressions/create and /suppressions/edit, and /suppressions/bulk-update-expiration",
+	"profile":               "`--web --profile <name>`: Start() resolves it against the loaded config and refuses to start on an unknown name; the profile's checks, confidence, verbose, recursive and enable_preprocessors sit between the config and the /scan form, and its validator settings apply (#925)",
+	"disable-ip-types":      "`--web --disable-ip-types t1,t2` replaces the INTELLECTUAL_PROPERTY validator's disabled sub-types for every /scan, after the config and the profile, as on --file (core.ValidatorOverrides; #925)",
+	"validator-budget":      "`--web --validator-budget NAME=DUR` is passed to every /scan as core.ScanConfig.ValidatorBudgets; a validator over its budget makes that scan `incomplete`, as on --file (#925)",
+	"debug":                 "`--web --debug` runs every /scan with the debug observer, which writes to the server's stderr (the server's log), never to the response (#925)",
 	"version":               "/health `version` and `build_info`, which the UI shows top-right; validateWebModeFlags refuses --version with --web",
 }
 
@@ -62,22 +66,17 @@ var webDeliberatelyAbsent = map[string]string{
 	"redaction-output-dir": "where --enable-redaction writes; the web writes no redacted copy (validateWebModeFlags refuses it)",
 	"redaction-strategy":   "how --enable-redaction rewrites; the web writes no redacted copy (validateWebModeFlags refuses it)",
 	"redaction-audit-log":  "the audit log of --enable-redaction; the web writes no redacted copy (validateWebModeFlags refuses it)",
+	"respect-gitignore":    "an upload has no directory tree for .gitignore to apply to (a dropped folder is walked by the browser, which reads no .gitignore; --exclude covers it); validateWebModeFlags refuses it with --web (#925)",
+	"limit":                "caps the CLI's printed report (default 200); /scan returns every finding and the page shows them all; validateWebModeFlags refuses it with --web (#925)",
+	"list-profiles":        "prints the configured profiles and exits; a server has no run to exit from; validateWebModeFlags refuses it and names `--web --profile <name>` (#925)",
+	"max-live-bytes":       "caps extracted bytes held across the CLI's concurrently validating files; /scan requests are not admitted against a shared budget, so there is nothing for it to cap; validateWebModeFlags refuses it with --web (#925)",
 	"help":                 "prints the CLI's usage; the web has its own help panel (validateWebModeFlags refuses it)",
 }
 
 // webUndecided holds the flags with no recorded decision for the web. Each value is the issue where the
-// decision is asked for. Moving a flag out of here is a maintainer's call: put it in one of the two
-// tables above with its mechanism, in the same pull request that implements or documents it.
-var webUndecided = map[string]string{
-	"validator-budget":  "#907", // validateWebModeFlags refuses it ("runs with the default per-file timeout"), but no budget exists for a server either
-	"max-live-bytes":    "#907", // validateWebModeFlags refuses it; concurrent /scan requests are not capped together
-	"profile":           "#907", // accepted and ignored with --web: runFullCLIScan passes Profile: nil
-	"list-profiles":     "#907", // validateWebModeFlags refuses it: "does not currently support configuration profiles"
-	"disable-ip-types":  "#907", // accepted and ignored with --web: not passed to NewWebServerWithOptions
-	"limit":             "#907", // /scan returns every finding; the CLI caps the report at 200 by default
-	"respect-gitignore": "#907", // a dropped folder is walked by the browser (app.js isExcludedByPatterns), which reads no .gitignore
-	"debug":             "#907", // accepted and ignored with --web: runFullCLIScan sets Debug: false
-}
+// decision is asked for. It is empty since #925 decided the last eight; a new CLI flag with no decision
+// goes in one of the two tables above or, for a decision still open, here with its issue.
+var webUndecided = map[string]string{}
 
 var (
 	inventoryOnce   sync.Once

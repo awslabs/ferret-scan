@@ -9,7 +9,7 @@ A simple web interface for the Ferret Scan sensitive data detection tool.
 - **File Upload**: Upload single or multiple files directly through the web browser
 - **Folder Upload**: Drag-and-drop a folder onto the upload zone, or click "Choose Folder" — the browser walks the directory client-side and uploads every file with its relative path. Configured `--exclude` patterns are applied during the walk so excluded directories (`.git`, `node_modules`, etc.) are never uploaded.
 - **Drag & Drop**: Drag files or folders directly onto the upload area
-- **CLI-Equivalent Flags**: `--web` honors `--config`, `--suppression-file`, and `--exclude` so the server uses the same configuration as the CLI
+- **CLI-Equivalent Flags**: `--web` honors `--config`, `--suppression-file`, `--exclude`, `--profile`, `--disable-ip-types`, `--validator-budget` and `--debug` so the server scans the way the CLI does (see [Scan flags with `--web`](#scan-flags-with---web))
 - **Configurable Scans**: Choose confidence levels and specific detection types
 - **Real-time Results**: View scan results immediately in a clean, organized format
 - **Interactive Statistics**: Click stat cards to filter results by confidence level
@@ -158,9 +158,29 @@ To modify the web UI:
      --exclude '.git,node_modules,dist,target,__pycache__'
    ```
 
-4. **Modify the interface**: Edit `internal/web/server.go` to customize the web server or add new features
+4. **Scan under a profile, without some IP sub-types, with a validator budget, or with debug logging**: see [Scan flags with `--web`](#scan-flags-with---web)
 
-5. **Add new scan options**: Extend the form in the HTML template and update the scan handler
+5. **Modify the interface**: Edit `internal/web/server.go` to customize the web server or add new features
+
+6. **Add new scan options**: Extend the form in the HTML template and update the scan handler
+
+## Scan flags with `--web`
+
+Every CLI flag has a recorded web decision (`internal/web/surface_inventory_test.go`). The ones that
+shape a scan:
+
+| Flag | With `--web` |
+|---|---|
+| `--profile NAME` | Applied to every scan. The profile's `checks`, `confidence_levels`, `verbose`, `recursive` and `enable_preprocessors` sit between the config file and the form (a form field still wins), and its validator settings apply. An unknown name refuses to start: `refusing to start: Profile 'NAME' not found in config file`. |
+| `--disable-ip-types t1,t2` | Applied to every scan, after the config and the profile, as on `--file`. |
+| `--validator-budget NAME=DUR` | Applied to every scan. A validator that exceeds its budget makes that scan `incomplete`, as on `--file`. |
+| `--debug` | Every scan runs with the debug observer, which writes to the **server's** stderr (the server log), never to the page or the `/scan` response. The log names the server-side temporary path of each upload and the validators' working notes; keep it as private as the scan itself. |
+| `--respect-gitignore` | Refused at startup. An upload has no directory tree for `.gitignore` to apply to; use `--exclude` to skip paths in a dropped folder. |
+| `--limit` | Refused at startup. The page shows every finding; `--limit` caps the CLI's printed report. |
+| `--list-profiles` | Refused at startup. It prints the profiles and exits; use `--web --profile NAME` to scan under one. |
+| `--max-live-bytes` | Refused at startup. Concurrent `/scan` requests are not admitted against a shared byte budget, so there is nothing for it to cap. |
+
+A refusal exits with status 1 and a message naming the flag; the server does not start.
 
 ## Suppression Management
 
