@@ -73,6 +73,22 @@ var safeMetadataKeys = map[string]bool{
 	"cultural_context": true,
 	"environment_type": true,
 
+	// Validator verdicts (#1053). Each is a fixed-vocabulary label, a boolean or a number
+	// the validator derives, never a slice of the matched text:
+	//   country            a country label or code (nationalid's ISO 3166-1 alpha-2 from a
+	//                      fixed table, phone's and passport's pattern labels, the first two
+	//                      characters of an IBAN, which are its country code).
+	//   checksum_valid     boolean: did the check digits verify.
+	//   check_digit_valid  boolean, the same verdict where the validator names it so.
+	//   confidence_ceiling a number (float64), the published cap on the finding's score; the
+	//                      bridge ignores any other type.
+	// Without them a reader of json/yaml/sarif cannot see why a value is LOW or which
+	// country it belongs to.
+	"country":            true,
+	"checksum_valid":     true,
+	"check_digit_valid":  true,
+	"confidence_ceiling": true,
+
 	// Validation results / detection bookkeeping.
 	// NOTE: validation_details is intentionally NOT allowlisted. Unlike
 	// validation_checks (booleans) and validation_path (a "document"/"metadata"
