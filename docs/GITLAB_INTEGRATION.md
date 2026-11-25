@@ -61,6 +61,18 @@ Scan `.` from the checkout, and in Docker mount the checkout at the path you sca
 outside the target — reachable through a symlink — degrades to its basename rather than being
 dropped from the report.
 
+#### Vulnerability ids
+
+Each vulnerability's `id` is `ferret-` plus a hash of the `location.file` the report prints, the
+line and the check type. It does not depend on where the repository is checked out, and the web
+UI's GitLab export gives the same id for the same file name, line and type.
+
+⚠ **Ids change once, at the release that made this change.** Earlier releases hashed the scanned
+path as the CLI received it (an absolute path), so the same finding had a different id in every
+checkout directory. GitLab keys triage state (dismissals, linked issues) on the id, so the state
+set on an old id detaches from its finding and the finding shows as new. Re-triage once; the ids
+stay put from then on, unless a file moves or its line changes.
+
 ### Security Dashboard Integration
 
 Once configured, Ferret Scan findings appear in:

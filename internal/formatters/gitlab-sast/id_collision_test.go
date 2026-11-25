@@ -186,7 +186,7 @@ func TestVulnerabilityIDDoesNotDependOnTheMatchedValue(t *testing.T) {
 	other.Context = detector.ContextInfo{FullLine: "SSN 111-22-3333"}
 
 	mapper := NewVulnerabilityMapper()
-	if mapper.GenerateVulnerabilityID(m) != mapper.GenerateVulnerabilityID(other) {
+	if mapper.GenerateVulnerabilityID(m, "") != mapper.GenerateVulnerabilityID(other, "") {
 		t.Error("the id changed when only the matched value changed — the value is part of the " +
 			"id, and the id is published in CI artifacts")
 	}
