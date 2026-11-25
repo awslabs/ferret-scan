@@ -1110,7 +1110,7 @@ func main() {
 	suppressionExpires := flag.String("suppression-expires", "", "Lifetime for rules written by --generate-suppressions: days (30), days or weeks (30d, 4w), a Go duration (720h), an absolute date (2026-12-31), or 'never'. Default: never. Config: suppressions.expires_in")
 
 	showSuppressed := flag.Bool("show-suppressed", false, "Include suppressed findings in output with suppression details (marked as [SUPP] in text format)")
-	quiet := flag.Bool("quiet", false, "Suppress progress output (useful for scripts and CI/CD)")
+	quiet := flag.Bool("quiet", false, "Suppress progress output and the suppression, exclusion and config-provenance notes on stderr, which the report carries (not under --format csv); useful for scripts and CI/CD")
 	precommitMode := flag.Bool("pre-commit-mode", false, "Enable pre-commit optimizations (quiet mode, no colors, appropriate exit codes)")
 	failOnIncomplete := flag.Bool("fail-on-incomplete", false, "Exit non-zero (3) if any file was not fully scanned — coverage cut short (timeout, cancellation, or budget), the file could not be opened at all, or a document yielded no extractable text. Default off: all three conditions only warn on stderr.")
 

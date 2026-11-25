@@ -88,7 +88,7 @@ var typeDescriptors = func() map[string]TypeDescriptor {
 	m["CREDIT_CARD"] = TypeDescriptor{
 		SARIFShort:             "Credit Card Number Detected",
 		SARIFFull:              "A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.",
-		SARIFHelp:              "Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.",
+		SARIFHelp:              "Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors. A number a payment processor or card network publishes as a test card (Adyen, Authorize.Net, Braintree, Checkout.com, Square and Stripe test-card pages) is still reported and redacted, but is capped at 15 (LOW) however the line around it reads; a real card one digit away from a published number keeps its score.",
 		SARIFSensitivityWeight: 10.0,
 		GitLabCheckDesc:        "Credit card number",
 		GitLabRemediation:      ccRemediation,

@@ -154,7 +154,7 @@ A cloud provider resource identifier (e.g. AWS ARN, Azure resource ID, GCP resou
 
 A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.
 
-*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.
+*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors. A number a payment processor or card network publishes as a test card (Adyen, Authorize.Net, Braintree, Checkout.com, Square and Stripe test-card pages) is still reported and redacted, but is capped at 15 (LOW) however the line around it reads; a real card one digit away from a published number keeps its score.
 
 ## AOL
 
@@ -362,7 +362,7 @@ Sensitive metadata was detected in file properties. This may include author name
 
 A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.
 
-*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.
+*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors. A number a payment processor or card network publishes as a test card (Adyen, Authorize.Net, Braintree, Checkout.com, Square and Stripe test-card pages) is still reported and redacted, but is capped at 15 (LOW) however the line around it reads; a real card one digit away from a published number keeps its score.
 
 ## CUSTOM_PROPERTY
 
@@ -402,7 +402,7 @@ Sensitive metadata was detected in file properties. This may include author name
 
 A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.
 
-*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.
+*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors. A number a payment processor or card network publishes as a test card (Adyen, Authorize.Net, Braintree, Checkout.com, Square and Stripe test-card pages) is still reported and redacted, but is capped at 15 (LOW) however the line around it reads; a real card one digit away from a published number keeps its score.
 
 ## DISCOVER
 
@@ -410,7 +410,7 @@ A credit card number pattern was detected in the scanned content. Credit card nu
 
 A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.
 
-*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.
+*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors. A number a payment processor or card network publishes as a test card (Adyen, Authorize.Net, Braintree, Checkout.com, Square and Stripe test-card pages) is still reported and redacted, but is capped at 15 (LOW) however the line around it reads; a real card one digit away from a published number keeps its score.
 
 ## DISPOSABLE
 
@@ -642,7 +642,7 @@ An IRS Individual Taxpayer Identification Number (ITIN) was detected in the scan
 
 A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.
 
-*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.
+*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors. A number a payment processor or card network publishes as a test card (Adyen, Authorize.Net, Braintree, Checkout.com, Square and Stripe test-card pages) is still reported and redacted, but is capped at 15 (LOW) however the line around it reads; a real card one digit away from a published number keeps its score.
 
 ## JWT_TOKEN
 
@@ -666,7 +666,7 @@ Sensitive metadata was detected in file properties. This may include author name
 
 A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.
 
-*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.
+*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors. A number a payment processor or card network publishes as a test card (Adyen, Authorize.Net, Braintree, Checkout.com, Square and Stripe test-card pages) is still reported and redacted, but is capped at 15 (LOW) however the line around it reads; a real card one digit away from a published number keeps its score.
 
 ## MAIL_RU
 
@@ -690,7 +690,7 @@ Sensitive metadata was detected in file properties. This may include author name
 
 A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.
 
-*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.
+*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors. A number a payment processor or card network publishes as a test card (Adyen, Authorize.Net, Braintree, Checkout.com, Square and Stripe test-card pages) is still reported and redacted, but is capped at 15 (LOW) however the line around it reads; a real card one digit away from a published number keeps its score.
 
 ## MEDICARE_MBI
 
@@ -938,7 +938,7 @@ An email address was detected in the scanned content. Email addresses can be con
 
 A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.
 
-*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.
+*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors. A number a payment processor or card network publishes as a test card (Adyen, Authorize.Net, Braintree, Checkout.com, Square and Stripe test-card pages) is still reported and redacted, but is capped at 15 (LOW) however the line around it reads; a real card one digit away from a published number keeps its score.
 
 ## US_BANK_ACCOUNT
 
@@ -1010,7 +1010,7 @@ A Vehicle Identification Number (VIN) was detected in the scanned content. VINs 
 
 A credit card number pattern was detected in the scanned content. Credit card numbers are sensitive financial information that must be protected under PCI DSS and other regulations.
 
-*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors.
+*What to do:* Credit card numbers must be protected according to PCI DSS requirements. They should never be stored in source code, logs, or unencrypted databases. Remove this credit card number immediately and ensure any payment processing uses PCI-compliant systems. Consider using tokenization services provided by payment processors. A number a payment processor or card network publishes as a test card (Adyen, Authorize.Net, Braintree, Checkout.com, Square and Stripe test-card pages) is still reported and redacted, but is capped at 15 (LOW) however the line around it reads; a real card one digit away from a published number keeps its score.
 
 ## YAHOO
 
