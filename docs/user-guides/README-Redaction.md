@@ -285,7 +285,7 @@ with `--fail-on-incomplete`); see the notes under [Document Type Support](#docum
 
 ## What "redacted" guarantees
 
-**Every standalone occurrence of a reported value is removed — not just the one the finding points at.**
+**Every standalone occurrence of a reported value is removed, and so is every occurrence of a value of 8 or more bytes that starts or ends a longer token — not just the one the finding points at.**
 
 That distinction is not academic. Redaction locates a match at its reported POSITION, and the detector
 deduplicates occurrences, so a value present many times may be reported far fewer times. Measured on 480
@@ -293,12 +293,19 @@ real files before this guarantee existed: **143 reported values survived inside 
 as successfully redacted**, among them 44 recovery codes and 5 OTP secrets. One name occurred 137 times
 and 4 copies remained.
 
-Two rules bound it:
+Three rules bound it:
 
+- **A value of 8 or more bytes is also removed where it starts or ends a longer token.** If a name is
+  reported and the file also holds that name followed by more letters, or a member ID followed by `_`
+  and a suffix, those copies are masked too: a long value at the edge of a token is still that value.
+  Measured on two public corpus files before this rule, every value left in the copy was of that kind
+  (33 values, 174 occurrences, none standalone).
 - **A value inside a longer token is left alone.** If `BEEF1234567` is reported as a member ID and the
-  document also contains `0xDEADBEEF12345678`, the hex constant is *not* rewritten — those bytes are part
-  of a different token, and editing them would corrupt a document the tool was asked to redact rather than
-  to edit. An occurrence counts only when no letter, digit or `_` abuts it.
+  document also contains `0xDEADBEEF12345678`, the hex constant is *not* rewritten — letters or digits
+  abut the value on both sides, so those bytes are part of a different token, and editing them would
+  corrupt a document the tool was asked to redact rather than to edit. A value of 4 to 7 bytes is
+  removed only where no letter, digit or `_` abuts it at all, because a short string at the edge of an
+  unrelated token is the common case.
 - **Values shorter than 4 bytes are removed only at their reported position.** A two- or three-character
   string occurs incidentally throughout ordinary prose, so removing it everywhere does more harm than the
   leak it closes.

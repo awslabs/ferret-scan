@@ -570,16 +570,16 @@ rules:
         finding_type: BUSINESS
         line_number: "81"
     - id: SUP-00000111
-      hash: e1a310713300cb10e3da74418ecd6ddf49c3ea55839cc841ec24474d2df2f438 # pragma: allowlist secret
+      hash: 3e800dfb04f248dc32213c4b4b634e62fcbb0314b372844e51f3771d73ee68eb # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-12T00:49:05.328335413Z
+      last_seen_at: 2026-11-24T20:42:21.114145062Z
       metadata:
         confidence: "100.00"
         filename: README-Redaction.md
         finding_type: INTELLECTUAL_PROPERTY
-        line_number: "401"
+        line_number: "408"
     - id: SUP-00000112
       hash: 17abd63833c9782ddc5ed8f89559034d151b87cd611216e3c5db52b6420cf9f6 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
@@ -1406,27 +1406,27 @@ rules:
         finding_type: SSN
         line_number: "95"
     - id: SUP-00000209
-      hash: 79282e864a7a678ba80b40e7e3195ae50a8b163a1d643a67b4051fae2e1f2eb0 # pragma: allowlist secret
+      hash: 2e0c91246f3a5333d6ab834f4d1d70036333530b4e6a13007e83aae1222719b9 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-24T21:13:32.770444594Z
       metadata:
         confidence: "90.00"
         filename: redactverify.go
         finding_type: INSURANCE_MEMBER_ID
-        line_number: "429"
+        line_number: "525"
     - id: SUP-00000210
-      hash: f4589acd4c42f22e2191d7166fe7eda860f6a1663e60f79d18d67992cec99d37 # pragma: allowlist secret
+      hash: dd195da49e1accfc2e4f4d2a44db2cd865777e9ea111ce2b207a7f9e4647ad68 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-09T19:55:24.922465003Z
+      last_seen_at: 2026-11-24T21:13:32.770444594Z
       metadata:
         confidence: "92.00"
         filename: redactverify.go
         finding_type: PERSON_NAME
-        line_number: "217"
+        line_number: "284"
     - id: SUP-00000211
       hash: 18bc509eeb65344fb5b178e1b8f8a5fe37ab7f7a702af5ce49aef98905347d73 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"

@@ -210,6 +210,73 @@ func utf16BE(s string) []byte {
 // a different fake each call (synthetic) yields ONE stable pseudonym per value rather than a different
 // one per occurrence — the consistent choice for a reader of the output.
 func SweepRemaining(text string, matches []detector.Match, replacementFor func(m detector.Match) (string, error)) (string, []string, error) {
+	// A replacement is non-overlapping and leftmost-first, so when two reported values overlap inside one
+	// token (two phone numbers sharing digits in a run of digits) the earlier one wins and the later
+	// survives whole if the replacement keeps characters of the first (format_preserving keeps a
+	// value's last four). Before #968 such an occurrence was embedded and left alone; now that every
+	// occurrence of a long value is masked, the survivor would be a standalone copy the floor refuses.
+	// So the sweep repeats until a round changes nothing, at most sweepRounds times; one round is the
+	// common case and costs the single scan it always did plus one scan that finds nothing.
+	//
+	// replacementFor is memoised so a value keeps ONE replacement across rounds (a synthetic strategy
+	// would otherwise draw a new pseudonym for the same value).
+	memo := map[string]string{}
+	repl := func(m detector.Match) (string, error) {
+		if r, ok := memo[m.Text]; ok {
+			return r, nil
+		}
+		r, err := replacementFor(m)
+		if err == nil {
+			memo[m.Text] = r
+		}
+		return r, err
+	}
+	if replacementFor == nil {
+		repl = nil
+	}
+	var all []string
+	have := map[string]bool{}
+	out := text
+	for round := 0; round < sweepRounds; round++ {
+		// Edges are judged on the ORIGINAL document only. After round one a value can abut a
+		// replacement where it abutted a digit, so an occurrence that was inside a longer token
+		// reads as an edge; masking it exposes the next one. Measured on a public corpus .txt: a
+		// long digit run lost one phone-number-length chunk per round. Later rounds therefore
+		// sweep standalone occurrences only, which is what the cascade they exist for produces.
+		edgeLen := embeddedSweepLen
+		if round > 0 {
+			edgeLen = noEdge
+		}
+		next, swept, err := sweepOnce(out, matches, repl, edgeLen)
+		if err != nil {
+			return text, nil, err
+		}
+		for _, v := range swept {
+			if !have[v] {
+				have[v] = true
+				all = append(all, v)
+			}
+		}
+		if len(swept) == 0 || next == out {
+			break
+		}
+		out = next
+	}
+	return out, all, nil
+}
+
+// sweepRounds bounds SweepRemaining's repetition. A cascade needs values overlapping in a chain, and
+// every round removes at least one whole occurrence, so the loop ends; the bound keeps a pathological
+// input from costing more than sweepRounds scans. shortcut: a chain longer than this leaves a value
+// for the dispatch-point floor to refuse, which is the safe outcome; raise it if a corpus file shows one.
+const sweepRounds = 4
+
+// noEdge is an edgeLen no value reaches: standalone occurrences only.
+const noEdge = int(^uint(0) >> 1)
+
+// sweepOnce is one round. edgeLen is the shortest value whose edge occurrences it masks:
+// embeddedSweepLen in the first round, and noEdge in every later one.
+func sweepOnce(text string, matches []detector.Match, replacementFor func(m detector.Match) (string, error), edgeLen int) (string, []string, error) {
 	if text == "" || len(matches) == 0 || replacementFor == nil {
 		return text, nil, nil
 	}
@@ -228,8 +295,8 @@ func SweepRemaining(text string, matches []detector.Match, replacementFor func(m
 		// which is the case in a file carrying UTF-16 sections -- would otherwise be skipped here and
 		// never reach the pair-building below, so the sweep would report success while the floor
 		// refused the file. Same predicate as ResidualTypes, deliberately.
-		// Standalone only, same rule as the predicate.
-		if found[t].standalone {
+		// Standalone, or a long value that starts or ends a longer token (embeddedSweepLen, #968).
+		if found[t].standalone || (found[t].edge && len(t) >= edgeLen) {
 			seen[t] = first[t]
 			continue
 		}
@@ -273,8 +340,10 @@ func SweepRemaining(text string, matches []detector.Match, replacementFor func(m
 			continue
 		}
 		swept = append(swept, v)
-		if found[v].embedded {
-			// Mixed: some occurrences are the value and some are inside longer tokens.
+		if long := len(v) >= edgeLen; (found[v].embedded && !long) || (found[v].interior && long) {
+			// Mixed: some occurrences are masked and some are left as they are (a short value's
+			// embedded ones, a long value's interior ones). A long value with no interior occurrence
+			// takes the fast path below: every occurrence of it is masked.
 			mixed = append(mixed, v)
 			mixedRepl[v] = repl
 			continue
@@ -327,16 +396,18 @@ func SweepRemaining(text string, matches []detector.Match, replacementFor func(m
 	// shortcut: that is values x text for a document with thousands of values that are each embedded
 	// somewhere and standalone elsewhere; make it one pass when a corpus file shows one (#1005).
 	for _, v := range mixed {
-		out = replaceStandaloneOnly(out, v, mixedRepl[v])
+		out = replaceStandaloneOnly(out, v, mixedRepl[v], len(v) >= edgeLen)
 	}
 	return out, swept, nil
 }
 
-// replaceStandaloneOnly replaces only those occurrences of needle in s that no word byte abuts.
+// replaceStandaloneOnly replaces only those occurrences of needle in s that no word byte abuts, and,
+// when edgeToo is set (a value of embeddedSweepLen or more, #968), also those a word byte abuts on
+// one side only. An occurrence with a word byte on both sides is always left as it was.
 //
 // Written out rather than composed from strings.Replace because the decision is per occurrence: the
 // same byte sequence is the reported value in one position and part of a longer token in another.
-func replaceStandaloneOnly(s, needle, repl string) string {
+func replaceStandaloneOnly(s, needle, repl string, edgeToo bool) string {
 	if needle == "" {
 		return s
 	}
@@ -353,11 +424,15 @@ func replaceStandaloneOnly(s, needle, repl string) string {
 		b.WriteString(s[i:at])
 		before := at > 0 && isWordByte(s[at-1])
 		after := at+len(needle) < len(s) && isWordByte(s[at+len(needle)])
-		if before || after {
-			b.WriteString(needle) // embedded: leave it exactly as it was
-		} else {
-			b.WriteString(repl)
+		if (before && after) || ((before || after) && !edgeToo) {
+			// Embedded: leave it as it was, and step ONE byte, not past it. An occurrence that
+			// starts inside this one (a phone number overlapping another in a longer digit run) may
+			// be the one at the token's edge, and stepping past this one skipped it (#968).
+			b.WriteByte(s[at])
+			i = at + 1
+			continue
 		}
+		b.WriteString(repl)
 		i = at + len(needle)
 	}
 	return b.String()
@@ -409,6 +484,27 @@ func altSpellings(value, repl string) []spelling {
 //
 // A shorter value is still redacted at its reported POSITION by the caller. Only the sweep declines it.
 const minSweepLen = 4
+
+// embeddedSweepLen is the shortest reported value whose EDGE occurrences the sweep also masks: an
+// occurrence where the value starts or ends a longer token, a word byte abutting it on one side only.
+//
+// A reported value of 8 or more bytes at the edge of a longer token is still that value: a person's
+// name followed by more letters, an 18-byte member id followed by `_` and a suffix. Measured on two
+// public corpus files before this rule (#968): all 33 values (174 occurrences) left in the copy were
+// of this kind, 0 standalone, 0 with a word byte on both sides.
+//
+// Two limits, each kept on purpose:
+//   - an INTERIOR occurrence (word bytes on both sides) is never masked. The golden corpus reports
+//     `BEEF1234567` and requires `0xDEADBEEF12345678` on another line to stay clean; a value inside a
+//     hex constant or an identifier is a different token, and rewriting it corrupts the document;
+//   - a value of 4-7 bytes stays standalone-only: a short string at the edge of an unrelated token
+//     (a 4-digit year opening a longer number, a short name opening a longer word) is the common case.
+//
+// ResidualTypes keeps the standalone-only predicate: it is the dispatch-point floor for redactors that
+// cannot sweep, and widening it would turn files those redactors write today into refusals.
+// shortcut: the sweep is wider than the floor for edge occurrences; widen both when a non-sweeping
+// redactor needs the same guarantee.
+const embeddedSweepLen = 8
 
 // isWordByte reports whether b can be part of an identifier-like token: a letter, a digit, or '_'.
 //
