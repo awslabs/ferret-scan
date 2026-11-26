@@ -722,8 +722,13 @@ func (ptr *PlainTextRedactor) GetComponentName() string {
 // shares one redactor between all its callers, and a scope that outlived the call would give two
 // tenants' equal values the same fake, linking them.
 func (ptr *PlainTextRedactor) RedactString(content string, matches []detector.Match, strategy redactors.RedactionStrategy) (string, []redactors.RedactionMapping, error) {
-	var scope redactors.SyntheticScope
-	if strategy == redactors.RedactionSynthetic {
+	return ptr.RedactStringInScope(content, matches, strategy, nil)
+}
+
+// RedactStringInScope is RedactString drawing synthetic values from scope instead of a fresh one.
+// A nil scope is RedactString's behaviour: a scope of this call's own.
+func (ptr *PlainTextRedactor) RedactStringInScope(content string, matches []detector.Match, strategy redactors.RedactionStrategy, scope redactors.SyntheticScope) (string, []redactors.RedactionMapping, error) {
+	if scope == nil && strategy == redactors.RedactionSynthetic {
 		scope = redactors.NewSyntheticScope()
 	}
 	return ptr.redactText(content, matches, strategy, scope)
