@@ -96,12 +96,12 @@ func TestTicksIsSufficientOnThisPlatformForATypicalFixture(t *testing.T) {
 	// Errorf'd on about 1 windows run in 17, with a message that blamed a cheapened fixture. The message
 	// was right: the fixture was too cheap FOR THAT TICK. calibratedBaseUnits sizes it against the tick
 	// actually measured, which is the only machine-independent way to say "big enough".
-	base := calibratedBaseUnits()
-	g, err := Measure(DefaultPairs, func() { spin(base) }, func() { spin(4 * base) })
+	// Option 2 of #840: the tick is re-read after the measurement and a shortfall regrows the fixture once.
+	r, err := measureCalibrated(t)
 	if err != nil {
 		t.Fatalf("Measure: %v", err)
 	}
-	n, sufficient := g.Ticks()
+	g, n, sufficient := r.Growth, r.Ticks, r.Sufficient
 	t.Logf("%s", g)
 	t.Logf("%s", g.ResolutionNote())
 

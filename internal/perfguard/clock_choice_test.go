@@ -238,13 +238,12 @@ func TestBaseUnitsForSizesTheFixtureToTheClockThatWillMeasureIt(t *testing.T) {
 // sizer must produce a fixture the local clock can resolve, or every gated assertion above is skipped
 // and the suite proves nothing.
 func TestTheCalibratedFixtureActuallyClearsTheGateHere(t *testing.T) {
-	base := calibratedBaseUnits()
-	g, err := Measure(DefaultPairs, func() { spin(base) }, func() { spin(4 * base) })
+	r, err := measureCalibrated(t)
 	if err != nil {
-		t.Fatalf("Measure with %d calibrated units: %v", base, err)
+		t.Fatalf("Measure with calibrated units: %v", err)
 	}
-	n, ok := g.Ticks()
-	t.Logf("%d calibrated units -> %s; %s", base, g, g.ResolutionNote())
+	g, n, ok := r.Growth, r.Ticks, r.Sufficient
+	t.Logf("%d units (first measurement %.1f ticks, regrown=%v) -> %s; %s", r.Units, r.FirstTicks, r.Regrown, g, g.ResolutionNote())
 	if !ok {
 		t.Errorf("the calibrated fixture spans only %.1f ticks, under the %d required, so every gated "+
 			"assertion in this package is being SKIPPED on this platform rather than run. %s",
