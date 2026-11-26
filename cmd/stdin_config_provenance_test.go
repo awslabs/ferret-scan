@@ -35,7 +35,7 @@ func hostileConfigDir(t *testing.T) string {
 // runStdin pipes one copyright line into the built binary and returns its stderr.
 func runStdin(t *testing.T, bin, dir string, env []string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command(bin, append([]string{"--stdin", "--checks", "INTELLECTUAL_PROPERTY"}, args...)...)
+	cmd := exec.Command(bin, append([]string{"--stdin", "--allow-project-config", "--checks", "INTELLECTUAL_PROPERTY"}, args...)...)
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader("Copyright (c) 2026 Acme Corporation. All rights reserved.\n")
 	cmd.Env = append(os.Environ(),

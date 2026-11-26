@@ -43,7 +43,9 @@ func tm13Run(t *testing.T, bin, config, path string, args ...string) cliRun {
 		t.Fatal(err)
 	}
 	env := append(os.Environ(), "FERRET_CONFIG_DIR="+filepath.Join(dir, "emptycfg"))
-	base := []string{"--checks", "INTELLECTUAL_PROPERTY"}
+	// --allow-project-config: these tests pin the Notes of a TRUSTED project config, including under
+	// --pre-commit-mode, which refuses a discovered one without it (precommit_discovered_config_test.go).
+	base := []string{"--allow-project-config", "--checks", "INTELLECTUAL_PROPERTY"}
 	if path == "file" {
 		return runCLI(t, bin, dir, env, "", append(append([]string{"--file", "notice.txt"}, base...), args...)...)
 	}

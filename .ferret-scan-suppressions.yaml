@@ -141,27 +141,27 @@ rules:
         finding_type: PERSON_NAME
         line_number: "131"
     - id: SUP-00000060
-      hash: d7bff921d6e8c1235e2ee05ca1198ee47dd20feffbdf12543c5d75191b3d4c17 # pragma: allowlist secret
+      hash: af0d3713a539e3e102a9a19d4500f0d8aa36fde48c29ea862206a962823c2049 # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-19T22:59:05.487660554Z
+      last_seen_at: 2026-11-26T19:15:58.799512094Z
       metadata:
         confidence: "100.00"
         filename: main.go
         finding_type: SSN
-        line_number: "1633"
+        line_number: "1671"
     - id: SUP-00000061
-      hash: 8fecee9c2ec3363cd05acffb2a7e032821940b9accdb1967d1d297b9a730ce08 # pragma: allowlist secret
+      hash: 40e5d0dc7e7a9d62f6d5eb54fe496281c93c6b29c9439ae2872319e54b73dffe # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-19T22:59:05.487660554Z
+      last_seen_at: 2026-11-26T19:15:58.799512094Z
       metadata:
         confidence: "100.00"
         filename: main.go
         finding_type: SSN
-        line_number: "3389"
+        line_number: "3427"
     - id: SUP-00000063
       hash: 611aa2e864a0389b4ac77f155022301ba03f30416e0a6a8d700e8f6b67f866b3 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
@@ -196,16 +196,16 @@ rules:
         finding_type: ALIBABA_ARN
         line_number: "681"
     - id: SUP-00000068
-      hash: accd5c198d6496a7e6c8a8c3d0c6fcf6f95c9074bf23d5fccf35aff49d00b512 # pragma: allowlist secret
+      hash: d7718457b9c029c8c0868cc4466b32c7f5766789f1767491aa3a01862abfadb3 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-19T01:23:07.510372174Z
+      last_seen_at: 2026-11-26T19:15:58.799512094Z
       metadata:
         confidence: "92.00"
         filename: configuration.md
         finding_type: PERSON_NAME
-        line_number: "1074"
+        line_number: "1089"
     - id: SUP-00000074
       hash: 31598d2e47a6a0af3580c6cd299851a48365dcb39ebcc7158c8ca16a062c373a # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"

@@ -829,6 +829,21 @@ Settings resolve in this order, each layer overriding the one before it:
 
 A profile that leaves a key out does not reset it: the value from step 2 applies, booleans included.
 
+### Config file discovery
+
+Without `--config`, ferret-scan uses the first config file it finds: `config.yaml`, `ferret.yaml`,
+`ferret.yml`, `.ferret-scan.yaml` or `.ferret-scan.yml` in the working directory, then the user config
+directory (`FERRET_CONFIG_DIR`, `XDG_CONFIG_HOME`, the platform default). A run outside pre-commit mode
+uses a working-directory config and names it on stderr. **In pre-commit mode a config found in the working
+directory is refused**: nothing is scanned, the exit code is 1 and stderr names the file, because a config
+inside the change under review could disable the checks that review it
+([TM-13](../THREAT_MODEL.md)). Pre-commit mode is `--pre-commit-mode` or a hook environment variable
+(`PRE_COMMIT`, `_PRE_COMMIT_RUNNING`, `PRE_COMMIT_HOOK`, `GIT_HOOK_TYPE`), on `--file` and `--stdin` alike.
+To use the file anyway, add `--allow-project-config` to the hook's `args`, or name a config with
+`--config <path>`. The flag exists only on the command line: no config key and no environment variable sets
+it, since the file it gates could otherwise set it. A config in the user config directory is the
+developer's own and is not refused. See [Pre-commit integration](PRE_COMMIT_INTEGRATION.md#a-project-config-in-a-hook).
+
 ### The built-in `precommit` profile
 
 Pre-commit mode (`--pre-commit-mode`, or a hook environment such as `PRE_COMMIT`) selects the profile
