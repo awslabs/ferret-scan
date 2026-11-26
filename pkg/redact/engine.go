@@ -53,6 +53,12 @@ type Engine struct {
 	// closed is set atomically when Close is called; subsequent
 	// Redact calls return ErrEngineClosed.
 	closed atomic.Bool
+
+	// syntheticScope, when non-nil, is the scope every Redact call draws synthetic values from
+	// instead of a scope of its own. Unexported and set only by this package's tests
+	// (redactors.NewSeededSyntheticScope), so no caller, flag, environment variable or
+	// configuration key can seed it (#1070); TestNoProductionCodeSeedsTheSyntheticScope enforces it.
+	syntheticScope redactors.SyntheticScope
 }
 
 // NewEngine constructs a reusable Engine. The construction cost is
@@ -334,7 +340,7 @@ func (e *Engine) Redact(ctx context.Context, req Request) (*Result, error) {
 	// here: the matches it did make are applied, and the text comes back WITH an
 	// error wrapping ErrIncomplete, never on its own.
 	internalStrategy := mapStrategy(strategy)
-	redacted, err := redactStringSafely(e.redactor, text, unsuppressed, internalStrategy)
+	redacted, err := redactStringSafely(e.redactor, text, unsuppressed, internalStrategy, e.syntheticScope)
 	if err != nil {
 		return nil, fmt.Errorf("redact: redaction failed: %w", err)
 	}
@@ -496,13 +502,13 @@ func applySuppressions(matches []detector.Match, rules []Rule, label string) (
 // returns an error and the empty string — callers already treat a non-nil error
 // as "redaction failed" and never emit the text, so unredacted content can never
 // be mistaken for redacted output.
-func redactStringSafely(r *plaintextredactor.PlainTextRedactor, text string, matches []detector.Match, strategy redactors.RedactionStrategy) (redacted string, err error) {
+func redactStringSafely(r *plaintextredactor.PlainTextRedactor, text string, matches []detector.Match, strategy redactors.RedactionStrategy, scope redactors.SyntheticScope) (redacted string, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			redacted = ""
 			err = fmt.Errorf("redactor panicked: %v", rec)
 		}
 	}()
-	redacted, _, err = r.RedactString(text, matches, strategy)
+	redacted, _, err = r.RedactStringInScope(text, matches, strategy, scope)
 	return redacted, err
 }

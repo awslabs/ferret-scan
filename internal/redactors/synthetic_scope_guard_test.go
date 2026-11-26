@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -135,9 +136,30 @@ func TestNoProductionCallPassesANilScopeForSynthetic(t *testing.T) {
 }
 
 func TestNoProductionCodeSeedsTheSyntheticScope(t *testing.T) {
+	// The pkg/redact Engine has a test-only seed seam (#1070); the walk must reach its production
+	// source, so a seeded scope built there would be caught. The walk reads every non-test file, so
+	// pkg/redact/engine.go is in it as long as it exists and parses.
+	if _, err := os.Stat(filepath.Join(moduleRoot(t), "pkg", "redact", "engine.go")); err != nil {
+		t.Fatalf("pkg/redact/engine.go is not where the guard looks: %v", err)
+	}
+	if !productionFileWalked(t, "pkg/redact/engine.go") {
+		t.Fatal("the production walk did not reach pkg/redact/engine.go: the guard is not looking at the Engine")
+	}
 	for _, c := range productionCalls(t, map[string]bool{"NewSeededSyntheticScope": true}) {
 		if c.of("redactors", "internal/redactors") {
 			t.Errorf("%s: a seeded synthetic scope outside a test makes every synthetic value a function of a constant", c.pos)
 		}
 	}
+}
+
+// productionFileWalked reports whether productionCalls' walk parses the module-relative file: it
+// holds at least one call expression (any name) in a non-test file.
+func productionFileWalked(t *testing.T, rel string) bool {
+	t.Helper()
+	for _, c := range productionCalls(t, map[string]bool{"NewPlainTextRedactor": true}) {
+		if c.file == rel {
+			return true
+		}
+	}
+	return false
 }
