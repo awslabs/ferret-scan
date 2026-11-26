@@ -163,49 +163,49 @@ rules:
         finding_type: SSN
         line_number: "3427"
     - id: SUP-00000063
-      hash: 611aa2e864a0389b4ac77f155022301ba03f30416e0a6a8d700e8f6b67f866b3 # pragma: allowlist secret
+      hash: 9c95e923a41924e41b03cd268a690b8b98d5ea40c7765dd252858f47eb35ce05 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
+      last_seen_at: 2026-11-26T19:37:39.821881264Z
       metadata:
         confidence: "95.00"
         filename: configuration.md
         finding_type: GCP_RESOURCE_NAME
-        line_number: "678"
+        line_number: "679"
     - id: SUP-00000064
-      hash: 91ac213225a207ba9641056ef87a841748841ba50036504bb1f38cd4af266752 # pragma: allowlist secret
+      hash: b0b7eb1073e235f167ba0010788a450be10ec2cfc570af0fa5064b3d0030e5b7 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
+      last_seen_at: 2026-11-26T19:37:39.821881264Z
       metadata:
         confidence: "90.00"
         filename: configuration.md
         finding_type: IBM_CRN
-        line_number: "680"
+        line_number: "681"
     - id: SUP-00000065
-      hash: 7f21101159a75157a7c909d52941673b1ab73fc5eecab11a390409d831531a51 # pragma: allowlist secret
+      hash: c26534293dc68bd4649398b21296303b34fff9401fcb7142411c8345f2c58cc5 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-11T14:56:17.131455485Z
+      last_seen_at: 2026-11-26T19:37:39.821881264Z
       metadata:
         confidence: "90.00"
         filename: configuration.md
         finding_type: ALIBABA_ARN
-        line_number: "681"
+        line_number: "682"
     - id: SUP-00000068
-      hash: d7718457b9c029c8c0868cc4466b32c7f5766789f1767491aa3a01862abfadb3 # pragma: allowlist secret
+      hash: dd644714966cc79cef8a2d31c9c88966afe781fc816e4c05f91d0abd35cf99ad # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-26T19:15:58.799512094Z
+      last_seen_at: 2026-11-26T19:37:39.821881264Z
       metadata:
         confidence: "92.00"
         filename: configuration.md
         finding_type: PERSON_NAME
-        line_number: "1089"
+        line_number: "1091"
     - id: SUP-00000074
       hash: 31598d2e47a6a0af3580c6cd299851a48365dcb39ebcc7158c8ca16a062c373a # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"

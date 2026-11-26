@@ -21,11 +21,15 @@ Use the hook directly from GitHub without building locally:
 ```yaml
 repos:
   - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.8.4
+    rev: v2.6.2
     hooks:
       - id: ferret-scan
         args: [--pre-commit-mode, --profile, precommit, --respect-gitignore]
 ```
+
+If the repository keeps its own `ferret.yaml` (or `config.yaml`, `.ferret-scan.yaml`), add
+`--allow-project-config` to `args`, or the hook refuses the file and exits 1: see
+[A project config in a hook](#a-project-config-in-a-hook).
 
 ### 3. Direct Binary Integration
 
@@ -263,8 +267,10 @@ stderr.
 ### The precommit profile
 
 Pre-commit mode, and `--profile precommit` on its own, use the profile named `precommit`. If your
-config file defines `profiles.precommit`, that profile is used exactly as written. If it does not, or
-there is no config file, ferret-scan supplies a built-in one, which yields to what your config wrote:
+config file defines `profiles.precommit`, that profile is used exactly as written (in a hook, a config
+in the repository reaches this step only with `--allow-project-config` or `--config <path>`; see
+[A project config in a hook](#a-project-config-in-a-hook)). If it does not, or there is no config file,
+ferret-scan supplies a built-in one, which yields to what your config wrote:
 
 | Setting | Built-in profile | Your config file, when it has no `profiles.precommit` |
 |---|---|---|

@@ -256,6 +256,7 @@ A profile sets only the keys it lists. A key it leaves out, booleans included, k
 
 ### CLI-Only Options (Not Configurable in YAML)
 
+- `--allow-project-config`: In pre-commit mode, use a config file found in the working directory instead of refusing it. Command line only by design: no config key or environment variable sets it, because the file it gates could otherwise set it. See [Config file discovery](#config-file-discovery).
 - `--explain`: Annotates each finding with a plain-language rationale, a verdict (likely real / test / uncertain), and a drafted suppression reason. Fully offline; no data leaves the host. Web mode always runs explain automatically.
 - `--validator-budget`: Per-validator time budget as `NAME=DURATION` pairs. `DURATION` accepts any Go duration unit (`ms`, `s`, `m`, `h`, or combinations — e.g. `SSN=500ms,IP_ADDRESS=2m`); `all=<duration>` bounds every validator, specific names override it. A validator exceeding its budget is stopped once — it is not re-run, and neither is any other check on the file — and the scan is reported incomplete; the findings gathered before it was stopped, scored as a complete run scores them, and every other validator's, are kept. A budgeted run can therefore report findings (and `--generate-suppressions` entries) that it used to discard; a run whose budget never fires is unchanged. `METADATA` (also covered by `all=`) is checked between metadata items, so an item already running finishes first. Off by default. CI/hardening control against pathological inputs; applies to web scans since #1072; not valid with `--preprocess-only`.
 - `--max-live-bytes`: Cap total file content held in memory across concurrently scanned files, e.g. `256MB` or `1GB` (units `B`, `KB`, `MB`, `GB`; bare number = bytes). Each file reserves its on-disk size against the budget before it is read/extracted and releases it after the scan, bounding peak memory so a directory of large files cannot multiply memory independently (useful on memory-constrained hosts such as Lambda). Files are only sequenced — findings are unchanged — and a file larger than the whole budget still runs alone. Off by default; not valid with `--web` or `--preprocess-only`. Library callers set the same cap via `core.ScanConfig.MaxLiveBytes`.
@@ -847,9 +848,10 @@ developer's own and is not refused. See [Pre-commit integration](PRE_COMMIT_INTE
 ### The built-in `precommit` profile
 
 Pre-commit mode (`--pre-commit-mode`, or a hook environment such as `PRE_COMMIT`) selects the profile
-named `precommit`. A config file that defines `profiles.precommit` gets that profile exactly as written.
-Otherwise ferret-scan supplies a built-in one, also available without any config file, which yields to
-what the config wrote:
+named `precommit`. A config file that defines `profiles.precommit` gets that profile exactly as written
+(in pre-commit mode a working-directory config reaches this step only with `--allow-project-config` or
+`--config <path>`; see above). Otherwise ferret-scan supplies a built-in one, also available without any
+config file, which yields to what the config wrote:
 
 - `checks`: `CREDIT_CARD,SECRETS,SSN,EMAIL,PHONE,IP_ADDRESS`, plus every type `defaults.checks` names.
   A config can add types to a hook but cannot remove any of the six; `defaults.checks: all` keeps the

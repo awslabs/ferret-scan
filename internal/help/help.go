@@ -200,7 +200,7 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Println()
 	h.colors["header"].Println("CONFIGURATION:")
 	fmt.Println("  Default config: ~/.ferret-scan/config.yaml")
-	fmt.Println("  Project config: ferret.yaml or .ferret-scan.yaml (in current directory)")
+	fmt.Println("  Project config: ferret.yaml or .ferret-scan.yaml (in current directory; refused in pre-commit mode unless --allow-project-config)")
 	fmt.Println("  Environment: FERRET_CONFIG_DIR - Override config directory")
 	fmt.Println()
 	h.colors["header"].Println("SUPPORT:")

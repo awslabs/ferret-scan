@@ -48,8 +48,12 @@ $results = ferret-scan.exe --profile ci --format json --file . | ConvertFrom-Jso
 $results | Where-Object { $_.confidence -ge 80 } | Format-Table
 
 # Pre-commit with Husky or similar
-ferret-scan.exe --pre-commit-mode --profile precommit --respect-gitignore
+ferret-scan.exe --pre-commit-mode --profile precommit --respect-gitignore --allow-project-config
 ```
+
+`--allow-project-config` is needed because the `ferret.yaml` copied above sits in the working directory:
+in pre-commit mode such a file is refused without it (see
+[Pre-commit integration](../docs/PRE_COMMIT_INTEGRATION.md#a-project-config-in-a-hook)).
 
 ## Enterprise Deployment (GPO/SCCM)
 
