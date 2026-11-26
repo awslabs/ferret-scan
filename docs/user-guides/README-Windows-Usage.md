@@ -336,6 +336,9 @@ ferret-scan --file "C:\Data" --profile windows-enterprise
 # List available profiles
 ferret-scan --list-profiles --config "$env:APPDATA\ferret-scan\config.yaml"
 
+# Check that every value in the config takes effect (exit 1 if one would not)
+ferret-scan --check-config --config "$env:APPDATA\ferret-scan\config.yaml"
+
 # Override profile settings
 ferret-scan --file "C:\Data" --profile windows-quick --format json --confidence high
 ```

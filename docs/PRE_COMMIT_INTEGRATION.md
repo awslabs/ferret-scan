@@ -285,8 +285,8 @@ ferret-scan supplies a built-in one, which yields to what your config wrote:
 
 Command-line flags outrank both. The built-in profile does not set `respect_gitignore`, so pass
 `--respect-gitignore` (the published hook does) or set it in your config. `--list-profiles` marks the
-profile `precommit (built-in)`, and `--debug` names the active profile, why it was selected, and each
-setting it supplied.
+profile `precommit (built-in)`, `--check-config` names the profile a pre-commit run would select and why,
+and `--debug` names the active profile, why it was selected, and each setting it supplied.
 
 > **Changed in this release.** The built-in profile used to replace the config's `checks`,
 > `confidence_levels`, `redaction.strategy` and `redaction.output_dir`, and every profile turned a
