@@ -47,6 +47,11 @@ jobs:
           name: ferret-scan-python-${{ github.sha }}
           path: python-package/dist/
 
+      - name: Run wrapper unit tests (offline)
+        run: |
+          pip install -r python-package/requirements-dev.txt
+          python -m pytest python-package/tests -v
+
       - name: Test installation and functionality
         run: |
           cd python-package

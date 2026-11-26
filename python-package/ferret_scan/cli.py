@@ -8,6 +8,7 @@ CLI wrapper for ferret-scan binary
 
 import hashlib
 import platform
+import re
 import stat
 import subprocess
 import sys
@@ -15,13 +16,39 @@ from pathlib import Path
 
 import requests
 
+RELEASES_PAGE_URL = "https://github.com/awslabs/ferret-scan/releases"
+_PLAIN_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
+
+
+def get_installed_version():
+    """Return the installed ferret-scan package version, or None if unknown.
+
+    importlib.metadata is 3.8+; the package declares python >= 3.7, so fall
+    back to importlib_metadata and then pkg_resources.
+    """
+    try:
+        try:
+            from importlib.metadata import version
+        except ImportError:
+            try:
+                from importlib_metadata import version
+            except ImportError:
+                import pkg_resources
+
+                return pkg_resources.get_distribution("ferret-scan").version
+        return version("ferret-scan")
+    except Exception:
+        return None
+
 
 class FerretScanCLI:
     """Wrapper for ferret-scan binary with automatic download"""
 
     GITHUB_RELEASES_URL = "https://api.github.com/repos/awslabs/ferret-scan/releases/latest"
+    GITHUB_TAG_URL = "https://api.github.com/repos/awslabs/ferret-scan/releases/tags/v{version}"
 
     def __init__(self):
+        self.version = get_installed_version()
         self.binary_dir = Path(__file__).parent / "binaries"
         self.binary_dir.mkdir(exist_ok=True)
 
@@ -50,14 +77,25 @@ class FerretScanCLI:
 
         return system, arch
 
-    def get_binary_name(self):
-        """Get the expected binary name for this platform"""
-        system, arch = self.get_platform_info()
+    def is_plain_version(self):
+        """True for a plain X.Y.Z release version that maps to a release tag"""
+        # 0.0.0 is what setuptools_scm reports when it finds no tag: not a release
+        return bool(self.version and self.version != "0.0.0" and _PLAIN_VERSION.match(self.version))
 
-        if system == "windows":
-            return f"ferret-scan-{system}-{arch}.exe"
-        else:
-            return f"ferret-scan-{system}-{arch}"
+    def get_binary_name(self):
+        """Get the expected binary name for this platform.
+
+        The installed package version is part of the name, so a wheel upgrade
+        never runs the previous wheel's binary. The old unversioned name
+        (ferret-scan-<os>-<arch>) is never read.
+        shortcut: a non-plain version (dev build) caches the latest release
+        under its own version string, and an unknown version under "unknown";
+        delete the binaries directory to refresh those.
+        """
+        system, arch = self.get_platform_info()
+        label = self.version or "unknown"
+        suffix = ".exe" if system == "windows" else ""
+        return f"ferret-scan-{label}-{system}-{arch}{suffix}"
 
     def get_binary_path(self):
         """Get the path to the binary for this platform"""
@@ -75,9 +113,18 @@ class FerretScanCLI:
         print(f"Downloading ferret-scan binary for {system}-{arch}...", file=sys.stderr)
 
         try:
-            # Get latest release info
+            # Get the release matching the installed package version
+            if self.is_plain_version():
+                release_url = self.GITHUB_TAG_URL.format(version=self.version)
+            else:
+                release_url = self.GITHUB_RELEASES_URL
+                print(
+                    f"Notice: ferret-scan package version {self.version or 'unknown'!r} is not a "
+                    "plain X.Y.Z release; using the latest GitHub release instead.",
+                    file=sys.stderr,
+                )
             try:
-                response = requests.get(self.GITHUB_RELEASES_URL, timeout=30)
+                response = requests.get(release_url, timeout=30)
                 response.raise_for_status()
             except requests.exceptions.Timeout:
                 raise RuntimeError(
@@ -90,14 +137,21 @@ class FerretScanCLI:
                     "Please check your internet connection and firewall settings."
                 )
             except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 403:
+                status = getattr(e.response, "status_code", None)
+                if status == 404 and self.is_plain_version():
+                    raise RuntimeError(
+                        f"No GitHub release found for tag v{self.version} "
+                        f"(installed ferret-scan package version {self.version}). "
+                        f"See {RELEASES_PAGE_URL} for available releases."
+                    )
+                elif status == 403:
                     raise RuntimeError(
                         "GitHub API rate limit exceeded. Please try again later or "
                         "download the binary manually from the releases page."
                     )
                 else:
                     raise RuntimeError(
-                        f"Failed to fetch release information from GitHub (HTTP {e.response.status_code}). "
+                        f"Failed to fetch release information from GitHub (HTTP {status}). "
                         "Please try again later."
                     )
 
@@ -125,6 +179,9 @@ class FerretScanCLI:
                     checksums_url = asset["browser_download_url"]
                     continue
 
+                if download_url:
+                    continue  # keep scanning only so a later checksums.txt is still found
+
                 # Check if this asset matches our platform
                 # Support both formats: ferret-scan-darwin-arm64 and ferret-scan_1.2.2_darwin_arm64
                 if (system in asset_name and arch in asset_name and
@@ -139,7 +196,6 @@ class FerretScanCLI:
 
                     download_url = asset["browser_download_url"]
                     download_name = asset_name
-                    break
 
             if not download_url:
                 available_assets = [asset["name"] for asset in release_data.get("assets", [])]
