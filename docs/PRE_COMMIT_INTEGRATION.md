@@ -247,6 +247,8 @@ pass a commit it should block. A refusal fails once and says how to fix it; igno
 silently for a team that relies on it. A config in the user config directory is yours, not part of the
 change, and is not refused.
 
+To see what the hook would refuse before the first commit does, run `ferret-scan --check-config` from the repository root: it names the config file, says that pre-commit mode refuses it unless `--allow-project-config` is passed, and lists any configured value that would not take effect. It is not refused itself, with or without `PRE_COMMIT=1`.
+
 A team that keeps a project config on purpose adds one argument:
 
 ```yaml

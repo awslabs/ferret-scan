@@ -1120,6 +1120,7 @@ func main() {
 	configFile := flag.String("config", "", "Path to configuration file (YAML)")
 	profileName := flag.String("profile", "", "Profile name to use from config file")
 	listProfiles := flag.Bool("list-profiles", false, "List available profiles in config file")
+	checkConfig := flag.Bool("check-config", false, "Report which config a run would use and every configured value that would not take effect, without scanning")
 	outputFormat := flag.String("format", "", "Output format: text, json, csv, yaml, junit, gitlab-sast, sarif (default: text)")
 	confidenceLevels := new(string)
 	flag.Func("confidence", "Confidence levels to display: high, medium, low, or combinations like 'high,medium' (repeatable; values append)", appendCommaList(confidenceLevels))
@@ -1282,6 +1283,13 @@ func main() {
 		defaults, _ := config.LoadConfig("")
 		runHelpCommand(flags.noColor, core.BuildValidatorSet(parseChecksToRun(""), defaults, nil), flag.Args())
 		return
+	}
+
+	// --check-config reads the configuration the way a scan would and scans nothing (#1086). After
+	// --version and --help, which are pure; before the stdin dispatch and prepareRun, so `--stdin
+	// --check-config` reads no stdin (as --list-profiles) and the pre-commit refusal (#293) never fires.
+	if *checkConfig {
+		os.Exit(runCheckConfig(os.Stdout, flags))
 	}
 
 	// Handle stdin mode early - bypasses file discovery entirely.
@@ -3908,6 +3916,11 @@ func validateWebModeFlags() error {
 	if isFlagSet("list-profiles") {
 		incompatibleFlags = append(incompatibleFlags, "--list-profiles")
 		troubleshooting = append(troubleshooting, "--list-profiles prints the configured profiles and exits; to scan under one in the web UI, start it with --web --profile <name>")
+	}
+
+	if isFlagSet("check-config") {
+		incompatibleFlags = append(incompatibleFlags, "--check-config")
+		troubleshooting = append(troubleshooting, "--check-config reports the CLI's configuration and exits; the web server loads config only from --config, so run `--check-config --config <path>` without --web to check the file you would start it with")
 	}
 
 	// An upload has no directory tree for .gitignore to apply to, and /scan returns every finding, so a

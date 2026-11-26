@@ -27,6 +27,7 @@ repos:
 # Same as A, for a team that keeps a project config on purpose: the flag is the
 # visible, reviewed opt-in. Option B, C and D need the same flag if the
 # repository holds a config file and the container or binary runs from its root.
+# `ferret-scan --check-config` from the repo root shows what the hook will see.
 repos:
   - repo: https://github.com/awslabs/ferret-scan
     rev: v2.6.2  # pin to a release tag

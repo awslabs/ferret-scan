@@ -75,6 +75,7 @@ var stdinFlagClasses = map[string]stdinFlagClass{
 	"help":          {class: beforeDispatch, reason: "main() skips the stdin hand-off for --help"},
 	"version":       {class: beforeDispatch, reason: "main() skips the stdin hand-off for --version"},
 	"list-profiles": {class: beforeDispatch, reason: "answered before the hand-off, so stdin is never read (#887)"},
+	"check-config":  {class: beforeDispatch, reason: "answered before the hand-off, so stdin is never read (#1086)"},
 	"web":           {class: beforeDispatch, reason: "the web hand-off runs before the stdin one"},
 	"stdin":         {class: beforeDispatch, reason: "it is the dispatch"},
 

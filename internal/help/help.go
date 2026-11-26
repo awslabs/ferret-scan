@@ -100,6 +100,7 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Fprintln(w, "  --config\t<path>\tPath to configuration file (YAML)")
 	fmt.Fprintln(w, "  --profile\t<name>\tProfile name to use from config file")
 	fmt.Fprintln(w, "  --list-profiles\t\tList available profiles in config file")
+	fmt.Fprintln(w, "  --check-config\t\tReport the config a scan would use and every configured value that would not take effect, without scanning (exit 1 if any)")
 	fmt.Fprintln(w, "  --recursive\t\tRecursively scan directories")
 	fmt.Fprintln(w, "  --exclude\t<patterns>\tComma-separated list of patterns to exclude from scanning (e.g., '.git,*.log,temp/')")
 	fmt.Fprintln(w, "\t\t\tNote: Repeatable; values append: --exclude .git --exclude '*.log' is --exclude '.git,*.log'")
@@ -170,6 +171,7 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Println("  Configuration and Profiles:")
 	h.colors["example"].Println("    ferret-scan --file . --config ferret.yaml --profile production")
 	h.colors["example"].Println("    ferret-scan --list-profiles --config ferret.yaml")
+	h.colors["example"].Println("    ferret-scan --check-config  # which config a run would use, and any value in it that would not take effect")
 
 	fmt.Println()
 	h.colors["header"].Println("Redaction Examples:")
@@ -202,6 +204,7 @@ func (h *System) ShowGeneralHelp() {
 	fmt.Println("  Default config: ~/.ferret-scan/config.yaml")
 	fmt.Println("  Project config: ferret.yaml or .ferret-scan.yaml (in current directory; refused in pre-commit mode unless --allow-project-config)")
 	fmt.Println("  Environment: FERRET_CONFIG_DIR - Override config directory")
+	fmt.Println("  Check the config a run would use: ferret-scan --check-config")
 	fmt.Println()
 	h.colors["header"].Println("SUPPORT:")
 	fmt.Println("  Issues:  " + version.IssuesURL)

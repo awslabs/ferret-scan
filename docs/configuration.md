@@ -257,6 +257,7 @@ A profile sets only the keys it lists. A key it leaves out, booleans included, k
 ### CLI-Only Options (Not Configurable in YAML)
 
 - `--allow-project-config`: In pre-commit mode, use a config file found in the working directory instead of refusing it. Command line only by design: no config key or environment variable sets it, because the file it gates could otherwise set it. See [Config file discovery](#config-file-discovery).
+- `--check-config`: Reads the configuration exactly as a scan would (`--config`, else discovery; `--profile`, else the built-in `precommit` profile in pre-commit mode), builds every validator from it, scans nothing, and prints to stdout the config in use and its source, a load failure, unknown keys, disabled detection sub-types, every configured value a validator could not use (the lines a scan prints as `Warning: config value ...`), the profile, and a `config check: OK` or `config check: N problem(s)` line. Exits 1 when anything configured did not take effect, 0 otherwise. The pre-commit refusal of a discovered config does not apply to it. Not valid with `--web`. See [Config file discovery](#config-file-discovery).
 - `--explain`: Annotates each finding with a plain-language rationale, a verdict (likely real / test / uncertain), and a drafted suppression reason. Fully offline; no data leaves the host. Web mode always runs explain automatically.
 - `--validator-budget`: Per-validator time budget as `NAME=DURATION` pairs. `DURATION` accepts any Go duration unit (`ms`, `s`, `m`, `h`, or combinations — e.g. `SSN=500ms,IP_ADDRESS=2m`); `all=<duration>` bounds every validator, specific names override it. A validator exceeding its budget is stopped once — it is not re-run, and neither is any other check on the file — and the scan is reported incomplete; the findings gathered before it was stopped, scored as a complete run scores them, and every other validator's, are kept. A budgeted run can therefore report findings (and `--generate-suppressions` entries) that it used to discard; a run whose budget never fires is unchanged. `METADATA` (also covered by `all=`) is checked between metadata items, so an item already running finishes first. Off by default. CI/hardening control against pathological inputs; applies to web scans since #1072; not valid with `--preprocess-only`.
 - `--max-live-bytes`: Cap total file content held in memory across concurrently scanned files, e.g. `256MB` or `1GB` (units `B`, `KB`, `MB`, `GB`; bare number = bytes). Each file reserves its on-disk size against the budget before it is read/extracted and releases it after the scan, bounding peak memory so a directory of large files cannot multiply memory independently (useful on memory-constrained hosts such as Lambda). Files are only sequenced — findings are unchanged — and a file larger than the whole budget still runs alone. Off by default; not valid with `--web` or `--preprocess-only`. Library callers set the same cap via `core.ScanConfig.MaxLiveBytes`.
@@ -643,7 +644,7 @@ validators:
 
 ##### Regex Values in YAML — Escaping Rules
 
-YAML's escape behavior depends on quoting style, and this trips up everyone who writes a regex with `\b`, `\s`, `\d`, etc. Pick one of the safe forms below; any of them produces an identical Go regex.
+YAML's escape behavior depends on quoting style, and this trips up everyone who writes a regex with `\b`, `\s`, `\d`, etc. Pick one of the safe forms below; any of them produces an identical Go regex. `ferret-scan --check-config` reports every regex RE2 rejects (a PCRE lookbehind, for one) without scanning anything.
 
 | Form | Example | Notes |
 |------|---------|-------|
@@ -843,7 +844,7 @@ inside the change under review could disable the checks that review it
 To use the file anyway, add `--allow-project-config` to the hook's `args`, or name a config with
 `--config <path>`. The flag exists only on the command line: no config key and no environment variable sets
 it, since the file it gates could otherwise set it. A config in the user config directory is the
-developer's own and is not refused. See [Pre-commit integration](PRE_COMMIT_INTEGRATION.md#a-project-config-in-a-hook).
+developer's own and is not refused. `ferret-scan --check-config` prints which file a run would use and where it came from, every value in it that would not take effect, and, for a working-directory config, that pre-commit mode would refuse it; it is not itself refused in pre-commit mode, and scans nothing. See [Pre-commit integration](PRE_COMMIT_INTEGRATION.md#a-project-config-in-a-hook).
 
 ### The built-in `precommit` profile
 
@@ -861,7 +862,7 @@ config file, which yields to what the config wrote:
 - Everything else comes from the config, including the redaction strategy, the output directory and
   every boolean. With no config file the profile also turns `no_color` on.
 
-`--list-profiles` marks it `precommit (built-in)`. See
+`--list-profiles` marks it `precommit (built-in)`, and `--check-config` names it as the profile a pre-commit run applies. See
 [Pre-commit integration](PRE_COMMIT_INTEGRATION.md#the-precommit-profile).
 
 ### Validator configuration

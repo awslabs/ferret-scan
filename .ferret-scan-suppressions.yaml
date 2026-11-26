@@ -141,71 +141,71 @@ rules:
         finding_type: PERSON_NAME
         line_number: "131"
     - id: SUP-00000060
-      hash: 3c5a7d953df20255363d93d6085ebd956a2598afcd4a1622e35ef7b7cd698fe0 # pragma: allowlist secret
+      hash: 906f9434e92fd56154d1ae7d1d44c5ea702f64c2e27c02310d7e2b65312ea64c # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-26T20:18:10.081121044Z
+      last_seen_at: 2026-11-26T20:26:10.324955148Z
       metadata:
         confidence: "100.00"
         filename: main.go
         finding_type: SSN
-        line_number: "1651"
+        line_number: "1659"
     - id: SUP-00000061
-      hash: 5e5b5b98e75bbaa999a56b0c6c494e057a075956aaab1baf4ffb2295f958bf16 # pragma: allowlist secret
+      hash: ce7a5820372c46bf2048e9548ed6c3255cde8fb39f8e2ce5a20f07ca97f8917a # pragma: allowlist secret
       reason: "fixture: example value in a source comment"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-26T20:18:10.081121044Z
+      last_seen_at: 2026-11-26T20:26:10.324955148Z
       metadata:
         confidence: "100.00"
         filename: main.go
         finding_type: SSN
-        line_number: "3407"
+        line_number: "3415"
     - id: SUP-00000063
-      hash: 9c95e923a41924e41b03cd268a690b8b98d5ea40c7765dd252858f47eb35ce05 # pragma: allowlist secret
+      hash: f76ce4f61f7959209633795ce78893f87cf13b9c98fc9e4c028c01f2cbcb61f3 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-26T19:37:39.821881264Z
+      last_seen_at: 2026-11-26T20:26:10.324955148Z
       metadata:
         confidence: "95.00"
         filename: configuration.md
         finding_type: GCP_RESOURCE_NAME
-        line_number: "679"
+        line_number: "680"
     - id: SUP-00000064
-      hash: b0b7eb1073e235f167ba0010788a450be10ec2cfc570af0fa5064b3d0030e5b7 # pragma: allowlist secret
+      hash: c2aefd813d41a60e2fbb4c86dd1b557ebed306775ce4e48733c42c00661fb89d # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-26T19:37:39.821881264Z
+      last_seen_at: 2026-11-26T20:26:10.324955148Z
       metadata:
         confidence: "90.00"
         filename: configuration.md
         finding_type: IBM_CRN
-        line_number: "681"
+        line_number: "682"
     - id: SUP-00000065
-      hash: c26534293dc68bd4649398b21296303b34fff9401fcb7142411c8345f2c58cc5 # pragma: allowlist secret
+      hash: d48d05e85b427f2ad61468cf0748a9ae229241059fb5d2cb66e0739ffb540e4a # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-26T19:37:39.821881264Z
+      last_seen_at: 2026-11-26T20:26:10.324955148Z
       metadata:
         confidence: "90.00"
         filename: configuration.md
         finding_type: ALIBABA_ARN
-        line_number: "682"
+        line_number: "683"
     - id: SUP-00000068
-      hash: dd644714966cc79cef8a2d31c9c88966afe781fc816e4c05f91d0abd35cf99ad # pragma: allowlist secret
+      hash: b9d8a70d40a24b4e5733df627e67c15f9cd5413d1b35a605a65be3f11fe17e38 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-26T19:37:39.821881264Z
+      last_seen_at: 2026-11-26T20:26:10.324955148Z
       metadata:
         confidence: "92.00"
         filename: configuration.md
         finding_type: PERSON_NAME
-        line_number: "1091"
+        line_number: "1092"
     - id: SUP-00000074
       hash: 31598d2e47a6a0af3580c6cd299851a48365dcb39ebcc7158c8ca16a062c373a # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"

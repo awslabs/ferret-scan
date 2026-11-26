@@ -370,6 +370,9 @@ cp config.yaml ~/.ferret-scan/config.yaml
 
 # Edit user settings
 vim ~/.ferret-scan/config.yaml
+
+# Check the file: which config a run uses, and any value that would not take effect
+ferret-scan --check-config
 ```
 
 ### Team Configuration

@@ -178,6 +178,7 @@ shape a scan:
 | `--respect-gitignore` | Refused at startup. An upload has no directory tree for `.gitignore` to apply to; use `--exclude` to skip paths in a dropped folder. |
 | `--limit` | Refused at startup. The page shows every finding; `--limit` caps the CLI's printed report. |
 | `--list-profiles` | Refused at startup. It prints the profiles and exits; use `--web --profile NAME` to scan under one. |
+| `--check-config` | Refused at startup. It reports the CLI's configuration and exits; run `--check-config --config PATH` without `--web` to check the file you would start the server with. |
 | `--max-live-bytes` | Refused at startup. Concurrent `/scan` requests are not admitted against a shared byte budget, so there is nothing for it to cap. |
 
 A refusal exits with status 1 and a message naming the flag; the server does not start.

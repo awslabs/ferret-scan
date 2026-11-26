@@ -116,6 +116,9 @@ ferret-scan --web
 
 # Pre-configured profiles (cli, web, ci, precommit, redaction)
 ferret-scan --file . --recursive --profile ci
+
+# Check the configuration a run would use, without scanning
+ferret-scan --check-config
 ```
 
 ## 🗑️ Uninstallation
@@ -153,4 +156,4 @@ If you encounter issues:
 4. Verify permissions:
    - Linux/macOS: `ls -la /usr/local/bin/ferret-scan`
    - Windows: `Test-Path "C:\Program Files\FerretScan\ferret-scan.exe"`
-5. Test configuration: `ferret-scan --list-profiles`
+5. Test configuration: `ferret-scan --check-config` (which config a run would use, and any value in it that would not take effect) and `ferret-scan --list-profiles`

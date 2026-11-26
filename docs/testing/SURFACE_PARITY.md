@@ -79,13 +79,13 @@ number of findings the `/scan` responses it names held.
 `TestCLIFlagsHaveAWebDecision` builds `./cmd` once per test binary and runs it with an undefined flag,
 which makes Go's `flag` package print `flag.PrintDefaults`: every registered flag. `--help` is not
 used, because it is hand-written prose (`internal/help`) and omits registered flags (`--bind`,
-`--show-suppressed`, `-p`). The 42 flags are then partitioned across three tables in the test file:
+`--show-suppressed`, `-p`). The 43 flags are then partitioned across three tables in the test file:
 
 - `webEquivalent`: the flag and how the web exposes it (15 today: `checks`, `confidence`, `verbose`,
   `recursive`, `format`, `show-match`, `suppression-file`, `config`, `exclude`, `explain`,
   `enable-preprocessors`, `show-suppressed`, `generate-suppressions`, `suppression-expires`,
   `version`);
-- `webDeliberatelyAbsent`: the flag and the mechanism that makes it a CLI-only concern (19 today);
+- `webDeliberatelyAbsent`: the flag and the mechanism that makes it a CLI-only concern (20 today);
   most reasons are the troubleshooting lines `validateWebModeFlags` in `cmd/main.go` already prints
   when it refuses the flag with `--web`;
 - `webUndecided`: the flag and the issue asking for a decision (8 today: `debug`, `disable-ip-types`,

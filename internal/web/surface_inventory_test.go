@@ -70,6 +70,7 @@ var webDeliberatelyAbsent = map[string]string{
 	"respect-gitignore":    "an upload has no directory tree for .gitignore to apply to (a dropped folder is walked by the browser, which reads no .gitignore; --exclude covers it); validateWebModeFlags refuses it with --web (#925)",
 	"limit":                "caps the CLI's printed report (default 200); /scan returns every finding and the page shows them all; validateWebModeFlags refuses it with --web (#925)",
 	"list-profiles":        "prints the configured profiles and exits; a server has no run to exit from; validateWebModeFlags refuses it and names `--web --profile <name>` (#925)",
+	"check-config":         "reports the CLI's configuration resolution and exits; a server has no run to exit from and loads config only from --config; validateWebModeFlags refuses it (#1086)",
 	"max-live-bytes":       "caps extracted bytes held across the CLI's concurrently validating files; /scan requests are not admitted against a shared budget, so there is nothing for it to cap; validateWebModeFlags refuses it with --web (#925)",
 	"help":                 "prints the CLI's usage; the web has its own help panel (validateWebModeFlags refuses it)",
 }

@@ -74,7 +74,7 @@ docker run --rm \
 
 `--web` also takes `--config`, `--suppression-file`, `--exclude`, `--profile`, `--disable-ip-types`,
 `--validator-budget` and `--debug` (the debug log goes to the container's stderr, `docker logs`), and
-refuses `--respect-gitignore`, `--limit`, `--list-profiles` and `--max-live-bytes` at startup with a message
+refuses `--respect-gitignore`, `--limit`, `--list-profiles`, `--check-config` and `--max-live-bytes` at startup with a message
 naming the flag. See [Scan flags with `--web`](user-guides/README-WebUI.md#scan-flags-with---web).
 
 The `127.0.0.1:` prefix keeps the UI on this machine: inside the container the server binds

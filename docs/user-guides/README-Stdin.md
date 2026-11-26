@@ -241,6 +241,7 @@ Exit codes follow `--pre-commit-mode` semantics when set: non-zero on findings a
 - **`--disable-ip-types`**: disables the named sub-types after config and profile, so it outranks both and its list replaces theirs, as on `--file`.
 - **`--suppression-expires`** and `suppressions.expires_in`: rules written by `--generate-suppressions` carry `expires_at`, and a value that does not parse exits `1` before anything is written.
 - **`--list-profiles`**: lists the profiles and exits without reading stdin.
+- **`--check-config`**: reports the config a run would use and every configured value that would not take effect, and exits without reading stdin ([#1086](https://github.com/awslabs/ferret-scan/issues/1086)).
 - **`--debug`** (and `FERRET_DEBUG` in the environment): exports `FERRET_DEBUG`, so the validators print their own `[DEBUG]`/`[INFO]` lines.
 
 The disclosures `--file` prints on stderr are printed here too: `Note: config disabled N … sub-type(s)`, the warning for a `disabled_types` name that matches nothing, and `WARNING: N finding(s) are reported because their suppression rule has EXPIRED`. Like the project-config note they are **withheld when stderr carries the findings document** (`--enable-redaction` with no `--output`). In that shape the document itself discloses narrowed detection: `stats.disabled_detection_types` names the switched-off sub-types, and a narrowed run carries the `scan` block described below. Pass `--output <file>` to get the disclosures on stderr as well.
