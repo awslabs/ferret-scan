@@ -1,0 +1,5 @@
+{
+  "description": "Find and redact sensitive data (PII, secrets, IP markers) in files and streams. Single static Go binary; nothing leaves your host. CLI, web UI and Go library. Source: https://github.com/awslabs/ferret-scan",
+  "architectures": ["x86-64", "ARM 64"],
+  "operatingSystems": ["Linux"]
+}

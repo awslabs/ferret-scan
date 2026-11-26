@@ -17,6 +17,7 @@ Welcome to the comprehensive documentation for Ferret Scan - a sensitive data de
 
 ### 👥 User Guides
 - [Docker Guide](user-guides/README-Docker.md) - Container deployment and usage
+- [ECR Public Gallery page](ecr-public/README.md) - The image's gallery text (About, Usage, badges) lives in `docs/ecr-public/` and is applied with `scripts/ecr-public-catalog.sh`
 - [Web UI Guide](user-guides/README-WebUI.md) - Web interface documentation
 - [🆕 Enhanced Metadata Guide](user-guides/README-Enhanced-Metadata.md) - Comprehensive guide to enhanced metadata validation
 - [Preprocess-Only Mode](user-guides/README-Preprocess-Only.md) - Text extraction without validation
