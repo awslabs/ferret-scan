@@ -619,7 +619,7 @@ The enhanced architecture automatically routes content to appropriate validators
 
 #### Observability and Debugging
 
-Enhanced debugging capabilities are available through the `--debug` flag:
+Enhanced debugging capabilities are available through the `--debug` flag. Under `--web`, only the flag turns on the server's debug log; a `debug:` key in the config file or in a profile does not (#1072):
 
 - **Content Routing Decisions**: Shows how content is separated and routed
 - **Preprocessor Type Detection**: Displays detected preprocessor types
@@ -878,6 +878,7 @@ This means that profile-specific configurations will override global configurati
 - **Use Case**: Browser-based scanning and triage
 - **Output**: JSON with full finding detail
 - **Note**: Web mode always runs `--explain` automatically
+- **Debug log**: the server's debug log is enabled by the `--debug` flag only; a `debug:` key in the config file or in a profile does not enable it
 
 ### CI/CD and Automation
 

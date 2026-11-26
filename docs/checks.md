@@ -192,7 +192,7 @@ Sensitive metadata was detected in file properties. This may include author name
 
 **National Identification Number Detected**
 
-A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label.
+A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number, a Mexican CURP or a Mexican RFC. Each identifies a person to their government's tax, employment or population registry (an RFC may instead identify a company), and each passed its check digit beside its own label.
 
 *What to do:* Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers.
 
@@ -280,7 +280,7 @@ A cloud provider resource identifier (e.g. AWS ARN, Azure resource ID, GCP resou
 
 **National Identification Number Detected**
 
-A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label.
+A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number, a Mexican CURP or a Mexican RFC. Each identifies a person to their government's tax, employment or population registry (an RFC may instead identify a company), and each passed its check digit beside its own label.
 
 *What to do:* Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers.
 
@@ -312,7 +312,7 @@ A full magnetic-stripe track (ISO/IEC 7813 Track 1 or Track 2) or a chip card's 
 
 **National Identification Number Detected**
 
-A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label.
+A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number, a Mexican CURP or a Mexican RFC. Each identifies a person to their government's tax, employment or population registry (an RFC may instead identify a company), and each passed its check digit beside its own label.
 
 *What to do:* Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers.
 
@@ -344,7 +344,7 @@ A cloud provider resource identifier (e.g. AWS ARN, Azure resource ID, GCP resou
 
 **National Identification Number Detected**
 
-A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label.
+A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number, a Mexican CURP or a Mexican RFC. Each identifies a person to their government's tax, employment or population registry (an RFC may instead identify a company), and each passed its check digit beside its own label.
 
 *What to do:* Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers.
 
@@ -728,7 +728,7 @@ A healthcare identifier — a medical record number, a Medicare Beneficiary Iden
 
 **National Identification Number Detected**
 
-A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label.
+A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number, a Mexican CURP or a Mexican RFC. Each identifies a person to their government's tax, employment or population registry (an RFC may instead identify a company), and each passed its check digit beside its own label.
 
 *What to do:* Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers.
 
@@ -736,7 +736,7 @@ A national identification number was detected in the scanned content: a Brazilia
 
 **National Identification Number Detected**
 
-A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number or a Mexican CURP. Each identifies one person to their government's tax, employment or population registry, and each passed its check digit beside its own label.
+A national identification number was detected in the scanned content: a Brazilian CPF, a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number, a Mexican CURP or a Mexican RFC. Each identifies a person to their government's tax, employment or population registry (an RFC may instead identify a company), and each passed its check digit beside its own label.
 
 *What to do:* Handle a national identification number as you would a US Social Security Number: remove it, or replace it with synthetic test data that fails the number's check digit, and keep real values in a system with access controls rather than in source, configuration files or logs. These numbers appear on payroll, tax and onboarding records, so check the surrounding record for the holder's name and other identifiers.
 

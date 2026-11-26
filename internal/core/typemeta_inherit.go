@@ -207,9 +207,10 @@ var supplementalDescriptors = map[string]TypeDescriptor{
 	"NATIONAL_ID": {
 		SARIFShort: "National Identification Number Detected",
 		SARIFFull: "A national identification number was detected in the scanned content: a Brazilian CPF, " +
-			"a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number " +
-			"or a Mexican CURP. Each identifies one person to their government's tax, employment or " +
-			"population registry, and each passed its check digit beside its own label.",
+			"a Chilean RUT or RUN, an Argentine CUIL or personal CUIT, a Canadian Social Insurance Number, " +
+			"a Mexican CURP or a Mexican RFC. Each identifies a person to their government's tax, employment or " +
+			"population registry (an RFC may instead identify a company), and each passed its check digit " +
+			"beside its own label.",
 		SARIFHelp: "Handle a national identification number as you would a US Social Security Number: " +
 			"remove it, or replace it with synthetic test data that fails the number's check digit, and " +
 			"keep real values in a system with access controls rather than in source, configuration " +
@@ -217,7 +218,7 @@ var supplementalDescriptors = map[string]TypeDescriptor{
 			"surrounding record for the holder's name and other identifiers.",
 		SARIFSensitivityWeight: 10.0,
 		GitLabCheckDesc:        "National identification number",
-		GitLabRemediation: "Remove national identification numbers (CPF, RUT, CUIL, SIN, CURP) from code " +
+		GitLabRemediation: "Remove national identification numbers (CPF, RUT, CUIL, SIN, CURP, RFC) from code " +
 			"and documentation, or replace them with synthetic values that fail the check digit.",
 		GitLabName: "National Identification Number Detected",
 	},

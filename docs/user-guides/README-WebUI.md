@@ -174,7 +174,7 @@ shape a scan:
 | `--profile NAME` | Applied to every scan. The profile's `checks`, `confidence_levels`, `verbose`, `recursive` and `enable_preprocessors` sit between the config file and the form (a form field still wins), and its validator settings apply. An unknown name refuses to start: `refusing to start: Profile 'NAME' not found in config file`. |
 | `--disable-ip-types t1,t2` | Applied to every scan, after the config and the profile, as on `--file`. |
 | `--validator-budget NAME=DUR` | Applied to every scan. A validator that exceeds its budget makes that scan `incomplete`, as on `--file`. |
-| `--debug` | Every scan runs with the debug observer, which writes to the **server's** stderr (the server log), never to the page or the `/scan` response. The log names the server-side temporary path of each upload and the validators' working notes; keep it as private as the scan itself. |
+| `--debug` | Every scan runs with the debug observer, which writes to the **server's** stderr (the server log), never to the page or the `/scan` response. The log names the server-side temporary path of each upload and the validators' working notes; keep it as private as the scan itself. Only the flag enables it: a `debug:` key in the config file or a profile does not. |
 | `--respect-gitignore` | Refused at startup. An upload has no directory tree for `.gitignore` to apply to; use `--exclude` to skip paths in a dropped folder. |
 | `--limit` | Refused at startup. The page shows every finding; `--limit` caps the CLI's printed report. |
 | `--list-profiles` | Refused at startup. It prints the profiles and exits; use `--web --profile NAME` to scan under one. |

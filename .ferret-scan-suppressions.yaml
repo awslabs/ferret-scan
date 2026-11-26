@@ -196,16 +196,16 @@ rules:
         finding_type: ALIBABA_ARN
         line_number: "681"
     - id: SUP-00000068
-      hash: accd5c198d6496a7e6c8a8c3d0c6fcf6f95c9074bf23d5fccf35aff49d00b512 # pragma: allowlist secret
+      hash: b6f2eebf9193cc60630c8d6adf91332d3b684678741c9c468930f347a1ee4638 # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-19T01:23:07.510372174Z
+      last_seen_at: 2026-11-26T15:20:51.392916074Z
       metadata:
         confidence: "92.00"
         filename: configuration.md
         finding_type: PERSON_NAME
-        line_number: "1074"
+        line_number: "1075"
     - id: SUP-00000074
       hash: 31598d2e47a6a0af3580c6cd299851a48365dcb39ebcc7158c8ca16a062c373a # pragma: allowlist secret
       reason: "fixture: documentation example of what the scanner reports"
