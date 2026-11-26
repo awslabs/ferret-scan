@@ -332,8 +332,6 @@ func (v *Validator) appendPrivateKeyContainers(matches []detector.Match, nMultiL
 				"validation_checks": checks,
 				"detection_method":  c.method,
 				"secret_type":       c.secretType,
-				"context_domain":    contextInsights.Domain,
-				"context_doc_type":  contextInsights.DocumentType,
 				"environment_type":  envType,
 			},
 		})

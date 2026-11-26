@@ -5,6 +5,8 @@ package secrets
 import (
 	"strings"
 	"testing"
+
+	"github.com/awslabs/ferret-scan/v2/internal/context"
 )
 
 // Tests for #849 item 3. The document-type switch in calculateEnhancedConfidenceWithCacheAndEnvAndLine
@@ -14,8 +16,8 @@ import (
 // label is gone. These tests pin which branch each structured document reaches: YAML the
 // Configuration one, JSON the structured one, by its extension or by its lines.
 
-// docTypeOf returns the document type and the validation checks of the one SECRETS finding on the
-// line holding marker.
+// docTypeOf returns the document type (from the validator's own analyzer: findings no longer carry
+// it, #621) and the validation checks of the one SECRETS finding on the line holding marker.
 func docTypeOf(t *testing.T, content, path, marker string) (string, map[string]bool) {
 	t.Helper()
 	ms, err := NewValidator().ValidateContent(content, path)
@@ -26,7 +28,7 @@ func docTypeOf(t *testing.T, content, path, marker string) (string, map[string]b
 		if !strings.Contains(m.Text, marker) {
 			continue
 		}
-		docType, _ := m.Metadata["context_doc_type"].(string)
+		docType := context.NewContextAnalyzer().AnalyzeContext(content, path).DocumentType
 		checks, _ := m.Metadata["validation_checks"].(map[string]bool)
 		return docType, checks
 	}
@@ -59,7 +61,7 @@ func TestStructuredDocumentBoosts(t *testing.T) {
 	} {
 		docType, checks := docTypeOf(t, c.content, c.path, pw)
 		if docType != c.wantType {
-			t.Errorf("%s: context_doc_type = %q, want %q", c.name, docType, c.wantType)
+			t.Errorf("%s: document type = %q, want %q", c.name, docType, c.wantType)
 		}
 		if !checks[c.wantCheck] {
 			t.Errorf("%s: validation checks %v lack %s", c.name, checks, c.wantCheck)

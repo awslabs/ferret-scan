@@ -54,7 +54,6 @@ var safeMetadataKeys = map[string]bool{
 	"original_confidence":     true,
 	"context_impact":          true,
 	"enhanced_context_impact": true,
-	"context_confidence":      true,
 	"confidence_factors":      true,
 	"correlation_boost":       true,
 	"cross_path_correlation":  true,
@@ -62,13 +61,9 @@ var safeMetadataKeys = map[string]bool{
 	"cross_validator_impact":  true,
 	"total_adjustment":        true,
 	"preprocessor_adjustment": true,
-	"semantic_context":        true,
 	"analysis_confidence":     true,
 
 	// Context classification (labels/scores, not raw text)
-	"context_domain":   true,
-	"context_doctype":  true,
-	"context_doc_type": true,
 	"context_keywords": true,
 	"cultural_context": true,
 	"environment_type": true,

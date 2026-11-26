@@ -886,17 +886,9 @@ func (dvb *DocumentValidatorBridge) applyDocumentContext(matches []detector.Matc
 		if matches[i].Metadata == nil {
 			matches[i].Metadata = make(map[string]interface{})
 		}
-		matches[i].Metadata["context_domain"] = contextInsights.Domain
-		matches[i].Metadata["context_doctype"] = contextInsights.DocumentType
-		matches[i].Metadata["context_confidence"] = contextInsights.DomainConfidence
 		matches[i].Metadata["confidence_adjustment"] = adjustment
 		matches[i].Metadata["original_confidence"] = originalConfidence
 		matches[i].Metadata["validation_path"] = "document"
-
-		// Add semantic context information
-		if len(contextInsights.SemanticContext) > 0 {
-			matches[i].Metadata["semantic_context"] = contextInsights.SemanticContext
-		}
 	}
 }
 
@@ -1303,9 +1295,6 @@ func (mvb *MetadataValidatorBridge) ProcessMetadataContentCtx(ctx stdctx.Context
 				if matches[i].Metadata == nil {
 					matches[i].Metadata = make(map[string]interface{})
 				}
-				matches[i].Metadata["context_domain"] = contextInsights.Domain
-				matches[i].Metadata["context_doctype"] = contextInsights.DocumentType
-				matches[i].Metadata["context_confidence"] = contextInsights.DomainConfidence
 				matches[i].Metadata["confidence_adjustment"] = adjustment
 				matches[i].Metadata["preprocessor_adjustment"] = preprocessorAdjustment
 				matches[i].Metadata["total_adjustment"] = totalAdjustment
@@ -1313,11 +1302,6 @@ func (mvb *MetadataValidatorBridge) ProcessMetadataContentCtx(ctx stdctx.Context
 				matches[i].Metadata["preprocessor_type"] = metadataItem.PreprocessorType
 				matches[i].Metadata["preprocessor_name"] = metadataItem.PreprocessorName
 				matches[i].Metadata["validation_path"] = "metadata"
-
-				// Add semantic context information
-				if len(contextInsights.SemanticContext) > 0 {
-					matches[i].Metadata["semantic_context"] = contextInsights.SemanticContext
-				}
 
 				// Add cross-validator signals if available
 				if len(contextInsights.CrossValidatorSignals) > 0 {

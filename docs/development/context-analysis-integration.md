@@ -93,7 +93,7 @@ type ContextAnalysis struct {
 
     // Pattern Analysis
     PatternContext    map[string]interface{} `json:"pattern_context"`
-    SemanticContext   map[string]interface{} `json:"semantic_context"`
+    SemanticContext   map[string]interface{} `json:"semantic_context"` // per file; not copied onto findings (#621)
     StructuralContext map[string]interface{} `json:"structural_context"`
 
     // Confidence Modifiers
@@ -218,7 +218,7 @@ sequenceDiagram
     DVB->>DV: Apply context to validators
     DV->>DV: Perform context-aware validation
     DV-->>DVB: Validation results with context
-    DVB->>RP: Enhanced results with context metadata
+    DVB->>RP: Results with adjusted confidence
 ```
 
 #### Implementation
@@ -262,10 +262,11 @@ func (dvb *DocumentValidatorBridge) ProcessDocumentBody(
 
             matches, err := v.ValidateContent(documentBody, originalPath)
             if err == nil {
-                // Enhance matches with context metadata
-                for i := range matches {
-                    matches[i] = dvb.enhanceMatchWithContext(matches[i], documentContext)
-                }
+                // Apply the document-level confidence adjustment. Only the adjustment,
+                // the original confidence and validation_path are recorded on a finding;
+                // the domain, document type and semantic categories stay in the
+                // ContextInsights, once per file (#621).
+                dvb.applyDocumentContext(matches, documentContext)
                 matchChan <- matches
             } else {
                 dvb.observer.LogError("document_validation_error", err, map[string]interface{}{

@@ -99,8 +99,9 @@ import (
 //	a Text that grows with the finding count, staying UNDER budget   the GROWTH check, 1.61x
 //
 // The last one exists because the other four all tripped a BUDGET, which would have left the growth
-// check unexercised decoration. Calibrated so both sizes stay under 1200 B/f (695 and 1118) and only
-// the ratio fires -- an assertion arm no mutation can reach is not a guard.
+// check unexercised decoration. Calibrated, before #621 lowered the budget to 1100, so both sizes stayed under 1200 B/f (695 and
+// 1118) and only the ratio fired; the mutation's absolute sizes were not re-measured, so today it may trip the
+// budget as well as the ratio -- an assertion arm no mutation can reach is not a guard.
 
 // retentionProbeValidator emits one finding per line carrying an '@', shaped the way a real
 // validator's findings are: a value lifted from the line, a context window, and a metadata map.
@@ -157,7 +158,7 @@ func (retentionProbeValidator) AnalyzeContext(string, detector.ContextInfo) floa
 // layer shrinks and another grows by the same amount, and these three layers are changed by
 // different people for different reasons.
 const (
-	bridgeRetentionBudget    = 1200 // vs 634-669 measured
+	bridgeRetentionBudget    = 1100 // vs 590-630 measured (was 1200 vs 634-669 before #621)
 	filterCopyBudget         = 600  // vs 275-294 measured
 	jsonRepresentationBudget = 1000 // vs 496-502 measured
 )
@@ -368,8 +369,8 @@ const metadataBucketCapacity = 8
 // internal/goldencorpus/metadata_key_census_test.go, which drives the real validators; the two guards
 // cover different populations and both are needed.
 //
-// WHY A SEPARATE TEST, AND WHY A COUNT. bridgeRetentionBudget is 1200 B/f against 634-669 measured, and
-// a ninth key lands at 1012 -- UNDER the budget. So the byte guard cannot fire for the cause its own
+// WHY A SEPARATE TEST, AND WHY A COUNT. bridgeRetentionBudget was 1200 B/f against 634-669 measured (now 1100 against 590-630), and
+// a ninth key landed at 1012 -- UNDER the budget. So the byte guard cannot fire for the cause its own
 // failure message used to name, and 342 B/finding would have shipped silently. Its mutation list is
 // consistent with that: every mutation it catches is a LARGE value (a 1KB field reads 2007 B/f), which
 // is a different failure from one more small key.
@@ -403,12 +404,23 @@ func TestBridgeMetadataContributionStaysBelowTheBucketCliff(t *testing.T) {
 	}
 	if m.semanticCategories == 0 {
 		t.Fatalf("ContextInsights carried no semantic categories, so the bridge took its no-context "+
-			"branch and never wrote semantic_context -- the widest finding is not the one this test is "+
+			"branch -- the widest finding is not the one this test is "+
 			"about (%d findings)", m.findings)
 	}
 
 	t.Logf("widest finding carries %d metadata keys (cliff at %d): %v",
 		m.maxMetadataKeys, metadataBucketCapacity, m.keysOnWidestFinding)
+
+	// #621: the document-level values live in ContextInsights, once per file. None of them may come
+	// back as a per-finding key; the bridge writes three keys (adjustment, original, path) and the
+	// probe one.
+	for _, k := range m.keysOnWidestFinding {
+		switch k {
+		case "context_domain", "context_doctype", "context_doc_type", "context_confidence", "semantic_context":
+			t.Errorf("the bridge wrote the document-level key %q on a finding (#621): it belongs in "+
+				"ContextInsights, once per file, not on every finding", k)
+		}
+	}
 
 	if m.maxMetadataKeys > metadataBucketCapacity {
 		t.Errorf("the bridge's contribution plus the probe's one key now reaches %d keys, over the %d "+

@@ -2770,8 +2770,6 @@ func (v *Validator) processScopedCandidates(matches []scopedCandidate, line stri
 				"validation_checks": checks,
 				"detection_method":  detectionMethod,
 				"source":            "preprocessed_content",
-				"context_domain":    contextInsights.Domain,
-				"context_doc_type":  contextInsights.DocumentType,
 				"environment_type":  envType,
 				"secret_type":       secretType,
 			}
@@ -2969,8 +2967,6 @@ func (v *Validator) findMultiLineSecretsWithContext(content, filePath string, co
 					"validation_checks": checks,
 					"detection_method":  "ssh_private_key",
 					"secret_type":       "SSH_PRIVATE_KEY",
-					"context_domain":    contextInsights.Domain,
-					"context_doc_type":  contextInsights.DocumentType,
 					"environment_type":  envType,
 				},
 			})
@@ -2995,8 +2991,6 @@ func (v *Validator) findMultiLineSecretsWithContext(content, filePath string, co
 					"validation_checks": checks,
 					"detection_method":  "certificate",
 					"secret_type":       "CERTIFICATE",
-					"context_domain":    contextInsights.Domain,
-					"context_doc_type":  contextInsights.DocumentType,
 					"environment_type":  envType,
 				},
 			})
@@ -3023,8 +3017,6 @@ func (v *Validator) findMultiLineSecretsWithContext(content, filePath string, co
 					"validation_checks": checks,
 					"detection_method":  "pgp_private_key",
 					"secret_type":       "PGP_PRIVATE_KEY",
-					"context_domain":    contextInsights.Domain,
-					"context_doc_type":  contextInsights.DocumentType,
 					"environment_type":  envType,
 				},
 			})
