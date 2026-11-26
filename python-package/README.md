@@ -1,195 +1,72 @@
-# Ferret Scan Python Package
+# ferret-scan
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/awslabs/ferret-scan/main/docs/images/ferret-scan-logo.png" alt="Ferret Scan Logo" width="200"/>
+  <img src="https://raw.githubusercontent.com/awslabs/ferret-scan/main/docs/images/ferret-scan-logo.png" alt="ferret-scan" width="200"/>
 </div>
 
-A Python wrapper for [Ferret Scan](https://github.com/awslabs/ferret-scan), a sensitive data detection tool. This package provides easy installation and seamless pre-commit hook integration.
+The PyPI distribution of [ferret-scan](https://github.com/awslabs/ferret-scan): find and redact
+sensitive data (PII, secrets, IP markers) in files and streams, with context-aware confidence
+scoring and format-preserving redaction. `pip install` gives you the `ferret-scan` command and a
+pre-commit hook. The package is a thin wrapper: on first run it downloads the native binary for
+your platform from the GitHub release that matches the installed package version and caches it
+inside the package directory; every argument is passed straight through.
 
-## Installation
+**The GitHub repository is the reference for everything:**
+[README](https://github.com/awslabs/ferret-scan#readme) ·
+[Documentation](https://github.com/awslabs/ferret-scan/blob/main/docs/README.md) ·
+[Changelog](https://github.com/awslabs/ferret-scan/blob/main/CHANGELOG.md) ·
+[Issues](https://github.com/awslabs/ferret-scan/issues)
+
+## Install
 
 ```bash
 pip install ferret-scan
+ferret-scan --version
 ```
 
-## Usage
+Python 3.7+. Linux, macOS and Windows on x86_64 and ARM64. The first run needs network access to
+github.com for the binary download; after that it runs offline.
 
-### Command Line
-
-After installation, use `ferret-scan` exactly like the native binary:
+## Use
 
 ```bash
-# Basic scan
-ferret-scan --file document.txt
-
-# JSON output
-ferret-scan --file document.txt --format json
-
-# Quiet mode for scripts
-ferret-scan --file document.txt --quiet
-
-# Pre-commit mode with optimizations
-ferret-scan --pre-commit-mode --confidence high,medium --checks all
+ferret-scan --file secrets.env                                        # values are hidden by default
+ferret-scan --file ./src --recursive --checks SECRETS,CREDIT_CARD
+ferret-scan --file . --recursive --format sarif --output ferret.sarif --quiet
+echo "card 5500-0000-0000-0004 from jordan@example.com" | ferret-scan --stdin --enable-redaction
 ```
 
-### Pre-commit Hook
+Output formats: `text`, `json`, `csv`, `yaml`, `junit`, `gitlab-sast`, `sarif`. All options:
+`ferret-scan --help`, or the documentation index above.
 
-Ferret Scan provides multiple pre-commit hook configurations for different security requirements. Add to your `.pre-commit-config.yaml`:
+## Pre-commit hook
 
-#### Default Configuration (Recommended)
 ```yaml
 repos:
   - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.0.0
+    rev: v2.6.2
     hooks:
       - id: ferret-scan
 ```
 
-#### Strict Security (Blocks on high confidence findings)
-```yaml
-repos:
-  - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.0.0
-    hooks:
-      - id: ferret-scan-strict
-```
-
-#### Advisory Mode (Shows findings but never blocks)
-```yaml
-repos:
-  - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.0.0
-    hooks:
-      - id: ferret-scan-advisory
-```
-
-#### Secrets Only (Focus on API keys and tokens)
-```yaml
-repos:
-  - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.0.0
-    hooks:
-      - id: ferret-scan-secrets
-```
-
-#### Financial Data (Credit cards and financial info)
-```yaml
-repos:
-  - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.0.0
-    hooks:
-      - id: ferret-scan-financial
-```
-
-#### PII Detection (SSN, passport, email)
-```yaml
-repos:
-  - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.0.0
-    hooks:
-      - id: ferret-scan-pii
-```
-
-#### Metadata Check (Document metadata scanning)
-```yaml
-repos:
-  - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.0.0
-    hooks:
-      - id: ferret-scan-metadata
-```
-
-#### CI/CD Optimized (Structured output for pipelines)
-```yaml
-repos:
-  - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.0.0
-    hooks:
-      - id: ferret-scan-ci
-```
-
-#### Custom Configuration
-You can also customize any hook with additional arguments:
+`ferret-scan` is the only hook id the repository defines. pre-commit installs this package into its
+own environment, so you do not need to `pip install` it for the hook. The hook runs
+`--pre-commit-mode --profile precommit --respect-gitignore` on the staged files whose extensions it
+knows and blocks the commit on findings. `args:` replaces that list, so repeat it when you add to it:
 
 ```yaml
-repos:
-  - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.0.0
-    hooks:
       - id: ferret-scan
-        args: ['--confidence', 'high', '--checks', 'CREDIT_CARD,SECRETS', '--verbose']
+        args: [--pre-commit-mode, --profile, precommit, --respect-gitignore, --confidence, high]
 ```
 
-#### Local Installation
-For local installations, use the `ferret-scan` command directly:
+More: <https://github.com/awslabs/ferret-scan/blob/main/docs/PRE_COMMIT_INTEGRATION.md>
 
-```yaml
-repos:
-  - repo: local
-    hooks:
-      - id: ferret-scan
-        name: Ferret Scan - Sensitive Data Detection
-        entry: ferret-scan
-        language: system
-        files: '\.(txt|py|js|ts|go|java|json|yaml|yml|md|csv|log|conf|config|ini|env)$'
-        args: ['--pre-commit-mode', '--confidence', 'high,medium']
-```
+## Exit codes
 
-## How It Works
-
-This Python package:
-
-1. **Automatic Binary Download**: Downloads the appropriate ferret-scan binary for your platform (Linux/macOS/Windows, x86_64/ARM64)
-2. **Transparent Execution**: Passes all arguments directly to the native binary
-3. **Cross-Platform**: Works on all platforms supported by ferret-scan
-4. **Pre-commit Ready**: Integrates seamlessly with pre-commit hooks with automatic optimizations
-
-## Supported Platforms
-
-- **Linux**: x86_64, ARM64
-- **macOS**: x86_64 (Intel), ARM64 (Apple Silicon)
-- **Windows**: x86_64, ARM64
-
-## Features
-
-All features of the native ferret-scan binary are available:
-
-- **Sensitive Data Detection**: Credit cards, passports, SSNs, API keys, etc.
-- **Multiple Formats**: Text, JSON, CSV, YAML, JUnit, GitLab SAST output
-- **Document Processing**: PDF, Office documents, images
-- **Pre-commit Optimizations**: Automatic quiet mode, no colors, appropriate exit codes
-- **Suppression Rules**: Manage false positives
-- **Configuration**: YAML config files and profiles
-- **Redaction**: Remove sensitive data from documents
-
-## Command Line Options
-
-The Python package supports all command-line options of the native binary:
-
-- `--file`: Input file, directory, or glob pattern. Use `-` to read from standard input.
-- `--stdin`: Read content from standard input (treated as plain text)
-- `--stdin-name`: Synthetic label for findings when scanning stdin (default: `<stdin>`)
-- `--format`: Output format (text, json, csv, yaml, junit, gitlab-sast)
-- `--confidence`: Confidence levels (high, medium, low, combinations)
-- `--checks`: Specific checks to run (CREDIT_CARD, SECRETS, SSN, etc.)
-- `--pre-commit-mode`: Enable pre-commit optimizations
-- `--verbose`: Detailed information for findings
-- `--quiet`: Suppress progress output
-- `--no-color`: Disable colored output
-- `--recursive`: Recursively scan directories
-- `--enable-preprocessors`: Enable document text extraction
-- `--config`: Configuration file path
-- `--profile`: Configuration profile name
-
-## Requirements
-
-- Python 3.7+
-- Internet connection (for initial binary download)
+`0` the scan ran (findings do not change it; read them from the output) · `1` the run failed ·
+`3` with `--fail-on-incomplete`, the run did not fully do what was asked. `--pre-commit-mode` maps
+findings onto the exit code instead. Full table: <https://github.com/awslabs/ferret-scan#exit-codes>
 
 ## License
 
-Apache License 2.0 - see the [LICENSE](https://github.com/awslabs/ferret-scan/blob/main/LICENSE) file for details.
-
-## Contributing
-
-See the main [Ferret Scan repository](https://github.com/awslabs/ferret-scan) for contribution guidelines.
+Apache-2.0. See [LICENSE](https://github.com/awslabs/ferret-scan/blob/main/LICENSE.txt).
