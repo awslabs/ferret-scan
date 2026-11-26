@@ -173,7 +173,7 @@ cat customer-export.csv | ferret-scan --stdin --enable-redaction --redaction-str
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/awslabs/ferret-scan
-    rev: v2.6.0
+    rev: v2.6.2
     hooks:
       - id: ferret-scan
 ```
