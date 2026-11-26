@@ -8,8 +8,8 @@ The PyPI distribution of [ferret-scan](https://github.com/awslabs/ferret-scan): 
 sensitive data (PII, secrets, IP markers) in files and streams, with context-aware confidence
 scoring and format-preserving redaction. `pip install` gives you the `ferret-scan` command and a
 pre-commit hook. The package is a thin wrapper: on first run it downloads the native binary for
-your platform from the project's latest GitHub release and caches it inside the package directory;
-every argument is passed straight through.
+your platform from the GitHub release that matches the installed package version and caches it
+inside the package directory; every argument is passed straight through.
 
 **The GitHub repository is the reference for everything:**
 [README](https://github.com/awslabs/ferret-scan#readme) ·
