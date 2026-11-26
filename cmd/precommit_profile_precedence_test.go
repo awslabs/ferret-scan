@@ -104,6 +104,9 @@ func TestBuiltinPrecommitProfileYieldsOnEveryRoute(t *testing.T) {
 			writeFixture(t, filepath.Join(userCfg, "config.yaml"), profileRedYAML)
 		default:
 			writeFixture(t, filepath.Join(work, source), profileRedYAML)
+			// A discovered config is refused in pre-commit mode unless allowed (#293); this matrix is
+			// about what the allowed config does.
+			cfgArgs = []string{"--allow-project-config"}
 		}
 		for _, route := range routes {
 			args := append(append([]string{}, cfgArgs...), route.args...)
@@ -232,9 +235,10 @@ func TestBuiltinPrecommitProfileDecoys(t *testing.T) {
 	if got := jsonFindings(t, out); r.rc != 0 || len(got) != 1 {
 		t.Errorf("FERRET_PRECOMMIT=0: rc %d findings %v, want 0 [PASSPORT:HIGH]", r.rc, got)
 	}
-	// A planted project config cannot narrow the hook (#293): defaults.checks EMAIL still finds the SSN.
+	// An allowed project config cannot narrow the hook (#293): defaults.checks EMAIL still finds the SSN.
+	// Without --allow-project-config the same config is refused (precommit_discovered_config_test.go).
 	writeFixture(t, filepath.Join(work, ".ferret-scan.yaml"), "defaults:\n  checks: EMAIL\n")
-	r = runCLI(t, bin, work, env, "", "--pre-commit-mode", "--file", "ssn.txt")
+	r = runCLI(t, bin, work, env, "", "--pre-commit-mode", "--allow-project-config", "--file", "ssn.txt")
 	if r.rc != 1 || !strings.Contains(r.stdout, "Social Security Number detected") {
 		t.Errorf("planted defaults.checks: EMAIL: rc %d stdout %q, want rc 1 with the SSN", r.rc, r.stdout)
 	}

@@ -61,7 +61,9 @@ func projectConfigFixture(t *testing.T) string {
 // runScan runs the binary in dir with extra environment, returning combined output.
 func runScan(t *testing.T, bin, dir string, env []string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command(bin, args...)
+	// These tests pin what a TRUSTED project config does under every trigger, so a pre-commit run names it
+	// on the command line. The refusal that is the default is pinned in precommit_discovered_config_test.go.
+	cmd := exec.Command(bin, append([]string{"--allow-project-config"}, args...)...)
 	cmd.Dir = dir
 	// An empty user config dir, so only built-in defaults and the project config are in play.
 	emptyCfg := filepath.Join(dir, "emptycfg")

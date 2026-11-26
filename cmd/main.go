@@ -149,6 +149,55 @@ func loadConfiguration(configFile string) *config.Config {
 	return cfg
 }
 
+// workingDirectoryConfig reports the config file a run DISCOVERED inside the working directory, as a
+// path relative to it: the one source nobody chose per run. It is empty and false for no config, for an
+// explicit --config (the operator's own choice, visible in the arguments) and for a config outside the
+// working directory (the user config dir or similar). reportConfigProvenance names the file, and
+// refuseDiscoveredConfigInPrecommit refuses it, from this one answer.
+func workingDirectoryConfig(cfg *config.Config, explicitConfigFlag string) (string, bool) {
+	if cfg == nil || cfg.SourcePath == "" {
+		return "", false
+	}
+	// The user asked for this file by name.
+	if explicitConfigFlag != "" {
+		return "", false
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", false
+	}
+	// paths.RelInside rather than a local Rel plus a ".." test: it is the one predicate four places
+	// had grown separately, and the local copy did NO symlink resolution. That made the note
+	// disappear for a working directory spelled through a link (/tmp/x on macOS resolves to
+	// /private/tmp/x/config.yaml), which is the shape CI temp directories and container mounts have.
+	// A disclosure, and now a refusal, should not depend on how the directory was spelled.
+	return paths.RelInside(cwd, cfg.SourcePath)
+}
+
+// refuseDiscoveredConfigInPrecommit refuses a config discovered in the working directory when the run is
+// a pre-commit run (--pre-commit-mode typed, or a hook environment variable) and --allow-project-config
+// was not passed (#293 direction 2, THREAT_MODEL TM-13). It prints one error to stderr, which --quiet
+// does not withhold, and reports whether it refused; the caller exits 1 before anything is scanned.
+//
+// Refused rather than ignored: pre-commit prints a hook's output only when the hook fails, so a hook that
+// silently fell back to defaults would look like it still used the team's config. A refusal fails once,
+// loudly, with the fix in the message. The flag is CLI-only on purpose: a config key or environment
+// variable that allowed it could be set by the very file being gated.
+func refuseDiscoveredConfigInPrecommit(w io.Writer, cfg *config.Config, explicitConfigFlag string, precommitRun, allow bool) bool {
+	if !precommitRun || allow {
+		return false
+	}
+	rel, found := workingDirectoryConfig(cfg, explicitConfigFlag)
+	if !found {
+		return false
+	}
+	fmt.Fprintf(w, "Error: %s was found in the working directory and is not used in pre-commit mode: "+
+		"a config inside the change under review could disable the checks that review it "+
+		"(THREAT_MODEL TM-13). Add --allow-project-config to the hook's args to use it, "+
+		"or name a config with --config <path>.\n", rel)
+	return true
+}
+
 // reportConfigProvenance names a config file that was DISCOVERED next to the working
 // directory, so the user learns which file is governing the scan.
 //
@@ -183,27 +232,11 @@ func loadConfiguration(configFile string) *config.Config {
 // wording read the same for a config that switched off every check but one as for one that set
 // only an output format. Variadic so the note's existing callers keep their three arguments.
 func reportConfigProvenance(w io.Writer, cfg *config.Config, explicitConfigFlag string, narrowed ...*configChecksNarrowing) {
-	if w == nil || cfg == nil || cfg.SourcePath == "" {
+	if w == nil {
 		return
 	}
-	// The user asked for this file by name; do not read it back to them.
-	if explicitConfigFlag != "" {
-		return
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return
-	}
-	// paths.RelInside rather than a local Rel plus a ".." test, which is what stood here:
-	// it is the same predicate four places had grown separately, and this was the copy
-	// that did NO symlink resolution. That made the note disappear for a working
-	// directory spelled through a link — /tmp/x on macOS, where the config resolves to
-	// /private/tmp/x/config.yaml — which is the shape CI temp directories and container
-	// mounts routinely have. The note is a disclosure; it should not depend on how the
-	// directory was spelled.
-	rel, inside := paths.RelInside(cwd, cfg.SourcePath)
+	rel, inside := workingDirectoryConfig(cfg, explicitConfigFlag)
 	if !inside {
-		// Outside the working directory: the user config dir or similar. Expected.
 		return
 	}
 	if len(narrowed) > 0 && narrowed[0] != nil {
@@ -953,6 +986,7 @@ type extractedFlags struct {
 	enablePreprocessors  bool
 	preprocessOnly       bool
 	precommitMode        bool
+	allowProjectConfig   bool
 	showMatch            bool
 	showSuppressed       bool
 	generateSuppressions bool
@@ -981,6 +1015,7 @@ type flagPointers struct {
 	preprocessOnly       *bool
 	preprocessOnlyShort  *bool
 	precommitMode        *bool
+	allowProjectConfig   *bool
 	showMatch            *bool
 	showSuppressed       *bool
 	generateSuppressions *bool
@@ -1029,6 +1064,7 @@ func extractAllFlags(flags flagPointers) extractedFlags {
 		enablePreprocessors:  getBoolFlag(flags.enablePreprocessors),
 		preprocessOnly:       getBoolFlag(flags.preprocessOnly) || getBoolFlag(flags.preprocessOnlyShort),
 		precommitMode:        getBoolFlag(flags.precommitMode),
+		allowProjectConfig:   getBoolFlag(flags.allowProjectConfig),
 		showMatch:            getBoolFlag(flags.showMatch),
 		showSuppressed:       getBoolFlag(flags.showSuppressed),
 		generateSuppressions: getBoolFlag(flags.generateSuppressions),
@@ -1112,6 +1148,7 @@ func main() {
 	showSuppressed := flag.Bool("show-suppressed", false, "Include suppressed findings in output with suppression details (marked as [SUPP] in text format)")
 	quiet := flag.Bool("quiet", false, "Suppress progress output and the suppression, exclusion and config-provenance notes on stderr, which the report carries (not under --format csv); useful for scripts and CI/CD")
 	precommitMode := flag.Bool("pre-commit-mode", false, "Enable pre-commit optimizations (quiet mode, no colors, appropriate exit codes)")
+	allowProjectConfig := flag.Bool("allow-project-config", false, "In pre-commit mode, use a config file found in the working directory instead of refusing it. Command line only: no config key or environment variable sets it")
 	failOnIncomplete := flag.Bool("fail-on-incomplete", false, "Exit non-zero (3) if any file was not fully scanned — coverage cut short (timeout, cancellation, or budget), the file could not be opened at all, or a document yielded no extractable text. Default off: all three conditions only warn on stderr.")
 
 	// Redaction flags
@@ -1180,6 +1217,7 @@ func main() {
 		preprocessOnly:       preprocessOnly,
 		preprocessOnlyShort:  preprocessOnlyShort,
 		precommitMode:        precommitMode,
+		allowProjectConfig:   allowProjectConfig,
 		showMatch:            showMatch,
 		showSuppressed:       showSuppressed,
 		generateSuppressions: generateSuppressions,
@@ -1225,6 +1263,25 @@ func main() {
 	if flags.listProfiles {
 		writeProfileList(os.Stdout, loadConfiguration(flags.configFile))
 		os.Exit(0)
+	}
+
+	// --version and --help are answered here too, before the input dispatch and before prepareRun, so
+	// that neither depends on a config file in the working directory or the user config dir (#1085).
+	// Until now both ran the scan's front half first: a configured regex RE2 rejects printed its
+	// warning above the version line, a malformed config printed its load failure there, and in a hook
+	// environment the refusal of a discovered config (#293) exited 1 before the version printed. The
+	// install probes (the brew formula's test block, the release smoke job, install-system.sh) read
+	// `--version` for one line, and `--help SSN` must work in any directory. --help registers every
+	// validator as a help provider from the built-in defaults: the help text is the validators' own,
+	// not the configuration's (measured byte-identical with and without a config).
+	if *showVersion {
+		fmt.Println(version.Info())
+		return
+	}
+	if *showHelp {
+		defaults, _ := config.LoadConfig("")
+		runHelpCommand(flags.noColor, core.BuildValidatorSet(parseChecksToRun(""), defaults, nil), flag.Args())
+		return
 	}
 
 	// Handle stdin mode early - bypasses file discovery entirely.
@@ -1477,53 +1534,14 @@ func main() {
 		mainDebugObs.LogDetail("enhanced", "Set up dual path validation system")
 	}
 
-	// Keep reference to standard validators for backward compatibility (e.g. help system)
+	// The configured validator set; --help builds its own from the built-in defaults, above.
 	allValidators := standardValidators
 
 	// The detection facade is the single validator handed to the runner; it
 	// fans out to the document/metadata bridges internally.
 	validatorsList := []detector.Validator{detectorFacade}
 
-	// Handle version command
-	if *showVersion {
-		fmt.Println(version.Info())
-		return
-	}
-
-	// Handle help commands
-	if *showHelp {
-		helpSystem := help.NewSystem(finalConfig.noColor)
-
-		// Register ALL validators as help providers (not just filtered ones)
-		for _, validator := range allValidators {
-			if provider, ok := validator.(help.Provider); ok {
-				helpSystem.RegisterProvider(provider)
-			}
-		}
-
-		// Process help command
-		args := flag.Args()
-		if len(args) == 0 {
-			// Show general help
-			helpSystem.ShowGeneralHelp()
-			return
-		} else if len(args) == 1 {
-			if strings.ToLower(args[0]) == "checks" {
-				// Show list of all checks
-				helpSystem.ShowChecksHelp()
-				return
-			}
-			// Show help for specific check
-			if helpSystem.ShowCheckHelp(args[0]) {
-				return
-			}
-			os.Exit(1)
-		} else {
-			fmt.Println("Error: Too many arguments for help command")
-			fmt.Println("Use 'ferret-scan --help', 'ferret-scan --help checks', or 'ferret-scan --help <check>'")
-			os.Exit(1)
-		}
-	}
+	// --version and --help were answered above, before prepareRun (#1085).
 
 	// Handle file arguments (files/directories)
 	var inputPaths []string
@@ -4045,4 +4063,33 @@ func startWebServer(port, bindAddr, configFile, suppressionFile string, excludeP
 // isTerminal checks if the file descriptor is a terminal
 func isTerminal(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
+}
+
+// runHelpCommand answers --help, --help checks and --help <check>. The providers are the validators
+// passed in: main builds them from the built-in defaults, before any configuration is read, so that
+// --help works the same in every directory and never prints a configuration's diagnostics (#1085).
+// It exits 1 for an unknown check or too many arguments, as it always did.
+func runHelpCommand(noColor bool, validators map[string]detector.Validator, args []string) {
+	helpSystem := help.NewSystem(noColor)
+	for _, validator := range validators {
+		if provider, ok := validator.(help.Provider); ok {
+			helpSystem.RegisterProvider(provider)
+		}
+	}
+	switch {
+	case len(args) == 0:
+		helpSystem.ShowGeneralHelp()
+	case len(args) == 1:
+		if strings.ToLower(args[0]) == "checks" {
+			helpSystem.ShowChecksHelp()
+			return
+		}
+		if !helpSystem.ShowCheckHelp(args[0]) {
+			os.Exit(1)
+		}
+	default:
+		fmt.Println("Error: Too many arguments for help command")
+		fmt.Println("Use 'ferret-scan --help', 'ferret-scan --help checks', or 'ferret-scan --help <check>'")
+		os.Exit(1)
+	}
 }

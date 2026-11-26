@@ -84,6 +84,7 @@ var stdinFlagClasses = map[string]stdinFlagClass{
 	"redaction-audit-log":  {class: noticeOnStdin, reason: "the audit log needs the on-disk index manager"},
 	"redaction-output-dir": {class: noticeOnStdin, reason: "the redacted content is the stream on stdout (#887)"},
 
+	"allow-project-config": {class: notApplicable, reason: "the refusal and the opt-out run on both paths in TestPrecommitDiscoveredConfig; the parity rows share one work directory, which a planted config would change for every row"},
 	"exclude":              {class: notApplicable, reason: "filters the directory walk, which stdin does not have"},
 	"respect-gitignore":    {class: notApplicable, reason: "filters the directory walk, which stdin does not have"},
 	"enable-preprocessors": {class: notApplicable, reason: "stdin is plain text and never reaches a document preprocessor"},

@@ -70,6 +70,12 @@ func prepareRun(flags extractedFlags, mode runMode, debugObs *observability.Debu
 	run := &preparedRun{cfg: loadConfiguration(flags.configFile)}
 
 	precommitDetector := precommit.NewPrecommitDetectorWithFlag(flags.precommitMode)
+	// A config discovered in the working directory is refused in a pre-commit run unless
+	// --allow-project-config was typed (#293, TM-13). Before anything is scanned or written, on both paths.
+	if refuseDiscoveredConfigInPrecommit(os.Stderr, run.cfg, flags.configFile,
+		precommitDetector.IsPrecommitEnvironment(), flags.allowProjectConfig) {
+		return nil, errRunRefused
+	}
 	if precommitDetector.IsPrecommitEnvironment() {
 		run.precommitConfig = precommitDetector.GetOptimizedConfig()
 		refusePrecommitConfigError(precommitDetector)

@@ -21,11 +21,15 @@ Use the hook directly from GitHub without building locally:
 ```yaml
 repos:
   - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.8.4
+    rev: v2.6.2
     hooks:
       - id: ferret-scan
         args: [--pre-commit-mode, --profile, precommit, --respect-gitignore]
 ```
+
+If the repository keeps its own `ferret.yaml` (or `config.yaml`, `.ferret-scan.yaml`), add
+`--allow-project-config` to `args`, or the hook refuses the file and exits 1: see
+[A project config in a hook](#a-project-config-in-a-hook).
 
 ### 3. Direct Binary Integration
 
@@ -226,11 +230,47 @@ is reached at all.
 > repository behave differently per platform. They have been removed
 > ([#353](https://github.com/awslabs/ferret-scan/issues/353)).
 
+### A project config in a hook
+
+In pre-commit mode, a config file found in the working directory (`config.yaml`, `ferret.yaml`,
+`ferret.yml`, `.ferret-scan.yaml`, `.ferret-scan.yml`) is **refused**, on `--file` and `--stdin`, whether
+pre-commit mode came from `--pre-commit-mode` or from a hook environment variable. Nothing is scanned,
+the exit code is 1, and stderr says why:
+
+```text
+Error: ferret.yaml was found in the working directory and is not used in pre-commit mode: a config inside the change under review could disable the checks that review it (THREAT_MODEL TM-13). Add --allow-project-config to the hook's args to use it, or name a config with --config <path>.
+```
+
+The reason is that the commit under review can add or edit that file, and a config can narrow a hook to
+one check. Pre-commit shows a hook's output only when the hook fails, so a hook that quietly used it would
+pass a commit it should block. A refusal fails once and says how to fix it; ignoring the file would fail
+silently for a team that relies on it. A config in the user config directory is yours, not part of the
+change, and is not refused.
+
+A team that keeps a project config on purpose adds one argument:
+
+```yaml
+      - id: ferret-scan
+        args: [--pre-commit-mode, --profile, precommit, --respect-gitignore, --allow-project-config]
+```
+
+or names the file, which is visible in the hook's arguments and needs no flag:
+`--config .ferret-scan.yaml`. `--allow-project-config` is a command-line flag only; no config key or
+environment variable sets it. With it the run is what it was before: the file is used and named on
+stderr.
+
+> **⚠ Changed in this release.** A hook that relied on a `ferret.yaml`, `config.yaml` or `.ferret-scan.yaml`
+> in the repository now exits 1 with the error above until `--allow-project-config` or `--config <path>`
+> is added to its `args` ([#293](https://github.com/awslabs/ferret-scan/issues/293)). The shipped
+> `.pre-commit-hooks.yaml` does not carry the flag.
+
 ### The precommit profile
 
 Pre-commit mode, and `--profile precommit` on its own, use the profile named `precommit`. If your
-config file defines `profiles.precommit`, that profile is used exactly as written. If it does not, or
-there is no config file, ferret-scan supplies a built-in one, which yields to what your config wrote:
+config file defines `profiles.precommit`, that profile is used exactly as written (in a hook, a config
+in the repository reaches this step only with `--allow-project-config` or `--config <path>`; see
+[A project config in a hook](#a-project-config-in-a-hook)). If it does not, or there is no config file,
+ferret-scan supplies a built-in one, which yields to what your config wrote:
 
 | Setting | Built-in profile | Your config file, when it has no `profiles.precommit` |
 |---|---|---|
@@ -332,6 +372,8 @@ The configuration file includes:
 - **Validation rules** - Confidence scoring and pattern matching
 - **Check types** - CLOUD_RESOURCES, CREDIT_CARD, EMAIL, INTELLECTUAL_PROPERTY, IP_ADDRESS, METADATA, PASSPORT, PERSON_NAME, PHONE, SECRETS, SOCIAL_MEDIA, SSN, VIN
 - **Preprocessor settings** - Document text extraction and metadata analysis
+
+**Important for pre-commit:** a config file found in the working directory is refused in pre-commit mode unless the hook's `args` include `--allow-project-config` (or name it with `--config ferret.yaml`); see [A project config in a hook](#a-project-config-in-a-hook).
 
 **Important for CI/CD:** The `ferret.yaml` file must be committed to your repository and available in the working directory where ferret-scan runs. All CI/CD examples above assume this file exists in the project root.
 

@@ -25,7 +25,7 @@ func everyFlagSet() extractedFlags {
 		showSuppressed: true, generateSuppressions: true, failOnIncomplete: true, enableRedaction: true,
 		redactionOutputDir: "red", redactionStrategy: "simple", redactionAuditLog: "audit.json",
 		suppressionFile: "s.yaml", suppressionExpiresIn: "30d", excludePatterns: []string{"*.log"},
-		respectGitignore: true, disableIPTypes: "patent",
+		respectGitignore: true, disableIPTypes: "patent", allowProjectConfig: true,
 	}
 }
 

@@ -9,13 +9,30 @@
 # OPTION A: REMOTE REPO (Recommended)
 # =============================================================================
 # Pulls ferret-scan from GitHub releases. No local build needed.
-# Uses the "precommit" profile from your project's ferret.yaml config.
+# Uses the built-in "precommit" profile. A ferret.yaml (or config.yaml,
+# .ferret-scan.yaml) committed in the repository is REFUSED in pre-commit mode
+# unless you add --allow-project-config to args (or name it with --config), because
+# the commit under review could edit that file (THREAT_MODEL TM-13, #293).
 repos:
   - repo: https://github.com/awslabs/ferret-scan
-    rev: v1.10.0  # pin to a release tag
+    rev: v2.6.2  # pin to a release tag
     hooks:
       - id: ferret-scan
         args: [--pre-commit-mode, --profile, precommit, --respect-gitignore]
+
+---
+# =============================================================================
+# OPTION A2: REMOTE REPO WITH THE REPOSITORY'S OWN ferret.yaml
+# =============================================================================
+# Same as A, for a team that keeps a project config on purpose: the flag is the
+# visible, reviewed opt-in. Option B, C and D need the same flag if the
+# repository holds a config file and the container or binary runs from its root.
+repos:
+  - repo: https://github.com/awslabs/ferret-scan
+    rev: v2.6.2  # pin to a release tag
+    hooks:
+      - id: ferret-scan
+        args: [--pre-commit-mode, --profile, precommit, --respect-gitignore, --allow-project-config]
 
 ---
 # =============================================================================
