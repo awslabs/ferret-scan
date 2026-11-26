@@ -8,20 +8,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 20
-        context_confidence: 1
-        context_doctype: CSV
-        context_domain: Government
         context_impact: 15
         domain: acmecorp.io
         email_provider: BUSINESS
         original_confidence: 100
         original_file: <golden:passport_csv_header_column>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         tld: io
         username: jane.smith
@@ -44,20 +35,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 20
-        context_confidence: 1
-        context_doctype: CSV
-        context_domain: Government
         context_impact: 15
         domain: acmecorp.io
         email_provider: BUSINESS
         original_confidence: 100
         original_file: <golden:passport_csv_header_column>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         tld: io
         username: bob.jones
@@ -80,20 +62,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 20
-        context_confidence: 1
-        context_doctype: CSV
-        context_domain: Government
         context_impact: 15
         domain: acmecorp.io
         email_provider: BUSINESS
         original_confidence: 100
         original_file: <golden:passport_csv_header_column>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         tld: io
         username: amy.lee
@@ -116,20 +89,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 20
-        context_confidence: 1
-        context_doctype: CSV
-        context_domain: Government
         context_impact: 15
         domain: acmecorp.io
         email_provider: BUSINESS
         original_confidence: 100
         original_file: <golden:passport_csv_header_column>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         tld: io
         username: sam.roe
@@ -152,19 +116,10 @@ results:
       validator: passport
       metadata:
         confidence_adjustment: 20
-        context_confidence: 1
-        context_doctype: CSV
-        context_domain: Government
         context_impact: 30
         country: UK
         original_confidence: 90
         original_file: <golden:passport_csv_header_column>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             format: true
@@ -184,19 +139,10 @@ results:
       validator: passport
       metadata:
         confidence_adjustment: 20
-        context_confidence: 1
-        context_doctype: CSV
-        context_domain: Government
         context_impact: 30
         country: UK
         original_confidence: 90
         original_file: <golden:passport_csv_header_column>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             format: true
@@ -216,19 +162,10 @@ results:
       validator: passport
       metadata:
         confidence_adjustment: 20
-        context_confidence: 1
-        context_doctype: CSV
-        context_domain: Government
         context_impact: 30
         country: UK
         original_confidence: 90
         original_file: <golden:passport_csv_header_column>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             format: true
@@ -248,19 +185,10 @@ results:
       validator: passport
       metadata:
         confidence_adjustment: 20
-        context_confidence: 1
-        context_doctype: CSV
-        context_domain: Government
         context_impact: 30
         country: UK
         original_confidence: 90
         original_file: <golden:passport_csv_header_column>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             format: true

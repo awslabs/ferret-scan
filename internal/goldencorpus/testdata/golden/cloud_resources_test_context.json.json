@@ -12,19 +12,9 @@
           "base_match:+85",
           "valid_account_id:+10"
         ],
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Financial",
         "original_confidence": 95,
         "provider": "aws",
         "resource_type": "AWS_ARN",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0.125
-        },
         "service": "iam",
         "validation_checks": {
           "not_test_data": true,
@@ -51,19 +41,9 @@
           "valid_account_id:+10",
           "test_context:-20"
         ],
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Financial",
         "original_confidence": 75,
         "provider": "aws",
         "resource_type": "AWS_ARN",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0.125
-        },
         "service": "iam",
         "validation_checks": {
           "not_test_data": false,
@@ -90,19 +70,9 @@
           "base_match:+85",
           "valid_account_id:+10"
         ],
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Financial",
         "original_confidence": 15,
         "provider": "aws",
         "resource_type": "AWS_ARN",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0.125
-        },
         "service": "iam",
         "validation_checks": {
           "not_test_data": true,

@@ -7,19 +7,9 @@
       "line_number": 1,
       "metadata": {
         "confidence_adjustment": 0,
-        "context_confidence": 0.5,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
         "context_impact": 20,
         "normalized": "1EG4TE5MK73",
         "original_confidence": 95,
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "subtype": "MBI",
         "validation_checks": {
           "mbi_format": true,
@@ -39,18 +29,8 @@
       "line_number": 6,
       "metadata": {
         "confidence_adjustment": 0,
-        "context_confidence": 0.5,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
         "original_confidence": 95,
         "original_file": "<golden:new_validators_display_formats>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "no_negative_context": true,
@@ -70,19 +50,9 @@
       "line_number": 4,
       "metadata": {
         "confidence_adjustment": 0,
-        "context_confidence": 0.5,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
         "context_impact": 75,
         "original_confidence": 90,
         "original_file": "<golden:new_validators_display_formats>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "not_test": true,
@@ -102,19 +72,9 @@
       "line_number": 4,
       "metadata": {
         "confidence_adjustment": 0,
-        "context_confidence": 0.5,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
         "context_impact": 75,
         "original_confidence": 90,
         "original_file": "<golden:new_validators_display_formats>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "not_test": true,
@@ -134,19 +94,9 @@
       "line_number": 5,
       "metadata": {
         "confidence_adjustment": 0,
-        "context_confidence": 0.5,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
         "context_impact": 75,
         "original_confidence": 90,
         "original_file": "<golden:new_validators_display_formats>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "not_test": true,
@@ -166,18 +116,8 @@
       "line_number": 7,
       "metadata": {
         "confidence_adjustment": 0,
-        "context_confidence": 0.5,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
         "original_confidence": 90,
         "original_file": "<golden:new_validators_display_formats>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "no_negative_context": true,
@@ -198,18 +138,8 @@
       "metadata": {
         "case_relaxed": true,
         "confidence_adjustment": 0,
-        "context_confidence": 0.5,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
         "original_confidence": 85,
         "original_file": "<golden:new_validators_display_formats>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "no_negative_context": true,
@@ -229,21 +159,11 @@
       "line_number": 3,
       "metadata": {
         "confidence_adjustment": 0,
-        "context_confidence": 0.5,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
         "context_impact": 65,
         "format": "IL_1L11D",
         "normalized": "D12345678901",
         "original_confidence": 70,
         "original_file": "<golden:new_validators_display_formats>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "format_match": true,
@@ -266,20 +186,10 @@
       "metadata": {
         "confidence_adjustment": 0,
         "confidence_ceiling": 15,
-        "context_confidence": 0.5,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
         "context_impact": -5,
         "country": "DE",
         "normalized": "DE89370400440532013000",
         "original_confidence": 15,
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "validation_checks": {
           "mod97_checksum": true,
           "not_published_example": false,

@@ -8,9 +8,6 @@ results:
       validator: PERSON_NAME
       metadata:
         confidence_adjustment: 0
-        context_confidence: 1
-        context_doctype: Unknown
-        context_domain: Retail
         context_impact: 0
         context_keywords: []
         cultural_context:
@@ -32,12 +29,6 @@ results:
         original_confidence: 92
         pattern: basic_western_name
         pattern_priority: 5
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         validation_checks:
             both_names_known: true
             has_known_name_component: true
@@ -62,9 +53,6 @@ results:
       validator: PERSON_NAME
       metadata:
         confidence_adjustment: 0
-        context_confidence: 1
-        context_doctype: Unknown
-        context_domain: Retail
         context_impact: 0
         context_keywords: []
         cultural_context:
@@ -86,12 +74,6 @@ results:
         original_confidence: 92
         pattern: basic_western_name
         pattern_priority: 5
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         validation_checks:
             both_names_known: true
             has_known_name_component: true
@@ -116,9 +98,6 @@ results:
       validator: PERSON_NAME
       metadata:
         confidence_adjustment: 0
-        context_confidence: 1
-        context_doctype: Unknown
-        context_domain: Retail
         context_impact: 0
         context_keywords: []
         cultural_context:
@@ -140,12 +119,6 @@ results:
         original_confidence: 92
         pattern: basic_western_name
         pattern_priority: 5
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         validation_checks:
             both_names_known: true
             has_known_name_component: true
@@ -170,9 +143,6 @@ results:
       validator: PERSON_NAME
       metadata:
         confidence_adjustment: 0
-        context_confidence: 1
-        context_doctype: Unknown
-        context_domain: Retail
         context_impact: 0
         context_keywords: []
         cultural_context:
@@ -194,12 +164,6 @@ results:
         original_confidence: 92
         pattern: basic_western_name
         pattern_priority: 5
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         validation_checks:
             both_names_known: true
             has_known_name_component: true
@@ -224,9 +188,6 @@ results:
       validator: PERSON_NAME
       metadata:
         confidence_adjustment: 0
-        context_confidence: 1
-        context_doctype: Unknown
-        context_domain: Retail
         context_impact: 12
         context_keywords:
             - +contact
@@ -249,12 +210,6 @@ results:
         original_confidence: 80
         pattern: three_part_name
         pattern_priority: 6
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         validation_checks:
             both_names_known: false
             has_known_name_component: true

@@ -40,20 +40,10 @@
             "metadata": {
               "checksum_valid": true,
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
               "context_impact": 30,
               "last_name_initial": "B",
               "original_confidence": 100,
               "registrant_type": "A",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "subtype": "DEA",
               "validation_checks": {
                 "dea_checksum": true,
@@ -108,18 +98,8 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
               "context_impact": 10,
               "original_confidence": 80,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "subtype": "INSURANCE_MEMBER_ID",
               "validation_checks": {
                 "insurance_label": true,
@@ -174,18 +154,8 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
               "context_impact": 10,
               "original_confidence": 80,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "subtype": "INSURANCE_MEMBER_ID",
               "validation_checks": {
                 "insurance_label": true,
@@ -240,18 +210,8 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
               "context_impact": 10,
               "original_confidence": 80,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "subtype": "INSURANCE_MEMBER_ID",
               "validation_checks": {
                 "insurance_label": true,
@@ -306,18 +266,8 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
               "context_impact": 10,
               "original_confidence": 80,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "subtype": "INSURANCE_MEMBER_ID",
               "validation_checks": {
                 "insurance_label": true,
@@ -372,18 +322,8 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
               "context_impact": 10,
               "original_confidence": 80,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "subtype": "INSURANCE_MEMBER_ID",
               "validation_checks": {
                 "insurance_label": true,

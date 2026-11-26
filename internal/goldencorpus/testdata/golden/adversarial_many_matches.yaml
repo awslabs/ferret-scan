@@ -8,20 +8,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -20
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 40
         original_file: <golden:adversarial_many_matches>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user00
@@ -44,20 +35,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -20
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 40
         original_file: <golden:adversarial_many_matches>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user01
@@ -80,20 +62,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -20
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 40
         original_file: <golden:adversarial_many_matches>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user02
@@ -116,20 +89,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -20
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 40
         original_file: <golden:adversarial_many_matches>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user03
@@ -152,20 +116,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -20
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 40
         original_file: <golden:adversarial_many_matches>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user04
@@ -188,20 +143,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -20
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 40
         original_file: <golden:adversarial_many_matches>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user05
@@ -224,20 +170,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -20
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 40
         original_file: <golden:adversarial_many_matches>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user06
@@ -260,20 +197,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -20
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 40
         original_file: <golden:adversarial_many_matches>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user07
@@ -296,20 +224,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -20
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 40
         original_file: <golden:adversarial_many_matches>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user08
@@ -332,20 +251,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -20
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 40
         original_file: <golden:adversarial_many_matches>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user09
@@ -368,20 +278,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -20
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 40
         original_file: <golden:adversarial_many_matches>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user10
@@ -404,20 +305,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -20
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 40
         original_file: <golden:adversarial_many_matches>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user11

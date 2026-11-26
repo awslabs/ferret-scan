@@ -8,18 +8,9 @@ results:
       validator: ssn
       metadata:
         confidence_adjustment: 0
-        context_confidence: 1
-        context_doctype: Configuration
-        context_domain: HR_Payroll
         context_impact: 45
         original_confidence: 100
         original_file: from_template.doc
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             digits: true
@@ -39,9 +30,6 @@ results:
       validator: metadata
       metadata:
         confidence_adjustment: 0
-        context_confidence: 1
-        context_doctype: Configuration
-        context_domain: HR_Payroll
         context_impact: -0.15
         full_field: 'Template: \\corp-fs01\templates\quarterly.dot'
         metadata_type: TEMPLATE_INFO
@@ -50,12 +38,6 @@ results:
         preprocessor_adjustment: 0
         preprocessor_name: Office Metadata Extractor
         preprocessor_type: office_metadata
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         source_file: from_template.doc
         source_preprocessor: office_metadata
@@ -75,9 +57,6 @@ results:
       validator: metadata
       metadata:
         confidence_adjustment: 0
-        context_confidence: 1
-        context_doctype: Configuration
-        context_domain: HR_Payroll
         context_impact: 0
         full_field: 'Author: Jane Analyst'
         metadata_type: AUTHOR_INFO
@@ -86,12 +65,6 @@ results:
         preprocessor_adjustment: 0
         preprocessor_name: Office Metadata Extractor
         preprocessor_type: office_metadata
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         source_file: from_template.doc
         source_preprocessor: office_metadata

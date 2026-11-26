@@ -7,18 +7,8 @@
       "line_number": 3,
       "metadata": {
         "confidence_adjustment": 0,
-        "context_confidence": 0.6666666666666666,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
         "context_impact": 10,
         "original_confidence": 85,
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "subtype": "MBI",
         "validation_checks": {
           "mbi_format": true,
@@ -38,18 +28,8 @@
       "line_number": 2,
       "metadata": {
         "confidence_adjustment": 0,
-        "context_confidence": 0.6666666666666666,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
         "context_impact": 10,
         "original_confidence": 80,
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "subtype": "INSURANCE_MEMBER_ID",
         "validation_checks": {
           "insurance_label": true,
@@ -71,18 +51,8 @@
       "line_number": 6,
       "metadata": {
         "confidence_adjustment": 0,
-        "context_confidence": 0.6666666666666666,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
         "context_impact": 10,
         "original_confidence": 80,
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "subtype": "INSURANCE_MEMBER_ID",
         "validation_checks": {
           "insurance_label": true,
@@ -104,18 +74,8 @@
       "line_number": 4,
       "metadata": {
         "confidence_adjustment": 0,
-        "context_confidence": 0.6666666666666666,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
         "context_impact": 10,
         "original_confidence": 80,
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "subtype": "MRN",
         "validation_checks": {
           "medical_context": true,
@@ -137,18 +97,8 @@
       "line_number": 1,
       "metadata": {
         "confidence_adjustment": 0,
-        "context_confidence": 0.6666666666666666,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
         "context_impact": 0,
         "original_confidence": 70,
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "subtype": "INSURANCE_MEMBER_ID",
         "validation_checks": {
           "insurance_label": true,
@@ -170,18 +120,8 @@
       "line_number": 5,
       "metadata": {
         "confidence_adjustment": 0,
-        "context_confidence": 0.6666666666666666,
-        "context_doctype": "Unknown",
-        "context_domain": "Healthcare",
         "context_impact": 0,
         "original_confidence": 70,
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "subtype": "INSURANCE_MEMBER_ID",
         "validation_checks": {
           "insurance_label": true,

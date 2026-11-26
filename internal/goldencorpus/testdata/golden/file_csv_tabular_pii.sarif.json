@@ -45,19 +45,9 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 20,
-              "context_confidence": 1,
-              "context_doctype": "CSV",
-              "context_domain": "HR_Payroll",
               "context_impact": -20,
               "original_confidence": 65,
               "original_file": "people.csv",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,
@@ -118,19 +108,9 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 20,
-              "context_confidence": 1,
-              "context_doctype": "CSV",
-              "context_domain": "HR_Payroll",
               "context_impact": -20,
               "original_confidence": 65,
               "original_file": "people.csv",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,
@@ -191,21 +171,11 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 20,
-              "context_confidence": 1,
-              "context_doctype": "CSV",
-              "context_domain": "HR_Payroll",
               "context_impact": -5,
               "domain": "example.com",
               "email_provider": "BUSINESS",
               "original_confidence": 55,
               "original_file": "people.csv",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "tld": "com",
               "username": "alice",
@@ -266,21 +236,11 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 20,
-              "context_confidence": 1,
-              "context_doctype": "CSV",
-              "context_domain": "HR_Payroll",
               "context_impact": -5,
               "domain": "example.org",
               "email_provider": "BUSINESS",
               "original_confidence": 55,
               "original_file": "people.csv",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "tld": "org",
               "username": "bob",
@@ -342,19 +302,9 @@
             "metadata": {
               "card_type": "MASTERCARD",
               "confidence_adjustment": 20,
-              "context_confidence": 1,
-              "context_doctype": "CSV",
-              "context_domain": "HR_Payroll",
               "context_impact": -100,
               "original_confidence": 5,
               "original_file": "people.csv",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,
@@ -411,19 +361,9 @@
             "metadata": {
               "card_type": "VISA",
               "confidence_adjustment": 20,
-              "context_confidence": 1,
-              "context_doctype": "CSV",
-              "context_domain": "HR_Payroll",
               "context_impact": -100,
               "original_confidence": 5,
               "original_file": "people.csv",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,

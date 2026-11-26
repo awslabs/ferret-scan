@@ -9,19 +9,9 @@
         "card_type": "AMERICAN_EXPRESS",
         "confidence_adjustment": 0,
         "confidence_ceiling": 15,
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Financial",
         "context_impact": 15,
         "original_confidence": 15,
         "original_file": "<golden:creditcard_published_test_pans>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "digits": true,
@@ -48,19 +38,9 @@
         "card_type": "DINERS_CLUB",
         "confidence_adjustment": 0,
         "confidence_ceiling": 15,
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Financial",
         "context_impact": 15,
         "original_confidence": 15,
         "original_file": "<golden:creditcard_published_test_pans>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "digits": true,
@@ -87,19 +67,9 @@
         "card_type": "DISCOVER",
         "confidence_adjustment": 0,
         "confidence_ceiling": 15,
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Financial",
         "context_impact": 15,
         "original_confidence": 15,
         "original_file": "<golden:creditcard_published_test_pans>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "digits": true,
@@ -126,19 +96,9 @@
         "card_type": "JCB",
         "confidence_adjustment": 0,
         "confidence_ceiling": 15,
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Financial",
         "context_impact": 15,
         "original_confidence": 15,
         "original_file": "<golden:creditcard_published_test_pans>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "digits": true,
@@ -165,19 +125,9 @@
         "card_type": "MASTERCARD",
         "confidence_adjustment": 0,
         "confidence_ceiling": 15,
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Financial",
         "context_impact": 15,
         "original_confidence": 15,
         "original_file": "<golden:creditcard_published_test_pans>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "digits": true,
@@ -204,19 +154,9 @@
         "card_type": "UNIONPAY",
         "confidence_adjustment": 0,
         "confidence_ceiling": 15,
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Financial",
         "context_impact": 0,
         "original_confidence": 15,
         "original_file": "<golden:creditcard_published_test_pans>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "digits": true,
@@ -243,19 +183,9 @@
         "card_type": "VISA",
         "confidence_adjustment": 0,
         "confidence_ceiling": 15,
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Financial",
         "context_impact": 15,
         "original_confidence": 15,
         "original_file": "<golden:creditcard_published_test_pans>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "digits": true,
@@ -282,19 +212,9 @@
         "card_type": "VISA",
         "confidence_adjustment": 0,
         "confidence_ceiling": 15,
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Financial",
         "context_impact": 15,
         "original_confidence": 15,
         "original_file": "<golden:creditcard_published_test_pans>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "digits": true,
@@ -321,19 +241,9 @@
         "card_type": "VISA",
         "confidence_adjustment": 0,
         "confidence_ceiling": 15,
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Financial",
         "context_impact": 15,
         "original_confidence": 15,
         "original_file": "<golden:creditcard_published_test_pans>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "digits": true,
@@ -360,19 +270,9 @@
         "card_type": "MASTERCARD",
         "confidence_adjustment": 0,
         "confidence_ceiling": 15,
-        "context_confidence": 1,
-        "context_doctype": "Unknown",
-        "context_domain": "Financial",
         "context_impact": -100,
         "original_confidence": 1,
         "original_file": "<golden:creditcard_published_test_pans>",
-        "semantic_context": {
-          "FinancialData": 0,
-          "MedicalData": 0,
-          "PersonalData": 0,
-          "Production": 0,
-          "TestData": 0
-        },
         "source": "preprocessed_content",
         "validation_checks": {
           "digits": true,
