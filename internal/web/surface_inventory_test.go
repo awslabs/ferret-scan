@@ -59,6 +59,7 @@ var webDeliberatelyAbsent = map[string]string{
 	"no-color":             "ANSI colour for a terminal; /export always renders with NoColor (validateWebModeFlags refuses it)",
 	"quiet":                "silences terminal progress lines; the web reports progress in the page (validateWebModeFlags refuses it)",
 	"pre-commit-mode":      "the pre-commit hook contract: exit codes, quiet output, the commit verdict; a server has no per-scan exit code",
+	"allow-project-config": "opts a pre-commit run into a config discovered in the working directory (#293); the web has no pre-commit run and loads config only from --config",
 	"fail-on-incomplete":   "turns incomplete coverage into exit code 3; the web reports it per scan as `incomplete` and `not_examined` (validateWebModeFlags refuses it)",
 	"preprocess-only":      "prints the extracted text and exits without scanning; validateWebModeFlags refuses it with --web",
 	"p":                    "alias of --preprocess-only; validateWebModeFlags refuses it with --web",
