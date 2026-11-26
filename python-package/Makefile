@@ -12,7 +12,7 @@ help:
 
 setup-env:
 	python -m venv test_env
-	test_env/bin/pip install -r requirements.txt
+	test_env/bin/pip install -r requirements-dev.txt
 	@echo "Virtual environment created. Activate with: source test_env/bin/activate"
 
 test:
@@ -20,14 +20,14 @@ test:
 		echo "Virtual environment not found. Run 'make setup-env' first."; \
 		exit 1; \
 	fi
-	test_env/bin/python tests/run_tests.py
+	test_env/bin/python -m pytest tests
 
 test-verbose:
 	@if [ ! -d "test_env" ]; then \
 		echo "Virtual environment not found. Run 'make setup-env' first."; \
 		exit 1; \
 	fi
-	test_env/bin/python -m unittest discover -s tests -p 'test_*.py' -v
+	test_env/bin/python -m pytest tests -v
 
 install-dev:
 	@if [ ! -d "test_env" ]; then \
