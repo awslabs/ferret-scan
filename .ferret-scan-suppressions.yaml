@@ -2451,302 +2451,302 @@ rules:
         finding_type: IP_ADDRESS
         line_number: "1201"
     - id: SUP-00000317
-      hash: c1c38511d6dff617bbec3e71952c0d12d2d05fc67cc47196ac125b87b5657d14 # pragma: allowlist secret
+      hash: a3bf64698e24fad88ec917b27834c927dae7a623df03abae89079a22834f928d # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: ABA_ROUTING
-        line_number: "2519"
+        line_number: "2642"
     - id: SUP-00000318
-      hash: 68d389b58e86e41783b0c7e255dbfdf9d51df828760154d134e3fe2390164aa7 # pragma: allowlist secret
+      hash: c05870657871169324a297354f4601d62d9a5004f00b18f31f7f7fcace1155f2 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: ABA_ROUTING
-        line_number: "2519"
+        line_number: "2642"
     - id: SUP-00000319
-      hash: a750ac5bc15c19d9d94cebe4aaf607bdc4425503cbaa3b980858b7a31c49fe52 # pragma: allowlist secret
+      hash: 87995c39dbcfc3472fd061be55232ee97c8328aee3e815104c561125d9bf8fcc # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: ABA_ROUTING
-        line_number: "2519"
+        line_number: "2642"
     - id: SUP-00000320
-      hash: f4ea480ac24f86df4aead012132ae20dc326627d6b85c56d0074091c9e36d42e # pragma: allowlist secret
+      hash: e57a8489f0cc889b713f4715ba02261567b49b58262321c290bd83d5ef5a9f5d # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "95.00"
         filename: CHANGELOG.md
         finding_type: DRIVERS_LICENSE
-        line_number: "2682"
+        line_number: "2805"
     - id: SUP-00000321
-      hash: 1acf5721701fa56fd7801d854711a9d07121fbb6eacc4690a0f71ee3195a7546 # pragma: allowlist secret
+      hash: 1cbe186a3878ee8e56f27ae8b0961bc1405b7938535b4659206de3a37afff1e5 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: BUSINESS
-        line_number: "3274"
+        line_number: "3397"
     - id: SUP-00000322
-      hash: c18fdd5436a0e7a3cd21450c117c04bf12f100d07c57b333f58fc297bd8e8268 # pragma: allowlist secret
+      hash: 47cfa146f7204fb7bf2e5ec0471a2a7cc6f55dc488d714b490550504926af335 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: BUSINESS
-        line_number: "3274"
+        line_number: "3397"
     - id: SUP-00000323
-      hash: 544fb03f1bd85045ae8254ac321fe6dac14eac543f8aecbe9c7d6b0ec024e746 # pragma: allowlist secret
+      hash: 78605b8182f4f1dcf901b871dad8f68605c268dfc3af2a869cf86e408d26e13b # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: EMAIL
-        line_number: "3274"
+        line_number: "3397"
     - id: SUP-00000324
-      hash: e640c8eb77860c0754d7836819c549c252a732feae7c9b2eebe1683425e3b4b7 # pragma: allowlist secret
+      hash: 2c2fadcc7fa2f00f758fd31dd0fc39f5c5cead0b024e56f9d2bc1f7f8a4fd7f1 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: EMAIL
-        line_number: "3274"
+        line_number: "3397"
     - id: SUP-00000325
-      hash: 4171a08e36715eabcadd002538a3ef8dbe74b84840c01e0b57c0d7cc1af8401e # pragma: allowlist secret
+      hash: 83d24528168490008821f8f117607c90146258f8924dc5da27d772e61d26d83a # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "98.00"
         filename: CHANGELOG.md
         finding_type: INTELLECTUAL_PROPERTY
-        line_number: "2760"
+        line_number: "2883"
     - id: SUP-00000326
-      hash: 3008862e1d9ac03aeaa262e7a229f37de380eaf7fd87b0f4d113429df31b57aa # pragma: allowlist secret
+      hash: f8d4a6628feb1ade168524b3137dde4dd878e8543fd1734f2e02ae03e0d1fdb3 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: IP_ADDRESS
-        line_number: "2518"
+        line_number: "2641"
     - id: SUP-00000327
-      hash: 0419a57a8a2b7c42580ef9a5d8edf7135c00cc3adddff02f8d3de7f628cd49e6 # pragma: allowlist secret
+      hash: cdd390f607da4ee01bb4f9c3cc4f3c0b04bc4460acdb87dbd8fc233d5e007de9 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: IP_ADDRESS
-        line_number: "2536"
+        line_number: "2659"
     - id: SUP-00000328
-      hash: 80315849e3686a0475cc8039bb314f8d6586a26b82f7b9ea06f84bfbf16607e2 # pragma: allowlist secret
+      hash: 8784ad7b4a222c3324c85cf2b18ab0f0ccdc26d230c3ec4580f7e4f6a01776cc # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: IP_ADDRESS
-        line_number: "2878"
+        line_number: "3001"
     - id: SUP-00000329
-      hash: 2fdfc975e7219808db939898432d0bc530a75c52cd8e90317f3ccd4544baf55e # pragma: allowlist secret
+      hash: 271b26aa40a3b469ee00af5ed948a706fdefe124ca5b7b3fa6f0dfa1e5959654 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: IP_ADDRESS
-        line_number: "2879"
+        line_number: "3002"
     - id: SUP-00000330
-      hash: e78912c0be15823afb56f4590ec0f09271a05bd1be41171b5babb215e9cdb3af # pragma: allowlist secret
+      hash: b03d6fa2a0c4ea645cfe45c619dac8fd1521a0825782a4fef22ce7fcf9da1874 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: IP_ADDRESS
-        line_number: "2888"
+        line_number: "3011"
     - id: SUP-00000331
-      hash: fd1c7173f9afe780cee8a427e2b5bc27dc249a410531480a1afc0d5b70c4d2f2 # pragma: allowlist secret
+      hash: ff39fc469763c5f7c77cc33b580f330c0517e759bd5eec47158da97148030fd0 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: IP_ADDRESS
-        line_number: "2890"
+        line_number: "3013"
     - id: SUP-00000332
-      hash: 90da1778e6ffe3ebdca98d0977f7b0bf4de86fede89779cee05cf92c58cbae98 # pragma: allowlist secret
+      hash: 80b81e0e36c145418318935616bc96423eafc691f36a901c5254a517746bed20 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PASSPORT
-        line_number: "2658"
+        line_number: "2781"
     - id: SUP-00000333
-      hash: 4603f86338ab885372b232a3974b57e2694d0e3eebe92bd90fe99f76a09e0bf7 # pragma: allowlist secret
+      hash: 86aadf1062ff9654fcaed3b301052ab21ccae79d6f698f9780e62e9afa7f380b # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PASSPORT
-        line_number: "2658"
+        line_number: "2781"
     - id: SUP-00000334
-      hash: fc3ec0be688756dc1b6efc7732091318a8c5a8c25848336d4b99b8931ecce1b9 # pragma: allowlist secret
+      hash: a2bc74e91c4e02fbc495b0a7f46f9d1c36356debae646e97cb2ec663f4735140 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PASSPORT
-        line_number: "2658"
+        line_number: "2781"
     - id: SUP-00000335
-      hash: 3b0d9fcd40b106a98ac2fe21cbb1fa1cf5a32991bd31dcd9bd584db499df5e60 # pragma: allowlist secret
+      hash: 43982cdb70afc77bbaf923c371395e53876791130ccd433349d193e8ffc9197a # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PERSON_NAME
-        line_number: "2240"
+        line_number: "2363"
     - id: SUP-00000342
-      hash: ba8a3394a1f7cf95794168c30c668578a394a01807492a4b54cf432cccca209e # pragma: allowlist secret
+      hash: f7b3b312a36429b7d0d477954aa6c390265f0214721832e9270ef98a09973fb4 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "96.00"
         filename: CHANGELOG.md
         finding_type: PERSON_NAME
-        line_number: "2660"
+        line_number: "2783"
     - id: SUP-00000343
-      hash: 9158c333b3c106806c85770cc79b4fabfba71104f4f00dbb720afc795ab6b8dc # pragma: allowlist secret
+      hash: 8a427451d7e0e0f1eb48a28105487305f18492c7b97436d931d0e3378dcf0fd0 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PERSON_NAME
-        line_number: "2661"
+        line_number: "2784"
     - id: SUP-00000344
-      hash: ab99a2df9cb8731d161f8684b16be9385f147f8baf8e938c9fe2b714e4dba613 # pragma: allowlist secret
+      hash: badf3d6b8a9f8fbd47dbbd3db486ba94b363eecea0794f8b20a97b7dfc9fd719 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "93.00"
         filename: CHANGELOG.md
         finding_type: PERSON_NAME
-        line_number: "2702"
+        line_number: "2825"
     - id: SUP-00000347
-      hash: 8fdc8752b52b07e0d43dd19bfff9de997458a59e3f5a30cd8556366cd14d8d01 # pragma: allowlist secret
+      hash: 671f0e3446969543857536e7678b9e3c07e3644662ce82e8a87a6fae1216e0fe # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PHONE
-        line_number: "2503"
+        line_number: "2626"
     - id: SUP-00000348
-      hash: f0a66c3d2172f0f099251941b295cfbd867500d4a6563222f1724e0c25babffb # pragma: allowlist secret
+      hash: 07ed51b3f4859956fa13d5c4a518846b942a9bcd7d6244d1bd9afb84ff94911f # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PHONE
-        line_number: "2575"
+        line_number: "2698"
     - id: SUP-00000349
-      hash: 38e255e988b766da4361201a5e035ad50060ad1a2e6cef94c1263c19155ce3ac # pragma: allowlist secret
+      hash: 2745380ac1e99750984f0d120306c7d6a70f8c766be2dfc694ca5194d241eaec # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: SSN
-        line_number: "2524"
+        line_number: "2647"
     - id: SUP-00000350
-      hash: cdc6b2912381c183fde374fdb9fe07057a7141f2fb27d0104e9c672ee639b4c5 # pragma: allowlist secret
+      hash: 4e8911e4bc0390dd5e9ad2d5bce082980ec32a1fc8d2e7d46ff9bc9b2c4f7a55 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: SSN
-        line_number: "2558"
+        line_number: "2681"
     - id: SUP-00000351
-      hash: cd33acc4587b58dee2a6339e3f60415c788123962b98d678aa55b44b4479dcaf # pragma: allowlist secret
+      hash: c41e928676d1d016cfb6002def0ae4b68f35e9ec71ce2ef1bedc3b5ad87abd3e # pragma: allowlist secret
       reason: "detector FP: #939"
       enabled: true
       created_at: 2026-11-09T19:55:15.405018783Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: SSN
-        line_number: "2581"
+        line_number: "2704"
     - id: SUP-00000352
       hash: 4f6d5e290de098d40dee5131bea3af41811ef667633406b7a23f634470146202 # pragma: allowlist secret
       reason: "fixture: example value in a pattern comment or keyword table of the validator"
@@ -5289,431 +5289,431 @@ rules:
         finding_type: SSH_PRIVATE_KEY
         line_number: "94"
     - id: SUP-00000667
-      hash: 53de3daa59695c40661db5fa6eb6b168f05df45aaade5d96deb17244279527ab # pragma: allowlist secret
+      hash: 333e3bff387ac15d5e0a90a9f719e92bd738f69a10c3bc94cd0b7843c634406e # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: SWIFT_BIC
-        line_number: "1011"
+        line_number: "1134"
     - id: SUP-00000668
-      hash: 0a04fa2694f5c1d76f69982959bf24ef892a49e9c35e412635c26d6e25de7741 # pragma: allowlist secret
+      hash: b13298536fab6e565f185d582dc4824206c94d8d771a511208da3f8e77889815 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: SWIFT_BIC
-        line_number: "1011"
+        line_number: "1134"
     - id: SUP-00000669
-      hash: 4926d5f71a3f9afa26c174b134925b283993763c0615227b9f50237a741fb983 # pragma: allowlist secret
+      hash: bd5756cbffd06d18b147428f03f64f2a876ff5cde6e8e55e348c079f9a194ac0 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: SWIFT_BIC
-        line_number: "1011"
+        line_number: "1134"
     - id: SUP-00000670
-      hash: 6a3f3feba53a2a0f2a3eb14c95a23f9f85e7ef4b9bc3deee2d3ceb9fba76940c # pragma: allowlist secret
+      hash: dccaba69bcebe22bd7b89250aa702f2ee1892ba4eb69eb471aa6b00de62f102e # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: SWIFT_BIC
-        line_number: "1015"
+        line_number: "1138"
     - id: SUP-00000671
-      hash: 6ca94f0e59d63d5460f5b6e511f3a7436a7049d21fa7e5b1ab78d320804776ec # pragma: allowlist secret
+      hash: 395be66650113aa714b76775a94d64472d88da10cb6b7f6fa7e188818fda28b4 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: US_BANK_ACCOUNT
-        line_number: "1072"
+        line_number: "1195"
     - id: SUP-00000672
-      hash: fd62cd57d4c7832a00376c3948b57e8d4a3bda800d0fde1fad5333aa4f212b11 # pragma: allowlist secret
+      hash: bf139d40e619ee3a594aadb09d5dfeb2363fa6848bac3de39822b1fae273e6b9 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: US_BANK_ACCOUNT
-        line_number: "1449"
+        line_number: "1572"
     - id: SUP-00000673
-      hash: 092852e74b54ac413ffaddfc249d3f8e395dfdaeb6d584e52e3c5b90fd32af6b # pragma: allowlist secret
+      hash: eec3068520f23dc5ec2846f2d9b833e07ee1f950ccafd54f863c3f85e4147090 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: VISA
-        line_number: "1033"
+        line_number: "1156"
     - id: SUP-00000674
-      hash: 60ad052fc4f61424d1e76a96b70a7bd12d7fbeb3ea732f72dbce1f8a6abf982b # pragma: allowlist secret
+      hash: e6fe516f6f472a00b3e60011f6580f3c32774598229fb44074ffb2d8279ee987 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "90.00"
         filename: CHANGELOG.md
         finding_type: DATE_OF_BIRTH
-        line_number: "1192"
+        line_number: "1315"
     - id: SUP-00000675
-      hash: 8ee111a3eef0df326dc0a832c0785661427d1eb20aa19bf30002a98381350184 # pragma: allowlist secret
+      hash: 98006abfafe7e648b1e75c2bffe252a2fb36be1257f3c35432357d114db79ced # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "95.00"
         filename: CHANGELOG.md
         finding_type: DRIVERS_LICENSE
-        line_number: "1258"
+        line_number: "1381"
     - id: SUP-00000676
-      hash: a69f9e514f06da7b3be1ac7cac1f9431e6cbdf4dbd128b2b8d9622ea18249c42 # pragma: allowlist secret
+      hash: a4faf267e74c992d9c83bd444e7d961de1710f57a93451d5a3a8ac5ecb6364e9 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "90.00"
         filename: CHANGELOG.md
         finding_type: CHI_NUMBER
-        line_number: "730"
+        line_number: "853"
     - id: SUP-00000677
-      hash: 970d50ce393e9138485a50f7e7bbe800a1f07fea12c26bceb5f8776494d16940 # pragma: allowlist secret
+      hash: 2ced7cda11ec0d3bfaa15e820b0e84e49fbb46f0864e7f4bf95d51935b67fe09 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "90.00"
         filename: CHANGELOG.md
         finding_type: CHI_NUMBER
-        line_number: "731"
+        line_number: "854"
     - id: SUP-00000678
-      hash: b7408b05330ca77875ce318db23bd6efaf14b3abd453902149335954321566ca # pragma: allowlist secret
+      hash: 19e3627b42f355c607a557196a786748122d7c6aa19b87cfb019cb9fac58849c # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "90.00"
         filename: CHANGELOG.md
         finding_type: NPI
-        line_number: "1083"
+        line_number: "1206"
     - id: SUP-00000679
-      hash: 9145456e7491c2e86f0e662b4f8b1be871bc49a13ca433199f6274a2933bca9b # pragma: allowlist secret
+      hash: 7d8498263fb8df691f79744a3d26e8ba30e3a1d159da5e3e3e31f4665808d1cc # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "90.00"
         filename: CHANGELOG.md
         finding_type: NPI
-        line_number: "1083"
+        line_number: "1206"
     - id: SUP-00000680
-      hash: 7bc29f4b3efe62ce4c0adaa4cdbf3d99cc17956f9c232a9c3da08c19dc6df1ac # pragma: allowlist secret
+      hash: e645e7b92616fa7cb22bedbd0da8d7f699b14bde2e96524370b7db10f4349960 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "90.00"
         filename: CHANGELOG.md
         finding_type: NPI
-        line_number: "1083"
+        line_number: "1206"
     - id: SUP-00000681
-      hash: cae7df5ea34aa45cb76be08f83b88215dd0560587611af08aca64b30231b4940 # pragma: allowlist secret
+      hash: 56b11b0565182790f1019180f1110f259afa588e1f151f33f3bc1df92756eaff # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "95.00"
         filename: CHANGELOG.md
         finding_type: DEA_NUMBER
-        line_number: "1209"
+        line_number: "1332"
     - id: SUP-00000682
-      hash: efe956ed6aad7b219a22652c962e909e10c03728db9511d154a0a1e42b3c39b9 # pragma: allowlist secret
+      hash: a0f01afd1b2be89970a013560b71f333d691d2d8d95000683092dcd982a962be # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "90.00"
         filename: CHANGELOG.md
         finding_type: INSURANCE_MEMBER_ID
-        line_number: "1219"
+        line_number: "1342"
     - id: SUP-00000683
-      hash: 0e77813eaaf892d4d119f09191bfffef189a4836da92d102cf257d75a5411cd2 # pragma: allowlist secret
+      hash: ebcbb92388aa49933aab167544bb991fcfccc06a1536d9b1f880f9a906637fc7 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PASSPORT
-        line_number: "934"
+        line_number: "1057"
     - id: SUP-00000684
-      hash: 02acf4faebee125bdda43bf697e613d628b961cbf1f3a58c16aadab743050b38 # pragma: allowlist secret
+      hash: 84f53b9e9735b5e2208d75399800baa3c8c8b1e5042c34c55d65ee2dd991c842 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PASSPORT
-        line_number: "1521"
+        line_number: "1644"
     - id: SUP-00000685
-      hash: 87ac1891cbcc43c49d0b8125fc77c4eb2be2162ddd3f46bf2c3df0ffd5c0d480 # pragma: allowlist secret
+      hash: 57714f4d24f91ad5f477c453bf581773f2dfa801f4388ddc745f2bc2957b8096 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PASSPORT
-        line_number: "1521"
+        line_number: "1644"
     - id: SUP-00000687
-      hash: c54c2a9ba0fd8d2f92afe5510dccf505ff5c941a78efde997276ce10aa5da108 # pragma: allowlist secret
+      hash: 2835c6697af4d0ba325c1c8a9ca30da05b40a57ae1c0a809504a6cc64d19ab23 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "92.00"
         filename: CHANGELOG.md
         finding_type: PERSON_NAME
-        line_number: "1486"
+        line_number: "1609"
     - id: SUP-00000688
-      hash: e24d0513434d8f00ce727079990fd7b03977c958a03e8c03398a25467e13c2db # pragma: allowlist secret
+      hash: 4feee90358da0711e9225db18542bc7042d7c20f82c762f69eb01b2d3bdf8d28 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "93.00"
         filename: CHANGELOG.md
         finding_type: PERSON_NAME
-        line_number: "1486"
+        line_number: "1609"
     - id: SUP-00000689
-      hash: b734823099c424b0fd2ffa7ad16eb15ee847bc1a4a758697112a8525e886303e # pragma: allowlist secret
+      hash: 697a0b099ef637c026d685a3e5e4c00ee0019d0349b844212acad52ef6d8bf0c # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "97.00"
         filename: CHANGELOG.md
         finding_type: PERSON_NAME
-        line_number: "1486"
+        line_number: "1609"
     - id: SUP-00000690
-      hash: 42912d717d40f4cf26ff18007378653f4c8b9585c26c7c46eeee41162198a9bc # pragma: allowlist secret
+      hash: b5e26dc0023a6a27378e78bc66ac945e4620716febc9d34324fc357d863c2373 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PHONE
-        line_number: "681"
+        line_number: "804"
     - id: SUP-00000691
-      hash: 9e7073d56e9e28fadde9f3d068ce1b56353dc4a6b7a3935d61b64204fa9d0ad2 # pragma: allowlist secret
+      hash: 09b74f58b7590ab073d7791e93a5d2291922e24c7f26c18a80f707ed92974db0 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PHONE
-        line_number: "681"
+        line_number: "804"
     - id: SUP-00000692
-      hash: 3dc2cd3c982cc2725b61bc9c6c02f784774893bf892ea2279feb58c009eefe52 # pragma: allowlist secret
+      hash: 977268530369fcb23552d3e9138bbceb99d2a26f1537818162981801a9d9c2d4 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PHONE
-        line_number: "681"
+        line_number: "804"
     - id: SUP-00000693
-      hash: 8c1174236c5bc9b445898ab5448d3a282253410583a9be5c4727be5c38677de1 # pragma: allowlist secret
+      hash: 3756c0540561bd8a176abcbebb7650378770b3648b3f59d9b1e52e13b7b87075 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PHONE
-        line_number: "1438"
+        line_number: "1561"
     - id: SUP-00000694
-      hash: ebf72753246f89a527b6010cc9a6817a0b285b490f92bc44b38f55e052f4119b # pragma: allowlist secret
+      hash: 785daaaa71aea6ce3af28ad4c658fd7bcc69095563e63898e1e6168ba1c9e38c # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PHONE
-        line_number: "1529"
+        line_number: "1652"
     - id: SUP-00000695
-      hash: 3f3111188c9b11c4d21eb85be02a3b3b32c32e665e045229f3ffef557222824e # pragma: allowlist secret
+      hash: 394790334e6a9b03c013b5bead4b6b1708ec168ce3975035582c72ec894203a7 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PHONE
-        line_number: "1530"
+        line_number: "1653"
     - id: SUP-00000696
-      hash: 45a8af8686d2dac43f460e0ebdf1a72c5416d611c40bd8b1aebf3c10a31e14f4 # pragma: allowlist secret
+      hash: d66fe267ef22dc549689872859bb23681c661d1f9199472096481734c91ca4ab # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PHONE
-        line_number: "1531"
+        line_number: "1654"
     - id: SUP-00000697
-      hash: 298b608e06e843042be537e53b81c885666897f8f12af5895945afdf4776ede0 # pragma: allowlist secret
+      hash: f9847e21558b3bdfd352d41d9a6609e34fd858e56f273a99dc4bc93a92ed5f49 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PHONE
-        line_number: "1531"
+        line_number: "1654"
     - id: SUP-00000698
-      hash: 0910a9bafa5ec07234a23d492886529e3b91ade5ae9250895ee8cdce30b1ade4 # pragma: allowlist secret
+      hash: 67eab748f8adea3e889afcf2c6c32bd4110e9e6f2f95cd997f790b2e1ebe7f35 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PHONE
-        line_number: "1531"
+        line_number: "1654"
     - id: SUP-00000699
-      hash: 58fdd124f481edf7a0b4293590ced1a9c4d9e7fe7a262874d47e7f215e59cd19 # pragma: allowlist secret
+      hash: 1f25c0b7c8a1f90a2cd219001c399dd4aa5c3e6018c4610a6b2b6209ffeac9ad # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PHONE
-        line_number: "1550"
+        line_number: "1673"
     - id: SUP-00000700
-      hash: 303365225c0035f8a4b950ddede8ce3d76a2c862e7b41af40b00baefcead4f69 # pragma: allowlist secret
+      hash: 5a1797411870890b4e551d49ac4d2758a163abcbcefa7afd21615f901fe8b1b2 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "95.00"
         filename: CHANGELOG.md
         finding_type: US_STREET_ADDRESS
-        line_number: "927"
+        line_number: "1050"
     - id: SUP-00000701
-      hash: 6304f7edd94dadaa17f06e456e15e0dce5f76b8cfc72752e85482d2405cee31b # pragma: allowlist secret
+      hash: 7c106432992b3a1b99c2f6b7f24be5388c4096f28c3ad7c1655624afd9ae3c40 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: ITIN
-        line_number: "760"
+        line_number: "883"
     - id: SUP-00000702
-      hash: a4ea40999f1674797314caabdc7352c5be18bb56b18e091e1999cb9daca9d5c1 # pragma: allowlist secret
+      hash: abeae1467f2d23efcbcfad22abab4d569a9053725967d09de3b8a9bb82590378 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: ITIN
-        line_number: "761"
+        line_number: "884"
     - id: SUP-00000703
-      hash: ab3df4be7ddd0826d25e430ecb716541e8c54c9f2d73e7cb0e4492dc776e1a1d # pragma: allowlist secret
+      hash: 6172e4943525f318402f981d5b2789fa12c2ee88d812e46967aa62f1ccfd0162 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "95.00"
         filename: CHANGELOG.md
         finding_type: SSN
-        line_number: "1049"
+        line_number: "1172"
     - id: SUP-00000704
-      hash: 4f6a0d3f9d77b39d527587c9850fe1f6deda1607885fefedfbd6becd4e348e2e # pragma: allowlist secret
+      hash: 7633c4640ed1314aa226e6acce0d63eb7a1b3fc3965ea07213f11bcf07dd4dca # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: VIN
-        line_number: "1230"
+        line_number: "1353"
     - id: SUP-00000705
-      hash: ba22ea1bcd9c2dc0b0147095b21952d898433d2e473144215d4bf85241cb3daa # pragma: allowlist secret
+      hash: a361135a5c04f379770ad1bd720f511b884473dfafca6765ac0b68c12a32544a # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T14:11:45.259707375Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: VIN
-        line_number: "1231"
+        line_number: "1354"
     - id: SUP-00000706
-      hash: e5d83c79aeeb2f99478aa65a209554ef28287f4d19b9dbcdebc88d3cfaf681f1 # pragma: allowlist secret
+      hash: 4d5bfc877d2d01591de9da60ad831a8de1504703de75eeabbed25950d53dee66 # pragma: allowlist secret
       reason: "fixture: release note quotes the example value a change reports or demotes"
       enabled: true
       created_at: 2026-11-11T22:13:45.685097562Z
-      last_seen_at: 2026-11-20T15:34:59.070831383Z
+      last_seen_at: 2026-11-26T14:04:37.759927225Z
       metadata:
         confidence: "100.00"
         filename: CHANGELOG.md
         finding_type: PERSON_NAME
-        line_number: "2702"
+        line_number: "2825"

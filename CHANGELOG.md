@@ -18,6 +18,129 @@ Entries for the next release live as one file per pull request in [`changelog.d/
 and become a dated section below this heading when the release tag is pushed;
 `make changelog-preview` shows that section now. Nothing else goes under this heading.
 
+## [v2.6.2] - 2026-11-26
+
+### 🐛 Bug Fixes
+
+- **config warnings, `--stdin --enable-redaction`:** an input with no finding now discloses a configured
+  value the validators could not use (a custom pattern RE2 rejects). Before, stderr stayed empty, so a
+  gateway reading stderr as the findings document saw nothing, and the scan that found nothing may have
+  found nothing because the pattern was dropped. With `--format json`, `yaml` or `sarif`, stderr is the
+  report with an empty result list and the warning in `stats.config_warnings` (or SARIF's
+  `toolConfigurationNotifications`); with any other format, or on a terminal, stderr carries the same
+  `Warning: config value …` line `--file` prints. ⚠ A zero-finding gateway run whose config holds an
+  unusable value now writes to stderr where it wrote nothing; a run with a usable config still writes
+  nothing. `RedactFileResult.ConfigWarnings` (the other half of the issue's box 6) was already in
+  [#987](https://github.com/awslabs/ferret-scan/pull/987)
+  ([#903](https://github.com/awslabs/ferret-scan/issues/903), box 4).
+- **web:** `/export` reports now carry the CLI's `scan` scope block and `stats` block, in every format that has a slot for them (#904). `/scan` keeps the scope it computed and the run's stats beside the findings, and `/export` renders them, adding the stats when several scan ids are exported together. A narrowed web scan exported to JSON, YAML, SARIF, JUnit, GitLab SAST or text now says what it did not run, as the CLI's `--file` report does.
+  ⚠ Exported JSON and YAML gain `stats` (and `scan` when the run was narrowed) keys, so a script that compared whole export bodies sees new content.
+- **`--web`, eight flags decided:** `--profile`, `--disable-ip-types` and `--validator-budget` now apply to every
+  `/scan` the way they apply to `--file` (before, `--profile` and `--disable-ip-types` were accepted and ignored,
+  and `--validator-budget` was refused), and `--debug` writes the scan's debug log to the server's stderr (it was
+  accepted and ignored). An unknown `--profile` refuses to start. ⚠ `--respect-gitignore` and `--limit` were
+  accepted and did nothing with `--web`; they are now refused at startup (exit 1, the message names the flag),
+  because an upload has no directory tree and the page shows every finding. `--list-profiles` and
+  `--max-live-bytes` stay refused, now with reasons that say what to use instead. A script that passed
+  `--respect-gitignore` or `--limit` to `--web` must drop them
+  ([#925](https://github.com/awslabs/ferret-scan/issues/925)).
+- **redaction, `.txt` `.csv` `.html` and every text-substituting redactor:** a reported value of 8 or more
+  bytes is now also masked where it starts or ends a longer token (a name followed by more letters, a
+  member ID followed by `_` and a suffix). Before, the completeness sweep left any occurrence alone when
+  a letter, digit or `_` abutted it: two public corpus files kept 33 reported values (174 occurrences)
+  in the copy under `simple` and `format_preserving`, none of them standalone. An occurrence with a
+  word byte on both sides (a value inside a hex constant) is still left alone, and values of 4 to 7
+  bytes keep the standalone-only rule. The sweep now also repeats when a `format_preserving`
+  replacement, which keeps a value's last characters, spells another reported value again with the
+  bytes after it. Detection, reports, counts and suppression hashes are unchanged
+  ([#968](https://github.com/awslabs/ferret-scan/issues/968)).
+- **`--quiet`, config notes:** a `--quiet` typed on the command line now withholds the two TM-13 Notes on
+  stderr, `Note: using project config … found in the working directory` and `Note: config disabled N …
+  detection sub-type(s)`, on `--file` and `--stdin`. Both facts are in the report itself since #1007 (the
+  scope block names the config source and the narrowed checks; `stats.disabled_detection_types` lists the
+  sub-types), so the stderr copy was duplication. ⚠ Two things still print: under `--format csv`, which
+  has no scope block, stderr is the only place the facts appear; and `Warning: config asked to disable …
+  they had NO effect`, which says the config did not take effect. A pre-commit run without `--quiet`, a
+  `--quiet=false`, and a `quiet: true` set in a config file or profile keep both Notes: a config file
+  shipped in a pull request can disable detection, and it must not be able to silence the Note that names
+  it ([#1008](https://github.com/awslabs/ferret-scan/issues/1008), item 3).
+- **passport (MRZ):** a passport's second MRZ line (document number, date of birth, sex, expiry) is
+  now reported and redacted when its personal-number field is unused and the issuing State prints
+  `<` rather than `0` as that field's check digit, which ICAO Doc 9303 Part 4 (4.2.2.2, position
+  43) allows ([#1010](https://github.com/awslabs/ferret-scan/issues/1010)). The check-digit gate
+  wanted `0` there, so such a line 2 was never reported: `--enable-redaction` masked line 1 (the
+  name) and left line 2 in clear. `<` is accepted only there and only when positions 29-42 are all
+  fillers; it is still rejected for every other check digit and beside a non-empty personal number.
+- **gitlab-sast, vulnerability id:** the `id` of each vulnerability is now a hash of the path the report
+  prints in `location.file` (relative to the scan root, `../` stripped), the line and the check type. It
+  hashed the absolute scanned path, so one finding got a different id in every checkout directory
+  (`ferret-f557c13aa6628998` and `ferret-f708e9a7630d037d` for one file in two directories), and a different
+  one again from the web UI's export of the same content. The CLI id is now stable across checkout
+  locations and equals the web's for the same upload name. ⚠ Every gitlab-sast id changes once, at this
+  release: GitLab triage state keyed on an old id (dismissals, linked issues) detaches from its finding,
+  which shows as new until it is triaged again. Findings, lines and types are unchanged
+  ([#1017](https://github.com/awslabs/ferret-scan/issues/1017)).
+- **bankaccount, cloudresources:** ⚠ two published example values now read LOW. The IBAN the SWIFT
+  IBAN registry gives as Germany's example (`DE89 3704 0044 0532 0130 00`, any spelling) read `IBAN`
+  100 HIGH and is now held at LOW 15, as the GB example has been since #971. An `AWS_ARN` whose
+  account is `123456789012`, the account the AWS IAM User Guide uses in its ARN examples
+  (`arn:aws:iam::123456789012:role/MyRole`, any service or partition), read 95 HIGH and is now held at
+  15. Both are still reported, so still redacted, and the ceiling is published so a document cannot
+  lift it. Any other IBAN, and an ARN with any other account (one digit away included), keeps its
+  score; so does a real account that happens to be `123456789012`, which is the cost of the hold.
+  The `PHONE` finding on the IBAN's digit run is the phone check's and is unchanged.
+  ([#1024](https://github.com/awslabs/ferret-scan/issues/1024),
+  [#1027](https://github.com/awslabs/ferret-scan/issues/1027))
+- **phone:** a French national number written as a `0`, a digit 1-9 and four pairs with ONE separator,
+  a space, a dot or a dash (`01 42 34 56 78`, `01.42.34.56.78`, `01-42-34-56-78`), is now reported and
+  reads the confidence the compact `0142345678` and `+33 1 42 34 56 78` read (100 with a phone label).
+  Before, none of the three spellings produced a finding, so they stayed in clear under
+  `--enable-redaction`. ARCEP's reserved fiction blocks hold at LOW 15 in these spellings too
+  (`01 99 00 47 18`). A mixed separator (`01 42.34 56-78`), a sixth pair (`01.42.34.56.78.90`) and a
+  missing one stay unreported. ⚠ A run that scans text with such numbers now reports (and redacts)
+  them, so finding counts rise on French documents; so does a date-like `01.02.03.04.05`, as it
+  already did when written compact. ([#1052](https://github.com/awslabs/ferret-scan/issues/1052))
+- **formatters (json, yaml, sarif, gitlab-sast):** a finding's `metadata` now carries the validators'
+  own verdict keys `country`, `checksum_valid`, `check_digit_valid` and `confidence_ceiling`. The
+  report's metadata allowlist (`safeMetadataKeys`) did not list them, so nationalid's `country` and
+  its `checksum_valid=false` on a LOW finding, and phone's `country` and `confidence_ceiling`, were
+  dropped unless `--show-match` was set, while phone's `format` and `pattern_name` reached the
+  report. None of the four can hold the matched value: a country label or code, two booleans, a
+  number ([#1053](https://github.com/awslabs/ferret-scan/issues/1053)). ⚠ The set of metadata
+  keys a report can carry grows by these four: a consumer that compares the `metadata` object of a finding byte for byte, or rejects unknown keys, sees them on findings
+  whose validator sets them.
+- **email (TLD snapshot):** the embedded IANA root zone is refreshed from `# Version 2026110304`
+  (1436 TLDs) to `# Version 2026112302` (1435 TLDs). One TLD, `xihuan`, was withdrawn from the
+  root zone since the last snapshot and is now treated as unrecognised, so an address on it is
+  capped into the LOW band by `unrecognisedTLDCeiling` (measured: `user@example.xihuan` 53 → 43);
+  no TLD was delegated, so no real address changes band in the other direction. Regenerated with
+  `scripts/check-tlds.sh update`, which reproduces the committed file byte-for-byte against an
+  unchanged root zone; `check` now reports the snapshot current
+  ([#1064](https://github.com/awslabs/ferret-scan/issues/1064)).
+
+### ⚡ Performance
+
+- **redaction (Office documents):** redacting a `.docx`, `.xlsx` or `.pptx` no longer searches the
+  document's whole extracted text once per distinct reported value, twice (to find where the value
+  lives, and again to find which parts still hold it). Both questions are now answered for every
+  value in one pass, so the cost grows with the document instead of with values times document size
+  ([#1054](https://github.com/awslabs/ferret-scan/issues/1054)). On a synthetic file with one distinct
+  email per finding the redaction step took 0.73 s at 8,000 values and 2.41 s at 16,000 (3.3x per
+  doubling); it now takes 0.22 s and 0.44 s (2.0x). The redacted copies and the audit log are
+  byte-identical to the previous release's.
+
+### 📚 Documentation
+
+- **CREDIT_CARD rule text, `--quiet` help, doc leftovers:** the CREDIT_CARD rule description now says that a
+  number a payment processor publishes as a test card is still reported and redacted but capped at 15 (LOW),
+  in `docs/checks.md` and in the SARIF rule's `help` text; the `--quiet` line of `--help` matches the help
+  page (it also withholds the suppression, exclusion and config-provenance notes); the phone check's help
+  lists the French national form; the threat model, `docs/suppression-system.md`, `docs/configuration.md` and
+  the passport README no longer carry statements that #1056, #1002, #1072 and #992 made false.
+  ⚠ The SARIF `help.text` of the `CREDIT_CARD` rule (and of the card-brand rules that inherit it) gains one
+  sentence, and the `--quiet` flag's usage string changes; no finding, score or exit code changes
+  ([#883](https://github.com/awslabs/ferret-scan/issues/883), [#933](https://github.com/awslabs/ferret-scan/issues/933)).
+
 ## [v2.6.1] - 2026-11-20
 
 ### ⚠️ Breaking Changes
