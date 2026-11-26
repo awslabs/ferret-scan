@@ -41,19 +41,9 @@
               "card_frame": "track1",
               "card_type": "VISA",
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "context_impact": 15,
               "original_confidence": 100,
               "original_file": "<golden:overlap_groups_render_once>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,
@@ -108,22 +98,12 @@
             "metadata": {
               "clean_ip": "203.12.19.85",
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "context_impact": 12,
               "is_private": "false",
               "is_reserved": "false",
               "original_confidence": 100,
               "original_file": "<golden:overlap_groups_render_once>",
               "pattern_name": "IPv4_Standard",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "type": "Public",
               "validation_checks": {
@@ -180,20 +160,10 @@
             "confidenceLevel": "HIGH",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "context_impact": 40,
               "country": "UK",
               "original_confidence": 100,
               "original_file": "<golden:overlap_groups_render_once>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "format": true,
@@ -247,9 +217,6 @@
             "confidenceLevel": "HIGH",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "context_impact": 0,
               "context_keywords": null,
               "cultural_context": [
@@ -272,13 +239,6 @@
               "original_confidence": 100,
               "pattern": "name_with_title",
               "pattern_priority": 8,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "validation_checks": {
                 "both_names_known": true,
                 "has_known_name_component": true,
@@ -338,22 +298,12 @@
             "metadata": {
               "clean_number": "+1449874100",
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "context_impact": 15,
               "country": "International",
               "format": "+XX XXXX XXXX XXXX",
               "original_confidence": 100,
               "original_file": "<golden:overlap_groups_render_once>",
               "pattern_name": "International_Plus",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "not_repeating": true,
@@ -413,19 +363,9 @@
             "metadata": {
               "card_type": "VISA",
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "context_impact": 15,
               "original_confidence": 100,
               "original_file": "<golden:overlap_groups_render_once>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,
@@ -480,9 +420,6 @@
             "confidenceLevel": "HIGH",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "context_impact": 0,
               "context_keywords": null,
               "cultural_context": [
@@ -507,13 +444,6 @@
               "original_confidence": 93,
               "pattern": "three_part_name",
               "pattern_priority": 6,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "validation_checks": {
                 "both_names_known": true,
                 "has_known_name_component": true,
@@ -572,9 +502,6 @@
             "confidenceLevel": "HIGH",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "context_impact": 0,
               "context_keywords": null,
               "cultural_context": [
@@ -599,13 +526,6 @@
               "original_confidence": 93,
               "pattern": "three_part_name",
               "pattern_priority": 6,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "validation_checks": {
                 "both_names_known": true,
                 "has_known_name_component": true,
@@ -664,21 +584,10 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doc_type": "Unknown",
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "detection_method": "keyword_pattern",
               "environment_type": "test",
               "original_confidence": 85,
               "secret_type": "API_KEY_OR_SECRET",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "has_entropy": true,
@@ -733,19 +642,9 @@
               "card_type": "VISA",
               "confidence_adjustment": 0,
               "confidence_ceiling": 75,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "context_impact": 0,
               "original_confidence": 75,
               "original_file": "<golden:overlap_groups_render_once>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,
@@ -800,9 +699,6 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "context_impact": 0,
               "context_keywords": null,
               "cultural_context": [
@@ -825,13 +721,6 @@
               "original_confidence": 65,
               "pattern": "name_with_title",
               "pattern_priority": 8,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "validation_checks": {
                 "both_names_known": false,
                 "has_known_name_component": true,
@@ -891,19 +780,9 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "context_impact": 0,
               "original_confidence": 60,
               "original_file": "<golden:overlap_groups_render_once>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,
@@ -957,19 +836,9 @@
             "confidenceLevel": "LOW",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "context_impact": 0,
               "original_confidence": 50,
               "original_file": "<golden:overlap_groups_render_once>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,
@@ -1023,21 +892,11 @@
             "confidenceLevel": "LOW",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "context_impact": -20,
               "domain": "example.org",
               "email_provider": "BUSINESS",
               "original_confidence": 40,
               "original_file": "<golden:overlap_groups_render_once>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "tld": "org",
               "username": "Xq7Rj2Lp9Vw4Ns8Kd3Hf6Tb1",
@@ -1099,22 +958,12 @@
               "clean_number": "2125550142",
               "confidence_adjustment": 0,
               "confidence_ceiling": 15,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "context_impact": -20,
               "country": "US/CA",
               "format": "XXX-XXX-XXXX",
               "original_confidence": 15,
               "original_file": "<golden:overlap_groups_render_once>",
               "pattern_name": "US_Dashed",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "not_repeating": true,
@@ -1176,19 +1025,9 @@
             "confidenceLevel": "LOW",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Unknown",
-              "context_domain": "Government",
               "context_impact": -10,
               "original_confidence": 5,
               "original_file": "<golden:overlap_groups_render_once>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "not_test": true,

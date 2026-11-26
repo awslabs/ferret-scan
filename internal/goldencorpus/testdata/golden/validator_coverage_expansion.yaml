@@ -8,17 +8,8 @@ results:
       validator: physical_address
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         original_confidence: 95
         original_file: <golden:validator_coverage_expansion>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_path: document
     - text: 123 O'Brien St
@@ -30,17 +21,8 @@ results:
       validator: physical_address
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         original_confidence: 95
         original_file: <golden:validator_coverage_expansion>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             no_negative_context: true
@@ -56,17 +38,8 @@ results:
       validator: physical_address
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         original_confidence: 90
         original_file: <golden:validator_coverage_expansion>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_path: document
     - text: 456 King-Smith Rd
@@ -78,17 +51,8 @@ results:
       validator: physical_address
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         original_confidence: 90
         original_file: <golden:validator_coverage_expansion>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             no_negative_context: true
@@ -104,19 +68,10 @@ results:
       validator: driverslicense
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: 80
         format: NJ_1L14D
         original_confidence: 85
         original_file: <golden:validator_coverage_expansion>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             format_match: true
@@ -134,18 +89,9 @@ results:
       validator: otp
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: 30
         original_confidence: 85
         original_file: <golden:validator_coverage_expansion>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             format: true
@@ -161,19 +107,10 @@ results:
       validator: driverslicense
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: 65
         format: WI_1L13D
         original_confidence: 70
         original_file: <golden:validator_coverage_expansion>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             format_match: true
@@ -191,17 +128,8 @@ results:
       validator: physical_address
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         original_confidence: 40
         original_file: <golden:validator_coverage_expansion>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         short_form: true
         source: preprocessed_content
         validation_path: document

@@ -195,8 +195,6 @@ func (v *Validator) appendJWKPrivateMembers(matches []detector.Match, content, f
 				"validation_checks": checks,
 				"detection_method":  methodJWKPrivateMember,
 				"secret_type":       secretType,
-				"context_domain":    contextInsights.Domain,
-				"context_doc_type":  contextInsights.DocumentType,
 				"environment_type":  envType,
 			},
 			Context: detector.LineContext(lineText, sp.start-lineStart, sp.end-lineStart),

@@ -39,19 +39,9 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 0.7,
-              "context_doctype": "Unknown",
-              "context_domain": "Financial",
               "context_impact": -5,
               "federal_reserve_district": "02",
               "original_confidence": 65,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "validation_path": "document"
             },
             "validator": "bank_account"
@@ -95,19 +85,9 @@
             "confidenceLevel": "LOW",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 0.7,
-              "context_doctype": "Unknown",
-              "context_domain": "Financial",
               "context_impact": 0,
               "normalized": "1EG4TE5MK73",
               "original_confidence": 40,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "subtype": "MBI",
               "validation_checks": {
                 "mbi_format": true,
@@ -158,20 +138,10 @@
             "metadata": {
               "confidence_adjustment": 0,
               "confidence_ceiling": 15,
-              "context_confidence": 0.7,
-              "context_doctype": "Unknown",
-              "context_domain": "Financial",
               "context_impact": -25,
               "country": "DE",
               "normalized": "DE89370400440532013000",
               "original_confidence": 15,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0.1
-              },
               "validation_checks": {
                 "mod97_checksum": true,
                 "not_published_example": false,

@@ -12,9 +12,6 @@ results:
         confidence_boost: 9
         confidence_boost_percentage: 10.112359550561797
         consolidated_count: 219
-        context_confidence: 0
-        context_doctype: CSV
-        context_domain: Unknown
         ip_types:
             - copyright
             - trademark
@@ -1795,12 +1792,6 @@ results:
         reconstruction_timestamp: "<TIMESTAMP>"
         reconstruction_type: mixed_notice
         reconstruction_version: "1.1"
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0.16666666666666666
-            Production: 0
-            TestData: 0
         semantic_groups:
             - full_legal_notice
             - copyright_with_confidential

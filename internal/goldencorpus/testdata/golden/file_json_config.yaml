@@ -8,20 +8,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: JSON
-        context_domain: Unknown
         context_impact: -4
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 36
         original_file: settings.json
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: admin

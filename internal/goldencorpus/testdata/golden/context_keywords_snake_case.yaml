@@ -8,18 +8,9 @@ results:
       validator: ssn
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0.5
-        context_doctype: Configuration
-        context_domain: Financial
         context_impact: 25
         original_confidence: 100
         original_file: <golden:context_keywords_snake_case>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             digits: true
@@ -39,18 +30,9 @@ results:
       validator: ssn
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0.5
-        context_doctype: Configuration
-        context_domain: Financial
         context_impact: 25
         original_confidence: 100
         original_file: <golden:context_keywords_snake_case>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             digits: true
@@ -70,18 +52,9 @@ results:
       validator: dob
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0.5
-        context_doctype: Configuration
-        context_domain: Financial
         context_impact: 75
         original_confidence: 90
         original_file: <golden:context_keywords_snake_case>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             not_test: true
@@ -97,18 +70,9 @@ results:
       validator: ssn
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0.5
-        context_doctype: Configuration
-        context_domain: Financial
         context_impact: -30
         original_confidence: 65
         original_file: <golden:context_keywords_snake_case>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             digits: true
@@ -129,18 +93,9 @@ results:
       metadata:
         card_type: VISA
         confidence_adjustment: 0
-        context_confidence: 0.5
-        context_doctype: Configuration
-        context_domain: Financial
         context_impact: -100
         original_confidence: 15
         original_file: <golden:context_keywords_snake_case>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             digits: true
@@ -163,18 +118,9 @@ results:
         card_type: VISA
         confidence_adjustment: 0
         confidence_ceiling: 15
-        context_confidence: 0.5
-        context_doctype: Configuration
-        context_domain: Financial
         context_impact: -100
         original_confidence: 15
         original_file: <golden:context_keywords_snake_case>
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_checks:
             digits: true

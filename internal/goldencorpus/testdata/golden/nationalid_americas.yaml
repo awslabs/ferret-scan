@@ -9,17 +9,8 @@ results:
       metadata:
         check_digit_valid: true
         confidence_adjustment: 0
-        context_confidence: 0.5
-        context_doctype: Unknown
-        context_domain: HR_Payroll
         country: BR
         original_confidence: 95
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_path: document
     - text: 613 891 563
@@ -32,17 +23,8 @@ results:
       metadata:
         check_digit_valid: true
         confidence_adjustment: 0
-        context_confidence: 0.5
-        context_doctype: Unknown
-        context_domain: HR_Payroll
         country: CA
         original_confidence: 95
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_path: document
     - text: 916-635-287
@@ -55,17 +37,8 @@ results:
       metadata:
         check_digit_valid: true
         confidence_adjustment: 0
-        context_confidence: 0.5
-        context_doctype: Unknown
-        context_domain: HR_Payroll
         country: CA
         original_confidence: 95
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_path: document
     - text: 6.001.216-4
@@ -78,17 +51,8 @@ results:
       metadata:
         check_digit_valid: true
         confidence_adjustment: 0
-        context_confidence: 0.5
-        context_doctype: Unknown
-        context_domain: HR_Payroll
         country: CL
         original_confidence: 95
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_path: document
     - text: GOMR850412MJCMNL00
@@ -101,17 +65,8 @@ results:
       metadata:
         check_digit_valid: true
         confidence_adjustment: 0
-        context_confidence: 0.5
-        context_doctype: Unknown
-        context_domain: HR_Payroll
         country: MX
         original_confidence: 95
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_path: document
     - text: 20-12173870-9
@@ -124,17 +79,8 @@ results:
       metadata:
         check_digit_valid: true
         confidence_adjustment: 0
-        context_confidence: 0.5
-        context_doctype: Unknown
-        context_domain: HR_Payroll
         country: AR
         original_confidence: 90
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_path: document
     - text: 6001216-4
@@ -147,17 +93,8 @@ results:
       metadata:
         check_digit_valid: true
         confidence_adjustment: 0
-        context_confidence: 0.5
-        context_doctype: Unknown
-        context_domain: HR_Payroll
         country: CL
         original_confidence: 90
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_path: document
     - text: 172.984.064-78
@@ -171,16 +108,7 @@ results:
         checksum_valid: false
         confidence_adjustment: 0
         confidence_ceiling: 40
-        context_confidence: 0.5
-        context_doctype: Unknown
-        context_domain: HR_Payroll
         country: BR
         original_confidence: 40
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0
         source: preprocessed_content
         validation_path: document

@@ -40,19 +40,9 @@
             "metadata": {
               "card_type": "MASTERCARD",
               "confidence_adjustment": 0,
-              "context_confidence": 0.3,
-              "context_doctype": "Unknown",
-              "context_domain": "Unknown",
               "context_impact": 15,
               "original_confidence": 100,
               "original_file": "<golden:context_soft_negative_labels>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,
@@ -108,19 +98,9 @@
             "metadata": {
               "card_type": "VISA",
               "confidence_adjustment": 0,
-              "context_confidence": 0.3,
-              "context_doctype": "Unknown",
-              "context_domain": "Unknown",
               "context_impact": 15,
               "original_confidence": 100,
               "original_file": "<golden:context_soft_negative_labels>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,
@@ -175,18 +155,8 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 0.3,
-              "context_doctype": "Unknown",
-              "context_domain": "Unknown",
               "context_impact": -5,
               "original_confidence": 65,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "subtype": "MRN",
               "validation_checks": {
                 "medical_context": true,
@@ -245,19 +215,9 @@
             "metadata": {
               "card_type": "VISA",
               "confidence_adjustment": 0,
-              "context_confidence": 0.3,
-              "context_doctype": "Unknown",
-              "context_domain": "Unknown",
               "context_impact": -100,
               "original_confidence": 15,
               "original_file": "<golden:context_soft_negative_labels>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,
@@ -313,19 +273,9 @@
             "metadata": {
               "card_type": "VISA",
               "confidence_adjustment": 0,
-              "context_confidence": 0.3,
-              "context_doctype": "Unknown",
-              "context_domain": "Unknown",
               "context_impact": -100,
               "original_confidence": 15,
               "original_file": "<golden:context_soft_negative_labels>",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,

@@ -45,19 +45,9 @@
             "confidenceLevel": "HIGH",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Configuration",
-              "context_domain": "HR_Payroll",
               "context_impact": 45,
               "original_confidence": 100,
               "original_file": "numrefs.docx",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,
@@ -115,19 +105,9 @@
             "confidenceLevel": "HIGH",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Configuration",
-              "context_domain": "HR_Payroll",
               "context_impact": 45,
               "original_confidence": 100,
               "original_file": "numrefs.docx",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,
@@ -185,19 +165,9 @@
             "confidenceLevel": "HIGH",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Configuration",
-              "context_domain": "HR_Payroll",
               "context_impact": 45,
               "original_confidence": 100,
               "original_file": "numrefs.docx",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,
@@ -255,19 +225,9 @@
             "confidenceLevel": "HIGH",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Configuration",
-              "context_domain": "HR_Payroll",
               "context_impact": 45,
               "original_confidence": 100,
               "original_file": "numrefs.docx",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "source": "preprocessed_content",
               "validation_checks": {
                 "digits": true,
@@ -319,9 +279,6 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Configuration",
-              "context_domain": "HR_Payroll",
               "context_impact": 0,
               "full_field": "Author: Jane Analyst",
               "metadata_type": "AUTHOR_INFO",
@@ -330,13 +287,6 @@
               "preprocessor_adjustment": 0,
               "preprocessor_name": "Office Metadata Extractor",
               "preprocessor_type": "office_metadata",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "source": "preprocessed_content",
               "source_file": "numrefs.docx",
               "source_preprocessor": "office_metadata",
@@ -382,9 +332,6 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 1,
-              "context_doctype": "Configuration",
-              "context_domain": "HR_Payroll",
               "context_impact": 0,
               "full_field": "LastModifiedBy: Ops Reviewer",
               "metadata_type": "LAST_MODIFIED_BY",
@@ -393,13 +340,6 @@
               "preprocessor_adjustment": 0,
               "preprocessor_name": "Office Metadata Extractor",
               "preprocessor_type": "office_metadata",
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "source": "preprocessed_content",
               "source_file": "numrefs.docx",
               "source_preprocessor": "office_metadata",

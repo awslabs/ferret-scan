@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/awslabs/ferret-scan/v2/internal/context"
 	"github.com/awslabs/ferret-scan/v2/internal/detector"
 	"github.com/awslabs/ferret-scan/v2/internal/preprocessors"
 	"github.com/awslabs/ferret-scan/v2/internal/validators"
@@ -65,6 +66,13 @@ func scanThroughBridge(t *testing.T, filename, content string) []detector.Match 
 	return matches
 }
 
+// documentTypeOf is the type the validator's own analyzer gives the document. The findings no longer
+// carry it (#621: it is a document-level value, not a per-finding one), so the tests ask the
+// analyzer the validator asks.
+func documentTypeOf(content, path string) string {
+	return context.NewContextAnalyzer().AnalyzeContext(content, path).DocumentType
+}
+
 // onlyFindingOnLine returns the single secrets finding on line, failing the test when there is
 // not exactly one.
 func onlyFindingOnLine(t *testing.T, what string, matches []detector.Match, line int) detector.Match {
@@ -103,10 +111,10 @@ func TestDocumentContextAdjustmentIsAppliedOnce(t *testing.T) {
 	plain := onlyFindingOnLine(t, "plain", scanThroughBridge(t, "settings.conf", plainConfigFixture), 3)
 	tsv := onlyFindingOnLine(t, "tsv", scanThroughBridge(t, "settings.tsv", tabularFixture("\t", "token = getToken()")), 8)
 
-	if got := plain.Metadata["context_doctype"]; got != "Configuration" {
+	if got := documentTypeOf(plainConfigFixture, "settings.conf"); got != "Configuration" {
 		t.Fatalf("precondition: plain file typed %v, want Configuration", got)
 	}
-	if got := tsv.Metadata["context_doctype"]; got != "TSV" {
+	if got := documentTypeOf(tabularFixture("\t", "token = getToken()"), "settings.tsv"); got != "TSV" {
 		t.Fatalf("precondition: tabular file typed %v, want TSV", got)
 	}
 	if adj := metaFloat(t, plain, "confidence_adjustment"); adj != 0 {
@@ -190,7 +198,7 @@ func TestTestDataPenaltyIsAppliedOnce(t *testing.T) {
 	if adj != -30 {
 		t.Fatalf("precondition: test-data document adjustment = %v, want test_data_penalty, -30", adj)
 	}
-	if got, want := pen.Metadata["context_doctype"], ref.Metadata["context_doctype"]; got != want {
+	if got, want := documentTypeOf(phrases+body, "settings.conf"), documentTypeOf(body, "settings.conf"); got != want {
 		t.Fatalf("precondition: the phrase line moved the document type, %v -> %v", want, got)
 	}
 	if want := ref.Confidence + adj; pen.Confidence != want {

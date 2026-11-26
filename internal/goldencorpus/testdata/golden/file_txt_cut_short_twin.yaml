@@ -8,20 +8,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -12
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 48
         original_file: contacts.txt
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user00001
@@ -44,20 +35,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -12
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 48
         original_file: contacts.txt
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user00002
@@ -80,20 +62,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -12
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 48
         original_file: contacts.txt
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user00003
@@ -116,20 +89,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -12
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 48
         original_file: contacts.txt
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user00004
@@ -152,20 +116,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -12
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 48
         original_file: contacts.txt
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user00005
@@ -188,20 +143,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -12
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 48
         original_file: contacts.txt
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user00006
@@ -224,20 +170,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -12
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 48
         original_file: contacts.txt
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user00007
@@ -260,20 +197,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -12
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 48
         original_file: contacts.txt
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user00008
@@ -296,20 +224,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -12
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 48
         original_file: contacts.txt
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user00009
@@ -332,20 +251,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Unknown
-        context_domain: Unknown
         context_impact: -12
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 48
         original_file: contacts.txt
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: user00010

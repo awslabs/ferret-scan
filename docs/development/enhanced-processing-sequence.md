@@ -549,16 +549,22 @@ func (of *OutputFormatter) FormatResults(
 }
 ```
 
-#### 7.2 Enhanced Match Metadata
+#### 7.2 Match Metadata Added by the Bridges
+The document and metadata bridges (`internal/validators/dual_path_bridge.go`) add a small, per-finding set of
+keys to `detector.Match.Metadata`: `confidence_adjustment`, `original_confidence` and `validation_path`
+(`"document"` or `"metadata"`), plus, on the metadata path, `preprocessor_adjustment`, `total_adjustment`,
+`preprocessor_type`, `preprocessor_name` and the cross-validator keys.
+
+The document-level context values (domain, document type, domain confidence, semantic categories) are **not**
+copied onto each finding (#621). They are computed once per file into `ContextInsights`, they still drive the
+confidence adjustment, and they are no longer in `--format json`, `yaml` or `sarif` output. A consumer that
+needs the document type of a finding reads it from the file, not from `metadata`.
+
 ```go
-type EnhancedMatch struct {
-    detector.Match
-    Source           string  `json:"source"`           // Preprocessor type
-    PreprocessorName string  `json:"preprocessor"`     // Human-readable name
-    ContextDomain    string  `json:"context_domain"`   // Document domain
-    ContextType      string  `json:"context_type"`     // Document type
-    ValidationPath   string  `json:"validation_path"`  // "document" or "metadata"
-}
+// Per-finding metadata written by the bridges (illustrative).
+Metadata["confidence_adjustment"] = adjustment       // document-level adjustment applied to this finding
+Metadata["original_confidence"]   = originalConfidence
+Metadata["validation_path"]       = "document"       // or "metadata"
 ```
 
 ## Error Handling and Recovery

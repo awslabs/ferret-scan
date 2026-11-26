@@ -39,18 +39,8 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 0.7,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
               "context_impact": 10,
               "original_confidence": 85,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "subtype": "MBI",
               "validation_checks": {
                 "mbi_format": true,
@@ -103,18 +93,8 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 0.7,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
               "context_impact": 10,
               "original_confidence": 80,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "subtype": "INSURANCE_MEMBER_ID",
               "validation_checks": {
                 "insurance_label": true,
@@ -169,18 +149,8 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 0.7,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
               "context_impact": 10,
               "original_confidence": 80,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "subtype": "INSURANCE_MEMBER_ID",
               "validation_checks": {
                 "insurance_label": true,
@@ -235,18 +205,8 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 0.7,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
               "context_impact": 10,
               "original_confidence": 80,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "subtype": "MRN",
               "validation_checks": {
                 "medical_context": true,
@@ -301,18 +261,8 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 0.7,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
               "context_impact": 0,
               "original_confidence": 70,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "subtype": "INSURANCE_MEMBER_ID",
               "validation_checks": {
                 "insurance_label": true,
@@ -364,18 +314,8 @@
             "confidenceLevel": "MEDIUM",
             "metadata": {
               "confidence_adjustment": 0,
-              "context_confidence": 0.7,
-              "context_doctype": "Unknown",
-              "context_domain": "Healthcare",
               "context_impact": 0,
               "original_confidence": 70,
-              "semantic_context": {
-                "FinancialData": 0,
-                "MedicalData": 0,
-                "PersonalData": 0,
-                "Production": 0,
-                "TestData": 0
-              },
               "subtype": "INSURANCE_MEMBER_ID",
               "validation_checks": {
                 "insurance_label": true,

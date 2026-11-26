@@ -8,9 +8,6 @@ results:
       validator: metadata
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Configuration
-        context_domain: Unknown
         context_impact: 0
         full_field: 'Artist: john.doe@example.com'
         metadata_type: AUTHOR_INFO
@@ -19,12 +16,6 @@ results:
         preprocessor_adjustment: 0
         preprocessor_name: Audio Metadata Extractor
         preprocessor_type: audio_metadata
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         source_file: clip.wav
         source_preprocessor: audio_metadata
@@ -44,9 +35,6 @@ results:
       validator: metadata
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Configuration
-        context_domain: Unknown
         context_impact: -0.04999999999999999
         full_field: 'Comment: contact 212-555-0142 or AKIAIOSFODNN7EXAMPLE'
         metadata_type: DOCUMENT_COMMENTS
@@ -55,12 +43,6 @@ results:
         preprocessor_adjustment: 0
         preprocessor_name: Audio Metadata Extractor
         preprocessor_type: audio_metadata
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         source_file: clip.wav
         source_preprocessor: audio_metadata
@@ -78,20 +60,11 @@ results:
       validator: email
       metadata:
         confidence_adjustment: 0
-        context_confidence: 0
-        context_doctype: Configuration
-        context_domain: Unknown
         context_impact: -20
         domain: example.com
         email_provider: BUSINESS
         original_confidence: 25
         original_file: clip.wav
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         tld: com
         username: john.doe
@@ -115,20 +88,10 @@ results:
       metadata:
         confidence_adjustment: 0
         confidence_ceiling: 15
-        context_confidence: 0
-        context_doc_type: Configuration
-        context_doctype: Configuration
-        context_domain: Unknown
         detection_method: keyword_pattern
         environment_type: test
         original_confidence: 15
         secret_type: AWS_ACCESS_KEY
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         validation_checks:
             config_file_boost: true
@@ -150,21 +113,12 @@ results:
         clean_number: "2125550142"
         confidence_adjustment: 0
         confidence_ceiling: 15
-        context_confidence: 0
-        context_doctype: Configuration
-        context_domain: Unknown
         context_impact: -20
         country: US/CA
         format: XXX-XXX-XXXX
         original_confidence: 15
         original_file: clip.wav
         pattern_name: US_Dashed
-        semantic_context:
-            FinancialData: 0
-            MedicalData: 0
-            PersonalData: 0
-            Production: 0
-            TestData: 0.125
         source: preprocessed_content
         validation_checks:
             not_repeating: true
