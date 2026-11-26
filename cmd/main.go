@@ -1265,6 +1265,25 @@ func main() {
 		os.Exit(0)
 	}
 
+	// --version and --help are answered here too, before the input dispatch and before prepareRun, so
+	// that neither depends on a config file in the working directory or the user config dir (#1085).
+	// Until now both ran the scan's front half first: a configured regex RE2 rejects printed its
+	// warning above the version line, a malformed config printed its load failure there, and in a hook
+	// environment the refusal of a discovered config (#293) exited 1 before the version printed. The
+	// install probes (the brew formula's test block, the release smoke job, install-system.sh) read
+	// `--version` for one line, and `--help SSN` must work in any directory. --help registers every
+	// validator as a help provider from the built-in defaults: the help text is the validators' own,
+	// not the configuration's (measured byte-identical with and without a config).
+	if *showVersion {
+		fmt.Println(version.Info())
+		return
+	}
+	if *showHelp {
+		defaults, _ := config.LoadConfig("")
+		runHelpCommand(flags.noColor, core.BuildValidatorSet(parseChecksToRun(""), defaults, nil), flag.Args())
+		return
+	}
+
 	// Handle stdin mode early - bypasses file discovery entirely.
 	// --stdin or --file - both trigger this path. Mutual-exclusion checks
 	// live inside runStdinScan to keep main.go's flag parsing flat.
@@ -1515,53 +1534,14 @@ func main() {
 		mainDebugObs.LogDetail("enhanced", "Set up dual path validation system")
 	}
 
-	// Keep reference to standard validators for backward compatibility (e.g. help system)
+	// The configured validator set; --help builds its own from the built-in defaults, above.
 	allValidators := standardValidators
 
 	// The detection facade is the single validator handed to the runner; it
 	// fans out to the document/metadata bridges internally.
 	validatorsList := []detector.Validator{detectorFacade}
 
-	// Handle version command
-	if *showVersion {
-		fmt.Println(version.Info())
-		return
-	}
-
-	// Handle help commands
-	if *showHelp {
-		helpSystem := help.NewSystem(finalConfig.noColor)
-
-		// Register ALL validators as help providers (not just filtered ones)
-		for _, validator := range allValidators {
-			if provider, ok := validator.(help.Provider); ok {
-				helpSystem.RegisterProvider(provider)
-			}
-		}
-
-		// Process help command
-		args := flag.Args()
-		if len(args) == 0 {
-			// Show general help
-			helpSystem.ShowGeneralHelp()
-			return
-		} else if len(args) == 1 {
-			if strings.ToLower(args[0]) == "checks" {
-				// Show list of all checks
-				helpSystem.ShowChecksHelp()
-				return
-			}
-			// Show help for specific check
-			if helpSystem.ShowCheckHelp(args[0]) {
-				return
-			}
-			os.Exit(1)
-		} else {
-			fmt.Println("Error: Too many arguments for help command")
-			fmt.Println("Use 'ferret-scan --help', 'ferret-scan --help checks', or 'ferret-scan --help <check>'")
-			os.Exit(1)
-		}
-	}
+	// --version and --help were answered above, before prepareRun (#1085).
 
 	// Handle file arguments (files/directories)
 	var inputPaths []string
@@ -4083,4 +4063,33 @@ func startWebServer(port, bindAddr, configFile, suppressionFile string, excludeP
 // isTerminal checks if the file descriptor is a terminal
 func isTerminal(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
+}
+
+// runHelpCommand answers --help, --help checks and --help <check>. The providers are the validators
+// passed in: main builds them from the built-in defaults, before any configuration is read, so that
+// --help works the same in every directory and never prints a configuration's diagnostics (#1085).
+// It exits 1 for an unknown check or too many arguments, as it always did.
+func runHelpCommand(noColor bool, validators map[string]detector.Validator, args []string) {
+	helpSystem := help.NewSystem(noColor)
+	for _, validator := range validators {
+		if provider, ok := validator.(help.Provider); ok {
+			helpSystem.RegisterProvider(provider)
+		}
+	}
+	switch {
+	case len(args) == 0:
+		helpSystem.ShowGeneralHelp()
+	case len(args) == 1:
+		if strings.ToLower(args[0]) == "checks" {
+			helpSystem.ShowChecksHelp()
+			return
+		}
+		if !helpSystem.ShowCheckHelp(args[0]) {
+			os.Exit(1)
+		}
+	default:
+		fmt.Println("Error: Too many arguments for help command")
+		fmt.Println("Use 'ferret-scan --help', 'ferret-scan --help checks', or 'ferret-scan --help <check>'")
+		os.Exit(1)
+	}
 }
